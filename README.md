@@ -1,1 +1,1 @@
-# fred - facilitate being myself
+# me - facilitate being myself
