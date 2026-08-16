@@ -1,61 +1,28 @@
 import "@mantine/core/styles.css";
 import "./App.css";
-import { AppShell, AppShellMain, Button, Tabs, TabsList, TabsPanel } from "@mantine/core";
-import { ChatCircleIcon, GearSixIcon, ImageIcon } from "@phosphor-icons/react";
+import { AppShell, AppShellMain } from "@mantine/core";
+import { ProjectTabs } from "./components/project-tabs/ProjectTabs";
+import type { Project } from "./models/Project";
+
+const PROJECTS: Project[] = [
+  {
+    name: "Targipsum",
+    tag: "targi",
+  },
+  {
+    name: "dotfiles",
+    tag: "dotfiles",
+  },
+];
 
 function App() {
-	return (
-		<AppShell>
-			<AppShellMain>
-				<Tabs defaultValue={"gallery"}>
-					<Tabs.List>
-						<Tabs.Tab value="gallery" leftSection={<ImageIcon size={12} />}>
-							Gallery
-						</Tabs.Tab>
-						<Tabs.Tab value="messages" leftSection={<ChatCircleIcon size={12} />}>
-							Messages
-						</Tabs.Tab>
-						<Tabs.Tab value="settings" leftSection={<GearSixIcon size={12} />}>
-							Settings
-						</Tabs.Tab>
-					</Tabs.List>
-					<Tabs.Panel value="gallery">Gallery tab content</Tabs.Panel>
-					<Tabs.Panel value="messages">Messages tab content</Tabs.Panel>
-					<Tabs.Panel value="settings">Settings tab content</Tabs.Panel>
-				</Tabs>
-			</AppShellMain>
-		</AppShell>
-		// <AppShell>
-		//   <AppShellMain>
-		//       <Tabs defaultValue={"gallery"}>
-		//   <Tabs.List>
-		//     <Tabs.Tab value="gallery" leftSection={<ImageIcon size={12} />}>
-		//       Gallery
-		//     </Tabs.Tab>
-		//     <Tabs.Tab value="messages" leftSection={<ChatCircleIcon size={12} />}>
-		//       Messages
-		//     </Tabs.Tab>
-		//     <Tabs.Tab value="settings" leftSection={<GearSixIcon size={12} />}>
-		//       Settings
-		//     </Tabs.Tab>
-		//   </Tabs.List>
-
-		//   <Tabs.Panel value="gallery">
-		//     Gallery tab content
-		//   </Tabs.Panel>
-
-		//   <Tabs.Panel value="messages">
-		//     Messages tab content
-		//   </Tabs.Panel>
-
-		//   <Tabs.Panel value="settings">
-		//     Settings tab content
-		//   </Tabs.Panel>
-		// </Tabs>
-		//       </Tabs>
-		//   </AppShellMain>
-		// </AppShell>
-	);
+  return (
+    <AppShell>
+      <AppShellMain>
+        <ProjectTabs projects={PROJECTS} />
+      </AppShellMain>
+    </AppShell>
+  );
 }
 
 export default App;
