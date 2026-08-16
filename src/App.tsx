@@ -1,51 +1,61 @@
-import { useState } from "react";
-import reactLogo from "./assets/react.svg";
-import { invoke } from "@tauri-apps/api/core";
+import "@mantine/core/styles.css";
 import "./App.css";
+import { AppShell, AppShellMain, Button, Tabs, TabsList, TabsPanel } from "@mantine/core";
+import { ChatCircleIcon, GearSixIcon, ImageIcon } from "@phosphor-icons/react";
 
 function App() {
-  const [greetMsg, setGreetMsg] = useState("");
-  const [name, setName] = useState("");
+	return (
+		<AppShell>
+			<AppShellMain>
+				<Tabs defaultValue={"gallery"}>
+					<Tabs.List>
+						<Tabs.Tab value="gallery" leftSection={<ImageIcon size={12} />}>
+							Gallery
+						</Tabs.Tab>
+						<Tabs.Tab value="messages" leftSection={<ChatCircleIcon size={12} />}>
+							Messages
+						</Tabs.Tab>
+						<Tabs.Tab value="settings" leftSection={<GearSixIcon size={12} />}>
+							Settings
+						</Tabs.Tab>
+					</Tabs.List>
+					<Tabs.Panel value="gallery">Gallery tab content</Tabs.Panel>
+					<Tabs.Panel value="messages">Messages tab content</Tabs.Panel>
+					<Tabs.Panel value="settings">Settings tab content</Tabs.Panel>
+				</Tabs>
+			</AppShellMain>
+		</AppShell>
+		// <AppShell>
+		//   <AppShellMain>
+		//       <Tabs defaultValue={"gallery"}>
+		//   <Tabs.List>
+		//     <Tabs.Tab value="gallery" leftSection={<ImageIcon size={12} />}>
+		//       Gallery
+		//     </Tabs.Tab>
+		//     <Tabs.Tab value="messages" leftSection={<ChatCircleIcon size={12} />}>
+		//       Messages
+		//     </Tabs.Tab>
+		//     <Tabs.Tab value="settings" leftSection={<GearSixIcon size={12} />}>
+		//       Settings
+		//     </Tabs.Tab>
+		//   </Tabs.List>
 
-  async function greet() {
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    setGreetMsg(await invoke("greet", { name }));
-  }
+		//   <Tabs.Panel value="gallery">
+		//     Gallery tab content
+		//   </Tabs.Panel>
 
-  return (
-    <main className="container">
-      <h1>Welcome to Tauri + React</h1>
+		//   <Tabs.Panel value="messages">
+		//     Messages tab content
+		//   </Tabs.Panel>
 
-      <div className="row">
-        <a href="https://vite.dev" target="_blank">
-          <img src="/vite.svg" className="logo vite" alt="Vite logo" />
-        </a>
-        <a href="https://tauri.app" target="_blank">
-          <img src="/tauri.svg" className="logo tauri" alt="Tauri logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <p>Click on the Tauri, Vite, and React logos to learn more.</p>
-
-      <form
-        className="row"
-        onSubmit={(e) => {
-          e.preventDefault();
-          greet();
-        }}
-      >
-        <input
-          id="greet-input"
-          onChange={(e) => setName(e.currentTarget.value)}
-          placeholder="Enter a name..."
-        />
-        <button type="submit">Greet</button>
-      </form>
-      <p>{greetMsg}</p>
-    </main>
-  );
+		//   <Tabs.Panel value="settings">
+		//     Settings tab content
+		//   </Tabs.Panel>
+		// </Tabs>
+		//       </Tabs>
+		//   </AppShellMain>
+		// </AppShell>
+	);
 }
 
 export default App;
