@@ -1,32 +1,10 @@
 import "@mantine/core/styles.css";
 import "./App.css";
-import { AppShell, AppShellMain } from "@mantine/core";
-import { ProjectTabs } from "./components/project-tabs/ProjectTabs";
-import type { Project } from "./models/Project";
-
-const PROJECTS: Project[] = [
-  {
-    name: "Targipsum",
-    tag: "targi",
-    path: "",
-    subprojects: [],
-  },
-  {
-    name: "dotfiles",
-    tag: "dotfiles",
-    path: "",
-    subprojects: [],
-  },
-];
+import { RouterProvider } from "react-router";
+import { router } from "@/router";
 
 function App() {
-  return (
-    <AppShell>
-      <AppShellMain>
-        <ProjectTabs projects={PROJECTS} />
-      </AppShellMain>
-    </AppShell>
-  );
+	return <RouterProvider router={router} />;
 }
 
 export default App;
