@@ -11,6 +11,8 @@
   "permissions": [
     "global-shortcut:default",
     "window-state:default",
-    "fs:default"
+    "fs:default",
+    "shell:allow-execute",
+    "shell:allow-spawn"
   ]
 }
