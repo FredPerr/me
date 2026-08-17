@@ -8,10 +8,14 @@ const PROJECTS: Project[] = [
   {
     name: "Targipsum",
     tag: "targi",
+    path: "",
+    subprojects: [],
   },
   {
     name: "dotfiles",
     tag: "dotfiles",
+    path: "",
+    subprojects: [],
   },
 ];
 

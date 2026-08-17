@@ -1,5 +1,4 @@
-import { Tabs, TabsList, TabsPanel } from "@mantine/core";
-import { useState } from "react";
+import { Tabs, TabsList } from "@mantine/core";
 import type { Project } from "@/models/Project";
 import { ProjectTab } from "./ProjectTab";
 import { ProjectTabPanel } from "./ProjectTabPanel";
