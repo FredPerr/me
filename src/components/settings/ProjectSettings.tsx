@@ -1,25 +1,17 @@
 import { Button, Group, Modal, Stack, Title } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import { PlusIcon } from "@phosphor-icons/react";
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
+import { useProjects } from "@/hooks/useProjects";
 import type { Project } from "@/models/Project";
 import { ProjectDirectory } from "@/models/ProjectDirectory";
 import { ProjectForm } from "./ProjectForm";
 import { ProjectList } from "./ProjectList";
 
 export function ProjectSettings() {
-	const [projects, setProjects] = useState<Project[]>([]);
+	const { projects, reload } = useProjects();
 	const [editingProject, setEditingProject] = useState<Project | undefined>();
 	const [opened, { open, close }] = useDisclosure(false);
-
-	const loadProjects = useCallback(async () => {
-		const loaded = await ProjectDirectory.loadAllProjects();
-		setProjects(loaded);
-	}, []);
-
-	useEffect(() => {
-		loadProjects();
-	}, [loadProjects]);
 
 	function handleAdd() {
 		setEditingProject(undefined);
@@ -32,14 +24,14 @@ export function ProjectSettings() {
 	}
 
 	async function handleDelete(project: Project) {
-		const updated = projects.filter((p) => p.tag !== project.tag);
-		setProjects(updated);
+		await ProjectDirectory.deleteProject(project.tag);
+		await reload();
 	}
 
 	async function handleSubmit(project: Project) {
 		await ProjectDirectory.saveProject(project);
 		close();
-		await loadProjects();
+		await reload();
 	}
 
 	return (

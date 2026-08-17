@@ -1,21 +1,17 @@
+import { Text } from "@mantine/core";
 import { ProjectTabs } from "@/components/project-tabs/ProjectTabs";
-import type { Project } from "@/models/Project";
-
-const PROJECTS: Project[] = [
-	{
-		name: "Targipsum",
-		tag: "targi",
-		path: "",
-		subprojects: [],
-	},
-	{
-		name: "dotfiles",
-		tag: "dotfiles",
-		path: "",
-		subprojects: [],
-	},
-];
+import { useProjects } from "@/hooks/useProjects";
 
 export function HomePage() {
-	return <ProjectTabs projects={PROJECTS} />;
+	const { projects, loading } = useProjects();
+
+	if (loading) {
+		return null;
+	}
+
+	if (projects.length === 0) {
+		return <Text c="dimmed">No projects configured. Add some in Settings.</Text>;
+	}
+
+	return <ProjectTabs projects={projects} />;
 }

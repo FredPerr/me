@@ -5,6 +5,7 @@ import {
 	mkdir,
 	readDir,
 	readTextFile,
+	remove,
 	writeTextFile,
 } from "@tauri-apps/plugin-fs";
 import type { Project } from "@/models/Project";
@@ -44,6 +45,15 @@ export const ProjectDirectory = {
 	async getConfigFilePath(projectTag: string): Promise<string> {
 		const appData = await appDataDir();
 		return await join(appData, PROJECTS_DIR, `${projectTag}.json`);
+	},
+
+	async deleteProject(projectTag: string): Promise<void> {
+		const filePath = `${PROJECTS_DIR}/${projectTag}.json`;
+		const fileExists = await exists(filePath, { baseDir: BaseDirectory.AppData });
+
+		if (fileExists) {
+			await remove(filePath, { baseDir: BaseDirectory.AppData });
+		}
 	},
 };
 

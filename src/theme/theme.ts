@@ -32,4 +32,28 @@ export const theme = createTheme({
 		secondary,
 	},
 	primaryColor: "primary",
+	defaultGradient: { from: "secondary", to: "primary", deg: 70 },
+	components: {
+		Button: {
+			defaultProps: {
+				variant: "gradient",
+				gradient: { from: "primary", to: "secondary", deg: 70 },
+			},
+		},
+		ActionIcon: {
+			defaultProps: {
+				color: "primary",
+			},
+		},
+		Card: {
+			defaultProps: {
+				bg: "dark.7",
+			},
+		},
+		Title: {
+			defaultProps: {
+				c: "primary.3",
+			},
+		},
+	},
 });
