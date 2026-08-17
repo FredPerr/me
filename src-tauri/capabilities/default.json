@@ -10,19 +10,23 @@
     "opener:default",
     "fs:default",
     {
-      "identifier": "fs:allow-read-file",
+      "identifier": "fs:allow-read-text-file",
       "allow": [{ "path": "$APPDATA/**" }]
     },
     {
-      "identifier": "fs:allow-write-file",
+      "identifier": "fs:allow-write-text-file",
       "allow": [{ "path": "$APPDATA/**" }]
     },
     {
       "identifier": "fs:allow-exists",
-      "allow": [{ "path": "$APPDATA/**" }]
+      "allow": [{ "path": "$APPDATA/**" }, { "path": "$APPDATA" }]
     },
     {
       "identifier": "fs:allow-mkdir",
+      "allow": [{ "path": "$APPDATA/**" }]
+    },
+    {
+      "identifier": "fs:allow-read-dir",
       "allow": [{ "path": "$APPDATA/**" }]
     }
   ]

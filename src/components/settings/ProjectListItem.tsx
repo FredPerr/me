@@ -1,4 +1,4 @@
-import { ActionIcon, Group, Text, Card } from "@mantine/core";
+import { ActionIcon, Card, Group, Text } from "@mantine/core";
 import { PencilSimpleIcon, TrashIcon } from "@phosphor-icons/react";
 import type { Project } from "@/models/Project";
 

@@ -1,6 +1,9 @@
-import { Button, Group, Stack, TextInput } from "@mantine/core";
-import { useState } from "react";
+import { ActionIcon, Button, CopyButton, Group, Stack, Text, TextInput, Tooltip } from "@mantine/core";
+import { CheckIcon, CopyIcon } from "@phosphor-icons/react";
+import { useEffect, useState } from "react";
 import type { Project } from "@/models/Project";
+import { ProjectDirectory } from "@/models/ProjectDirectory";
+import { resolvePath } from "@/utils/resolvePath";
 
 type ProjectFormProps = {
 	initialProject?: Project;
@@ -12,15 +15,23 @@ export function ProjectForm({ initialProject, onSubmit, onCancel }: ProjectFormP
 	const [name, setName] = useState(initialProject?.name ?? "");
 	const [tag, setTag] = useState(initialProject?.tag ?? "");
 	const [path, setPath] = useState(initialProject?.path ?? "");
+	const [configPath, setConfigPath] = useState("");
 
 	const isEditing = !!initialProject;
 
-	function handleSubmit(event: React.FormEvent) {
+	useEffect(() => {
+		if (initialProject) {
+			ProjectDirectory.getConfigFilePath(initialProject.tag).then(setConfigPath);
+		}
+	}, [initialProject]);
+
+	async function handleSubmit(event: React.FormEvent) {
 		event.preventDefault();
+		const resolvedPath = await resolvePath(path);
 		onSubmit({
 			name,
 			tag,
-			path,
+			path: resolvedPath,
 			subprojects: initialProject?.subprojects ?? [],
 		});
 	}
@@ -45,7 +56,7 @@ export function ProjectForm({ initialProject, onSubmit, onCancel }: ProjectFormP
 				/>
 				<TextInput
 					label="Path"
-					placeholder="/Users/fred/Projects/my-project"
+					placeholder="~/Projects/my-project"
 					value={path}
 					onChange={(event) => setPath(event.currentTarget.value)}
 					required
@@ -56,6 +67,22 @@ export function ProjectForm({ initialProject, onSubmit, onCancel }: ProjectFormP
 					</Button>
 					<Button type="submit">{isEditing ? "Save" : "Add"}</Button>
 				</Group>
+				{isEditing && configPath && (
+					<Group gap={4}>
+						<Text size="xs" c="dimmed" ff="monospace">
+							{configPath}
+						</Text>
+						<CopyButton value={configPath}>
+							{({ copied, copy }) => (
+								<Tooltip label={copied ? "Copied" : "Copy config path"}>
+									<ActionIcon variant="transparent" size="xs" onClick={copy} aria-label="Copy config path">
+										{copied ? <CheckIcon size={12} /> : <CopyIcon size={12} />}
+									</ActionIcon>
+								</Tooltip>
+							)}
+						</CopyButton>
+					</Group>
+				)}
 			</Stack>
 		</form>
 	);

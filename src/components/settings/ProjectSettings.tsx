@@ -2,10 +2,10 @@ import { Button, Group, Modal, Stack, Title } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import { PlusIcon } from "@phosphor-icons/react";
 import { useCallback, useEffect, useState } from "react";
-import { ProjectForm } from "./ProjectForm";
-import { ProjectList } from "./ProjectList";
 import type { Project } from "@/models/Project";
 import { ProjectDirectory } from "@/models/ProjectDirectory";
+import { ProjectForm } from "./ProjectForm";
+import { ProjectList } from "./ProjectList";
 
 export function ProjectSettings() {
 	const [projects, setProjects] = useState<Project[]>([]);
@@ -53,7 +53,11 @@ export function ProjectSettings() {
 
 			<ProjectList projects={projects} onEdit={handleEdit} onDelete={handleDelete} />
 
-			<Modal opened={opened} onClose={close} title={editingProject ? "Edit project" : "Add project"}>
+			<Modal
+				opened={opened}
+				onClose={close}
+				title={editingProject ? "Edit project" : "Add project"}
+			>
 				<ProjectForm initialProject={editingProject} onSubmit={handleSubmit} onCancel={close} />
 			</Modal>
 		</Stack>
