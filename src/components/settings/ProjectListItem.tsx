@@ -1,6 +1,8 @@
 import { ActionIcon, Card, Group, Text } from "@mantine/core";
+import { useDisclosure } from "@mantine/hooks";
 import { PencilSimpleIcon, TrashIcon } from "@phosphor-icons/react";
 import type { Project } from "@/models/Project";
+import { ProjectConfirmDeleteModal } from "./ProjectConfirmDeleteModal";
 
 type ProjectListItemProps = {
 	project: Project;
@@ -9,6 +11,7 @@ type ProjectListItemProps = {
 };
 
 export function ProjectListItem({ project, onEdit, onDelete }: ProjectListItemProps) {
+	const [opened, { open, close }] = useDisclosure(false);
 	return (
 		<Card withBorder padding="sm">
 			<Group justify="space-between">
@@ -25,11 +28,19 @@ export function ProjectListItem({ project, onEdit, onDelete }: ProjectListItemPr
 					<ActionIcon
 						variant="subtle"
 						color="red"
-						onClick={() => onDelete(project)}
+						onClick={() => {
+							open();
+						}}
 						aria-label="Delete project"
 					>
 						<TrashIcon />
 					</ActionIcon>
+					<ProjectConfirmDeleteModal
+						project={project}
+						onDelete={onDelete}
+						onCancel={close}
+						opened={opened}
+					/>
 				</Group>
 			</Group>
 		</Card>

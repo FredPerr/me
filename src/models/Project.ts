@@ -1,6 +1,6 @@
 export type SubProject = {
 	name: string;
-	path: string;
+	relPath: string;
 };
 
 export type Project = {

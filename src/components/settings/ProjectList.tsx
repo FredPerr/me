@@ -6,23 +6,29 @@ type ProjectListProps = {
 	projects: Project[];
 	onEdit: (project: Project) => void;
 	onDelete: (project: Project) => void;
+	searchValue: string
 };
 
-export function ProjectList({ projects, onEdit, onDelete }: ProjectListProps) {
-	if (projects.length === 0) {
-		return <Text c="dimmed">No projects configured yet.</Text>;
-	}
+export function ProjectList({ projects, onEdit, onDelete, searchValue }: ProjectListProps) {
+	const filteredProjects = projects.filter((p) => {
+		const combineString = `${p.name}${p.path}${p.tag}`.toLowerCase().trim();
+		return combineString.includes(searchValue.toLowerCase());
+	});
 
 	return (
 		<Stack gap="sm">
-			{projects.map((project) => (
-				<ProjectListItem
-					key={project.tag}
-					project={project}
-					onEdit={onEdit}
-					onDelete={onDelete}
-				/>
-			))}
+			{filteredProjects.length > 0 ? (
+				filteredProjects.map((project) => (
+					<ProjectListItem
+						key={project.tag}
+						project={project}
+						onEdit={onEdit}
+						onDelete={onDelete}
+					/>
+				))
+			) : (
+				<Text c="dimmed">No projects configured yet.</Text>
+			)}
 		</Stack>
 	);
 }
