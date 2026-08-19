@@ -4,15 +4,15 @@ import {
   CopyButton,
   Group,
   Stack,
-  Text,
   TextInput,
   Tooltip,
 } from "@mantine/core";
 import { CheckIcon, CopyIcon } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
-import type { Project } from "@/models/Project";
+import type { Project, SubProject } from "@/models/Project";
 import { ProjectDirectory } from "@/models/ProjectDirectory";
 import { resolvePath } from "@/utils/resolvePath";
+import { SubProjectFormList } from "./SubProjectFormList";
 
 type ProjectFormProps = {
   initialProject?: Project;
@@ -28,8 +28,10 @@ export function ProjectForm({
   const [name, setName] = useState(initialProject?.name ?? "");
   const [tag, setTag] = useState(initialProject?.tag ?? "");
   const [path, setPath] = useState(initialProject?.path ?? "");
+  const [subprojects, setSubprojects] = useState<SubProject[]>(
+    initialProject?.subprojects ?? [],
+  );
   const [configPath, setConfigPath] = useState("");
-  const [subprojects, setSubprojects] = useState(initialProject?.subprojects);
 
   const isEditing = !!initialProject;
 
@@ -41,14 +43,16 @@ export function ProjectForm({
     }
   }, [initialProject]);
 
-  async function handleSubmit(event: React.FormEvent) {
+  async function handleSubmit(event: React.SubmitEvent) {
     event.preventDefault();
-    const resolvedPath = await resolvePath(path);
+    const resolvedPath = await resolvePath(path, {
+      isFolder: true,
+    });
     onSubmit({
       name,
       tag,
       path: resolvedPath,
-      subprojects: initialProject?.subprojects ?? [],
+      subprojects,
     });
   }
 
@@ -77,29 +81,38 @@ export function ProjectForm({
           onChange={(event) => setPath(event.currentTarget.value)}
           required
         />
-        <TextInput
-          label="Config path"
-          readOnly
-          disabled
-          defaultValue={configPath}
-          width="100%"
-          rightSection={
-            <CopyButton value={configPath}>
-              {({ copied, copy }) => (
-                <Tooltip label={copied ? "Copied" : "Copy config path"}>
-                  <ActionIcon
-                    variant="transparent"
-                    size="xs"
-                    onClick={copy}
-                    aria-label="Copy config path"
-                  >
-                    {copied ? <CheckIcon size={12} /> : <CopyIcon size={12} />}
-                  </ActionIcon>
-                </Tooltip>
-              )}
-            </CopyButton>
-          }
+        <SubProjectFormList
+          subprojects={subprojects}
+          onChange={setSubprojects}
         />
+        {isEditing && configPath && (
+          <TextInput
+            label="Config path"
+            readOnly
+            disabled
+            value={configPath}
+            rightSection={
+              <CopyButton value={configPath}>
+                {({ copied, copy }) => (
+                  <Tooltip label={copied ? "Copied" : "Copy config path"}>
+                    <ActionIcon
+                      variant="transparent"
+                      size="xs"
+                      onClick={copy}
+                      aria-label="Copy config path"
+                    >
+                      {copied ? (
+                        <CheckIcon size={12} />
+                      ) : (
+                        <CopyIcon size={12} />
+                      )}
+                    </ActionIcon>
+                  </Tooltip>
+                )}
+              </CopyButton>
+            }
+          />
+        )}
         <Group justify="flex-end">
           <Button variant="subtle" onClick={onCancel}>
             Cancel

@@ -8,8 +8,6 @@ import {
   Title,
 } from "@mantine/core";
 import {
-  useDebouncedState,
-  useDebouncedValue,
   useDisclosure,
 } from "@mantine/hooks";
 import { PlusIcon, XIcon } from "@phosphor-icons/react";
@@ -25,7 +23,6 @@ export function ProjectSettings() {
   const [editingProject, setEditingProject] = useState<Project | undefined>();
   const [opened, { open, close }] = useDisclosure(false);
   const [searchFilter, setSearchFilter] = useState("");
-  const [debouncedSearchFilter] = useDebouncedValue(searchFilter, 300);
 
   function handleAdd() {
     setEditingProject(undefined);
