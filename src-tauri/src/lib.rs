@@ -1,3 +1,4 @@
+mod git;
 mod shortcuts;
 
 #[tauri::command]
@@ -24,7 +25,7 @@ pub fn run() {
         .plugin(tauri_plugin_window_state::Builder::new().build())
         .plugin(shortcuts::plugin())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![greet, open_in_ide])
+        .invoke_handler(tauri::generate_handler![greet, open_in_ide, git::get_git_remote_url])
         .setup(|app| {
             shortcuts::register(app.handle())?;
             Ok(())

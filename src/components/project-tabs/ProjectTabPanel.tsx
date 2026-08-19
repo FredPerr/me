@@ -1,5 +1,6 @@
 import { Button, Divider, Group, SimpleGrid, Stack, TabsPanel } from "@mantine/core";
 import { ArrowSquareOutIcon } from "@phosphor-icons/react";
+import { GitRemoteLink } from "@/components/shared/GitRemoteLink";
 import { useOpenInIde } from "@/hooks/useOpenInIde";
 import type { Project } from "@/models/Project";
 import { SubProjectEntry } from "./SubProjectEntry";
@@ -15,6 +16,7 @@ export function ProjectTabPanel({ project }: ProjectTabPanelProps) {
 		<TabsPanel value={project.tag}>
 			<Stack gap="sm" py="md">
 				<Group justify="flex-end">
+					<GitRemoteLink path={project.path} />
 					<Button
 						leftSection={<ArrowSquareOutIcon size={16} />}
 						size="xs"
