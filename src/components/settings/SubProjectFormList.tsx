@@ -1,5 +1,6 @@
 import { ActionIcon, Group, Stack, TextInput, Tooltip } from "@mantine/core";
 import { PlusIcon, TrashIcon } from "@phosphor-icons/react";
+import { IconPicker } from "@/components/shared/IconPicker";
 import type { SubProject } from "@/models/Project";
 
 type SubProjectFormListProps = {
@@ -35,9 +36,14 @@ export function SubProjectFormList({ subprojects, onChange }: SubProjectFormList
 			</Group>
 			{subprojects.map((subproject, index) => (
 				<Group key={subproject.id} gap="xs" align="flex-end">
+					<IconPicker
+						value={subproject.icon ?? ""}
+						onChange={(value) => handleUpdate(index, "icon", value)}
+					/>
 					<TextInput
 						label="Name"
 						placeholder="backend"
+						required
 						value={subproject.name}
 						onChange={(e) => handleUpdate(index, "name", e.currentTarget.value)}
 						style={{ flex: 1 }}
@@ -46,6 +52,7 @@ export function SubProjectFormList({ subprojects, onChange }: SubProjectFormList
 					<TextInput
 						label="Path"
 						placeholder="./backend"
+						required
 						value={subproject.relPath}
 						onChange={(e) => handleUpdate(index, "relPath", e.currentTarget.value)}
 						style={{ flex: 2 }}

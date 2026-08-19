@@ -17,6 +17,7 @@ export function ProjectTabs({ projects }: ProjectTabsProps) {
           <ProjectTab
             displayName={project.name}
             projectTag={project.tag}
+            icon={project.icon}
             key={project.tag}
           />
         ))}

@@ -5,7 +5,11 @@ use std::path::Path;
 pub async fn get_git_remote_url(path: String) -> Result<Option<String>, String> {
     let repo_path = Path::new(&path);
 
-    let repository = match Repository::discover(repo_path) {
+    if !is_repo_root(repo_path) {
+        return Ok(None);
+    }
+
+    let repository = match Repository::open(repo_path) {
         Ok(repo) => repo,
         Err(_) => return Ok(None),
     };
@@ -17,6 +21,10 @@ pub async fn get_git_remote_url(path: String) -> Result<Option<String>, String> 
 
     let url = remote.url().map(|u| normalize_remote_url(u));
     Ok(url)
+}
+
+fn is_repo_root(path: &Path) -> bool {
+    path.join(".git").exists()
 }
 
 fn normalize_remote_url(url: &str) -> String {
