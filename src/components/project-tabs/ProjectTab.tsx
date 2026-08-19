@@ -6,5 +6,5 @@ type ProjectTabProps = {
 };
 
 export function ProjectTab({ displayName, projectTag }: ProjectTabProps) {
-	return <TabsTab value={projectTag}>{displayName}</TabsTab>;
+	return <TabsTab value={projectTag} fw={700}>{displayName}</TabsTab>;
 }

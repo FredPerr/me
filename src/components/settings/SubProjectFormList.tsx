@@ -9,7 +9,7 @@ type SubProjectFormListProps = {
 
 export function SubProjectFormList({ subprojects, onChange }: SubProjectFormListProps) {
 	function handleAdd() {
-		onChange([...subprojects, { name: "", relPath: "" }]);
+		onChange([...subprojects, { id: crypto.randomUUID(), name: "", relPath: "" }]);
 	}
 
 	function handleRemove(index: number) {
@@ -34,7 +34,7 @@ export function SubProjectFormList({ subprojects, onChange }: SubProjectFormList
 				</Tooltip>
 			</Group>
 			{subprojects.map((subproject, index) => (
-				<Group key={subproject.relPath} gap="xs" align="flex-end">
+				<Group key={subproject.id} gap="xs" align="flex-end">
 					<TextInput
 						label="Name"
 						placeholder="backend"

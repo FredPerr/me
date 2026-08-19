@@ -1,4 +1,5 @@
 export type SubProject = {
+	id: string;
 	name: string;
 	relPath: string;
 };
