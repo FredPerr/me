@@ -2126,6 +2126,7 @@ dependencies = [
 name = "me"
 version = "0.1.0"
 dependencies = [
+ "dirs",
  "git2",
  "serde",
  "serde_json",
