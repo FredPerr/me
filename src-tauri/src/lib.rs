@@ -26,7 +26,7 @@ pub fn run() {
         .plugin(tauri_plugin_window_state::Builder::new().build())
         .plugin(shortcuts::plugin())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![greet, open_in_ide, git::get_git_remote_url, workspace_detector::get_active_workspaces])
+        .invoke_handler(tauri::generate_handler![greet, open_in_ide, git::get_git_remote_url, git::list_worktrees, git::get_worktree_status, workspace_detector::get_active_workspaces])
         .setup(|app| {
             shortcuts::register(app.handle())?;
             Ok(())

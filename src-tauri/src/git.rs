@@ -1,5 +1,14 @@
 use git2::Repository;
+use serde::Serialize;
 use std::path::Path;
+
+#[derive(Serialize)]
+pub struct Worktree {
+    pub name: String,
+    pub path: String,
+    pub branch: Option<String>,
+    pub is_default: bool,
+}
 
 #[tauri::command]
 pub async fn get_git_remote_url(path: String) -> Result<Option<String>, String> {
@@ -27,6 +36,66 @@ fn is_repo_root(path: &Path) -> bool {
     path.join(".git").exists()
 }
 
+#[tauri::command]
+pub async fn list_worktrees(path: String) -> Result<Vec<Worktree>, String> {
+    let repo_path = Path::new(&path);
+
+    let repository = Repository::open(repo_path).map_err(|e| e.to_string())?;
+
+    let worktree_names = repository.worktrees().map_err(|e| e.to_string())?;
+
+    let mut worktrees: Vec<Worktree> = Vec::new();
+
+    let main_branch = get_head_branch(&repository);
+    let main_path = repository
+        .workdir()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_default();
+
+    worktrees.push(Worktree {
+        name: "default".to_string(),
+        path: normalize_path(&main_path),
+        branch: main_branch,
+        is_default: true,
+    });
+
+    for i in 0..worktree_names.len() {
+        if let Some(name) = worktree_names.get(i) {
+            if let Ok(wt) = repository.find_worktree(name) {
+                let wt_path = wt.path().to_string_lossy().to_string();
+                let branch = get_worktree_branch(&repository, &wt_path);
+                worktrees.push(Worktree {
+                    name: name.to_string(),
+                    path: normalize_path(&wt_path),
+                    branch,
+                    is_default: false,
+                });
+            }
+        }
+    }
+
+    Ok(worktrees)
+}
+
+fn get_head_branch(repo: &Repository) -> Option<String> {
+    repo.head()
+        .ok()
+        .and_then(|head| head.shorthand().map(|s| s.to_string()))
+}
+
+fn get_worktree_branch(repo: &Repository, worktree_path: &str) -> Option<String> {
+    let wt_repo = Repository::open(worktree_path).ok()?;
+    get_head_branch(&wt_repo)
+}
+
+fn normalize_path(path: &str) -> String {
+    if path.ends_with('/') {
+        path[..path.len() - 1].to_string()
+    } else {
+        path.to_string()
+    }
+}
+
 fn normalize_remote_url(url: &str) -> String {
     if url.starts_with("git@") {
         let without_prefix = url.strip_prefix("git@").unwrap_or(url);
@@ -38,6 +107,105 @@ fn normalize_remote_url(url: &str) -> String {
     } else {
         url.to_string()
     }
+}
+
+#[derive(Serialize)]
+pub struct WorktreeStatus {
+    pub files_added: usize,
+    pub files_modified: usize,
+    pub files_deleted: usize,
+    pub files_renamed: usize,
+    pub insertions: usize,
+    pub deletions: usize,
+    pub pr_url: Option<String>,
+}
+
+#[tauri::command]
+pub async fn get_worktree_status(path: String) -> Result<WorktreeStatus, String> {
+    let repo = Repository::open(&path).map_err(|e| e.to_string())?;
+
+    let changed_files = count_changed_files(&repo)?;
+    let (insertions, deletions) = count_changed_lines(&repo);
+    let pr_url = build_pr_url(&repo);
+
+    Ok(WorktreeStatus {
+        files_added: changed_files.added,
+        files_modified: changed_files.modified,
+        files_deleted: changed_files.deleted,
+        files_renamed: changed_files.renamed,
+        insertions,
+        deletions,
+        pr_url,
+    })
+}
+
+struct FileChangeCounts {
+    added: usize,
+    modified: usize,
+    deleted: usize,
+    renamed: usize,
+}
+
+fn count_changed_files(repo: &Repository) -> Result<FileChangeCounts, String> {
+    let mut opts = git2::StatusOptions::new();
+    opts.include_untracked(true);
+    opts.exclude_submodules(true);
+
+    let statuses = repo.statuses(Some(&mut opts)).map_err(|e| e.to_string())?;
+
+    let mut counts = FileChangeCounts {
+        added: 0,
+        modified: 0,
+        deleted: 0,
+        renamed: 0,
+    };
+
+    for entry in statuses.iter() {
+        let status = entry.status();
+        if status.intersects(git2::Status::WT_NEW | git2::Status::INDEX_NEW) {
+            counts.added += 1;
+        } else if status.intersects(git2::Status::WT_DELETED | git2::Status::INDEX_DELETED) {
+            counts.deleted += 1;
+        } else if status.intersects(git2::Status::WT_RENAMED | git2::Status::INDEX_RENAMED) {
+            counts.renamed += 1;
+        } else if status.intersects(
+            git2::Status::WT_MODIFIED
+                | git2::Status::INDEX_MODIFIED
+                | git2::Status::WT_TYPECHANGE
+                | git2::Status::INDEX_TYPECHANGE,
+        ) {
+            counts.modified += 1;
+        }
+    }
+
+    Ok(counts)
+}
+
+fn count_changed_lines(repo: &Repository) -> (usize, usize) {
+    let diff = match repo.diff_index_to_workdir(None, None) {
+        Ok(d) => d,
+        Err(_) => return (0, 0),
+    };
+
+    let stats = match diff.stats() {
+        Ok(s) => s,
+        Err(_) => return (0, 0),
+    };
+
+    (stats.insertions(), stats.deletions())
+}
+
+fn build_pr_url(repo: &Repository) -> Option<String> {
+    let remote = repo.find_remote("origin").ok()?;
+    let remote_url = remote.url()?;
+    let base_url = normalize_remote_url(remote_url);
+
+    if !base_url.contains("github.com") {
+        return None;
+    }
+
+    let branch = get_head_branch(repo)?;
+    Some(format!("{}/compare/{}?expand=1", base_url, branch))
 }
 
 #[cfg(test)]

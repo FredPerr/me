@@ -2,9 +2,12 @@ import { ActionIcon, Badge, Button, Divider, Group, SimpleGrid, Stack, TabsPanel
 import { ArrowSquareOutIcon, ArrowsClockwiseIcon } from "@phosphor-icons/react";
 import { GitRemoteLink } from "@/components/shared/GitRemoteLink";
 import { useActiveWorkspaces } from "@/hooks/useActiveWorkspaces";
+import { useGitRemote } from "@/hooks/useGitRemote";
 import { useOpenInIde } from "@/hooks/useOpenInIde";
+import { useWorktrees } from "@/hooks/useWorktrees";
 import type { Project } from "@/models/Project";
 import { SubProjectEntry } from "./SubProjectEntry";
+import { WorktreeList } from "./WorktreeList";
 
 type ProjectTabPanelProps = {
 	project: Project;
@@ -12,7 +15,14 @@ type ProjectTabPanelProps = {
 
 export function ProjectTabPanel({ project }: ProjectTabPanelProps) {
 	const { open, isAvailable } = useOpenInIde();
-	const { isActive, refresh } = useActiveWorkspaces();
+	const { isActive, refresh: refreshWorkspaces } = useActiveWorkspaces();
+	const { worktrees, refresh: refreshWorktrees } = useWorktrees(project.path);
+	const { remoteUrl } = useGitRemote(project.path);
+
+	function handleRefresh() {
+		refreshWorkspaces();
+		refreshWorktrees();
+	}
 
 	return (
 		<TabsPanel value={project.tag}>
@@ -22,8 +32,8 @@ export function ProjectTabPanel({ project }: ProjectTabPanelProps) {
 						{isActive(project.path) && <Badge size="xs" color="green">active</Badge>}
 					</Group>
 					<Group gap="xs">
-						<Tooltip label="Refresh workspaces">
-							<ActionIcon variant="subtle" size="sm" onClick={refresh} aria-label="Refresh workspaces">
+						<Tooltip label="Refresh">
+							<ActionIcon variant="subtle" size="sm" onClick={handleRefresh} aria-label="Refresh">
 								<ArrowsClockwiseIcon size={16} />
 							</ActionIcon>
 						</Tooltip>
@@ -51,6 +61,12 @@ export function ProjectTabPanel({ project }: ProjectTabPanelProps) {
 								/>
 							))}
 						</SimpleGrid>
+					</>
+				)}
+				{worktrees.length !== 0 && (
+					<>
+						<Divider />
+						<WorktreeList worktrees={worktrees} isActive={isActive} remoteUrl={remoteUrl} />
 					</>
 				)}
 			</Stack>
