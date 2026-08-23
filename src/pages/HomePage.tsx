@@ -1,8 +1,10 @@
 import { Text } from "@mantine/core";
+import { useTranslation } from "react-i18next";
 import { ProjectTabs } from "@/components/project-tabs/ProjectTabs";
 import { useProjects } from "@/hooks/useProjects";
 
 export function HomePage() {
+	const { t } = useTranslation();
 	const { projects, loading } = useProjects();
 
 	if (loading) {
@@ -10,7 +12,7 @@ export function HomePage() {
 	}
 
 	if (projects.length === 0) {
-		return <Text c="dimmed">No projects configured. Add some in Settings.</Text>;
+		return <Text c="dimmed">{t("project.noProjects")}</Text>;
 	}
 
 	return <ProjectTabs projects={projects} />;

@@ -90,9 +90,7 @@ fn extract_workspace_paths(storage: StorageJson) -> Vec<String> {
 }
 
 fn uri_to_path(uri: &str) -> Option<String> {
-    uri.strip_prefix("file://").map(|p| {
-        percent_decode(p)
-    })
+    uri.strip_prefix("file://").map(|p| percent_decode(p))
 }
 
 fn percent_decode(input: &str) -> String {
@@ -169,18 +167,18 @@ mod tests {
                 last_active_window: Some(WindowEntry {
                     folder: Some("file:///Users/fred/Projects/app".to_string()),
                 }),
-                opened_windows: Some(vec![
-                    WindowEntry { folder: Some("file:///Users/fred/Projects/lib".to_string()) },
-                ]),
+                opened_windows: Some(vec![WindowEntry {
+                    folder: Some("file:///Users/fred/Projects/lib".to_string()),
+                }]),
             }),
         };
 
         let result = extract_workspace_paths(storage);
 
-        assert_eq!(result, vec![
-            "/Users/fred/Projects/app",
-            "/Users/fred/Projects/lib",
-        ]);
+        assert_eq!(
+            result,
+            vec!["/Users/fred/Projects/app", "/Users/fred/Projects/lib",]
+        );
     }
 
     #[test]
@@ -201,9 +199,9 @@ mod tests {
                 last_active_window: Some(WindowEntry {
                     folder: Some("file:///Users/fred/Projects/app".to_string()),
                 }),
-                opened_windows: Some(vec![
-                    WindowEntry { folder: Some("file:///Users/fred/Projects/app".to_string()) },
-                ]),
+                opened_windows: Some(vec![WindowEntry {
+                    folder: Some("file:///Users/fred/Projects/app".to_string()),
+                }]),
             }),
         };
 

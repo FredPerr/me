@@ -1,6 +1,6 @@
+import { invoke } from "@tauri-apps/api/core";
 import { useCallback } from "react";
 import { useAppSettings } from "@/hooks/useAppSettings";
-import { openInIde } from "@/utils/openInIde";
 
 export function useOpenInIde() {
 	const { settings } = useAppSettings();
@@ -8,7 +8,7 @@ export function useOpenInIde() {
 	const open = useCallback(
 		async (projectPath: string) => {
 			if (settings?.ideCommand && projectPath) {
-				await openInIde(settings.ideCommand, projectPath);
+				await invoke("open_in_ide", { command: settings.ideCommand, path: projectPath });
 			}
 		},
 		[settings],

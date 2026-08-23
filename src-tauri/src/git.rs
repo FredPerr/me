@@ -1,5 +1,5 @@
 use git2::Repository;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::path::Path;
 
 #[derive(Serialize)]
@@ -34,6 +34,11 @@ pub async fn get_git_remote_url(path: String) -> Result<Option<String>, String> 
 
 fn is_repo_root(path: &Path) -> bool {
     path.join(".git").exists()
+}
+
+#[tauri::command]
+pub async fn check_is_git_repository(path: String) -> Result<bool, String> {
+    Ok(is_repo_root(Path::new(&path)))
 }
 
 #[tauri::command]
@@ -206,6 +211,233 @@ fn build_pr_url(repo: &Repository) -> Option<String> {
 
     let branch = get_head_branch(repo)?;
     Some(format!("{}/compare/{}?expand=1", base_url, branch))
+}
+
+#[tauri::command]
+pub async fn list_branches(path: String) -> Result<Vec<String>, String> {
+    let repo = Repository::open(&path).map_err(|e| e.to_string())?;
+
+    let branches = repo
+        .branches(Some(git2::BranchType::Local))
+        .map_err(|e| e.to_string())?;
+
+    let mut branch_names: Vec<String> = Vec::new();
+    for branch in branches {
+        let (branch, _) = branch.map_err(|e| e.to_string())?;
+        if let Some(name) = branch.name().map_err(|e| e.to_string())? {
+            branch_names.push(name.to_string());
+        }
+    }
+
+    branch_names.sort();
+    Ok(branch_names)
+}
+
+#[tauri::command]
+pub async fn create_worktree(
+    path: String,
+    branch_name: String,
+    base_branch: String,
+) -> Result<String, String> {
+    let repo = Repository::open(&path).map_err(|e| e.to_string())?;
+
+    let base_commit = {
+        let base_ref = repo
+            .find_branch(&base_branch, git2::BranchType::Local)
+            .map_err(|e| format!("Branch '{}' not found: {}", base_branch, e))?;
+        base_ref.get().peel_to_commit().map_err(|e| e.to_string())?
+    };
+
+    repo.branch(&branch_name, &base_commit, false)
+        .map_err(|e| format!("Failed to create branch '{}': {}", branch_name, e))?;
+
+    let worktree_dir = repo
+        .workdir()
+        .ok_or("Could not determine workdir")?
+        .parent()
+        .ok_or("Could not determine parent directory")?
+        .join(&branch_name);
+
+    let worktree_path = worktree_dir.to_string_lossy().to_string();
+
+    std::process::Command::new("git")
+        .args(["worktree", "add", &worktree_path, &branch_name])
+        .current_dir(&path)
+        .output()
+        .map_err(|e| format!("Failed to create worktree: {}", e))?;
+
+    Ok(normalize_path(&worktree_path))
+}
+
+#[tauri::command]
+pub async fn delete_worktree(repo_path: String, worktree_path: String) -> Result<(), String> {
+    let output = std::process::Command::new("git")
+        .args(["worktree", "remove", "--force", &worktree_path])
+        .current_dir(&repo_path)
+        .output()
+        .map_err(|e| format!("Failed to remove worktree: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("git worktree remove failed: {}", stderr));
+    }
+
+    let wt_path = std::path::Path::new(&worktree_path);
+    if wt_path.exists() {
+        std::fs::remove_dir_all(wt_path)
+            .map_err(|e| format!("Failed to delete worktree directory: {}", e))?;
+    }
+
+    Ok(())
+}
+
+#[derive(Deserialize)]
+pub struct ContextRepoInput {
+    pub rel_path: String,
+    pub branch: String,
+    pub base_branch: String,
+}
+
+#[derive(Serialize)]
+pub struct ContextRepoResult {
+    pub rel_path: String,
+    pub worktree_path: String,
+    pub branch: String,
+}
+
+#[tauri::command]
+pub async fn create_context(
+    project_path: String,
+    repos: Vec<ContextRepoInput>,
+) -> Result<Vec<ContextRepoResult>, String> {
+    let project_dir = Path::new(&project_path);
+    let mut results: Vec<ContextRepoResult> = Vec::new();
+
+    for repo_input in &repos {
+        let repo_path = project_dir.join(&repo_input.rel_path);
+        let repo_path_str = repo_path.to_string_lossy().to_string();
+
+        let repo = Repository::open(&repo_path)
+            .map_err(|e| format!("Failed to open repo at '{}': {}", repo_input.rel_path, e))?;
+
+        let branch_exists = repo
+            .find_branch(&repo_input.branch, git2::BranchType::Local)
+            .is_ok();
+
+        if !branch_exists {
+            let base_commit = {
+                let base_ref = repo
+                    .find_branch(&repo_input.base_branch, git2::BranchType::Local)
+                    .map_err(|e| {
+                        format!(
+                            "Base branch '{}' not found in '{}': {}",
+                            repo_input.base_branch, repo_input.rel_path, e
+                        )
+                    })?;
+                base_ref.get().peel_to_commit().map_err(|e| e.to_string())?
+            };
+
+            repo.branch(&repo_input.branch, &base_commit, false)
+                .map_err(|e| {
+                    format!(
+                        "Failed to create branch '{}' in '{}': {}",
+                        repo_input.branch, repo_input.rel_path, e
+                    )
+                })?;
+        }
+
+        let worktree_dir = repo
+            .workdir()
+            .ok_or("Could not determine workdir")?
+            .parent()
+            .ok_or("Could not determine parent directory")?
+            .join(&repo_input.branch);
+
+        let worktree_path = worktree_dir.to_string_lossy().to_string();
+
+        let output = std::process::Command::new("git")
+            .args(["worktree", "add", &worktree_path, &repo_input.branch])
+            .current_dir(&repo_path_str)
+            .output()
+            .map_err(|e| {
+                format!(
+                    "Failed to create worktree in '{}': {}",
+                    repo_input.rel_path, e
+                )
+            })?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(format!(
+                "git worktree add failed in '{}': {}",
+                repo_input.rel_path, stderr
+            ));
+        }
+
+        results.push(ContextRepoResult {
+            rel_path: repo_input.rel_path.clone(),
+            worktree_path: normalize_path(&worktree_path),
+            branch: repo_input.branch.clone(),
+        });
+    }
+
+    Ok(results)
+}
+
+#[tauri::command]
+pub async fn delete_context(
+    project_path: String,
+    repos: Vec<ContextRepoInput>,
+) -> Result<(), String> {
+    let project_dir = Path::new(&project_path);
+
+    for repo_input in &repos {
+        let repo_path = project_dir.join(&repo_input.rel_path);
+        let repo_path_str = repo_path.to_string_lossy().to_string();
+
+        let repo = Repository::open(&repo_path)
+            .map_err(|e| format!("Failed to open repo at '{}': {}", repo_input.rel_path, e))?;
+
+        let worktree_dir = repo
+            .workdir()
+            .ok_or("Could not determine workdir")?
+            .parent()
+            .ok_or("Could not determine parent directory")?
+            .join(&repo_input.branch);
+
+        let worktree_path = worktree_dir.to_string_lossy().to_string();
+
+        let output = std::process::Command::new("git")
+            .args(["worktree", "remove", "--force", &worktree_path])
+            .current_dir(&repo_path_str)
+            .output()
+            .map_err(|e| {
+                format!(
+                    "Failed to remove worktree in '{}': {}",
+                    repo_input.rel_path, e
+                )
+            })?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(format!(
+                "git worktree remove failed in '{}': {}",
+                repo_input.rel_path, stderr
+            ));
+        }
+
+        let wt_path = Path::new(&worktree_path);
+        if wt_path.exists() {
+            std::fs::remove_dir_all(wt_path).map_err(|e| {
+                format!(
+                    "Failed to delete worktree directory '{}': {}",
+                    worktree_path, e
+                )
+            })?;
+        }
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]

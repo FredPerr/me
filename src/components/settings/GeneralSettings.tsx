@@ -1,9 +1,11 @@
 import { Button, Group, NumberInput, Stack, Switch, TextInput, Title } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useAppSettings } from "@/hooks/useAppSettings";
 
 export function GeneralSettings() {
+	const { t } = useTranslation();
 	const { settings, loading, save } = useAppSettings();
 	const [ideCommand, setIdeCommand] = useState("");
 	const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(true);
@@ -26,14 +28,14 @@ export function GeneralSettings() {
 				workspaceRefreshInterval: autoRefreshEnabled ? refreshInterval : null,
 			});
 			notifications.show({
-				title: "Settings saved",
-				message: "Your settings have been saved successfully.",
+				title: t("settings.general.saved"),
+				message: t("settings.general.savedMessage"),
 				color: "green",
 			});
 		} catch {
 			notifications.show({
-				title: "Error",
-				message: "Failed to save settings.",
+				title: t("common.error"),
+				message: t("settings.general.saveError"),
 				color: "red",
 			});
 		}
@@ -45,21 +47,21 @@ export function GeneralSettings() {
 
 	return (
 		<Stack gap="sm">
-			<Title order={3}>General</Title>
+			<Title order={3}>{t("settings.general.title")}</Title>
 			<TextInput
-				label="IDE Command"
-				description="Command used to open projects (e.g. kiro, code, cursor)"
+				label={t("settings.general.ideCommand")}
+				description={t("settings.general.ideCommandDescription")}
 				value={ideCommand}
 				onChange={(event) => setIdeCommand(event.currentTarget.value)}
 			/>
 			<Switch
-				label="Auto-refresh active workspaces"
+				label={t("settings.general.autoRefresh")}
 				checked={autoRefreshEnabled}
 				onChange={(event) => setAutoRefreshEnabled(event.currentTarget.checked)}
 			/>
 			{autoRefreshEnabled && (
 				<NumberInput
-					label="Refresh interval (seconds)"
+					label={t("settings.general.refreshInterval")}
 					value={refreshInterval}
 					onChange={(value) => setRefreshInterval(Number(value) || 5)}
 					min={1}
@@ -67,7 +69,7 @@ export function GeneralSettings() {
 				/>
 			)}
 			<Group justify="flex-end">
-				<Button onClick={handleSave}>Save</Button>
+				<Button onClick={handleSave}>{t("common.save")}</Button>
 			</Group>
 		</Stack>
 	);

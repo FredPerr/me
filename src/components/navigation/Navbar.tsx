@@ -1,33 +1,36 @@
 import { ActionIcon, Stack, Tooltip } from "@mantine/core";
 import { CodeIcon, GearSixIcon } from "@phosphor-icons/react";
+import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate } from "react-router";
 
 type NavItem = {
 	path: string;
-	label: string;
+	labelKey: string;
 	icon: React.ReactNode;
 };
 
 const TOP_ITEMS: NavItem[] = [
-	{ path: "/", label: "Projects", icon: <CodeIcon size={24} /> },
+	{ path: "/", labelKey: "navigation.projects", icon: <CodeIcon size={24} /> },
 ];
 
 const BOTTOM_ITEMS: NavItem[] = [
-	{ path: "/settings", label: "Settings", icon: <GearSixIcon size={24} /> },
+	{ path: "/settings", labelKey: "navigation.settings", icon: <GearSixIcon size={24} /> },
 ];
 
 export function Navbar() {
+	const { t } = useTranslation();
 	const navigate = useNavigate();
 	const location = useLocation();
 
 	function renderItem(item: NavItem) {
+		const label = t(item.labelKey);
 		return (
-			<Tooltip key={item.path} label={item.label} position="right">
+			<Tooltip key={item.path} label={label} position="right">
 				<ActionIcon
 					variant={location.pathname === item.path ? "light" : "subtle"}
 					size="lg"
 					onClick={() => navigate(item.path)}
-					aria-label={item.label}
+					aria-label={label}
 				>
 					{item.icon}
 				</ActionIcon>

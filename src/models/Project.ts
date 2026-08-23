@@ -1,14 +1,177 @@
-export type SubProject = {
+import { resolvePath } from "@/utils/resolvePath";
+
+export class Repository {
+	constructor(
+		public readonly id: string,
+		public readonly name: string,
+		public readonly relPath: string,
+		public readonly icon?: string,
+	) {}
+
+	async resolveAbsolutePath(projectPath: string): Promise<string> {
+		return resolvePath(this.relPath, { basePath: projectPath });
+	}
+
+	static create(name: string, relPath: string, icon?: string): Repository {
+		return new Repository(crypto.randomUUID(), name, relPath, icon);
+	}
+
+	static fromJSON(data: RepositoryData): Repository {
+		return new Repository(data.id, data.name, data.relPath, data.icon);
+	}
+
+	toJSON(): RepositoryData {
+		return { id: this.id, name: this.name, relPath: this.relPath, icon: this.icon };
+	}
+}
+
+export class ContextBranch {
+	constructor(
+		public readonly repositoryId: string,
+		public readonly branch: string,
+	) {}
+
+	static fromJSON(data: ContextBranchData): ContextBranch {
+		return new ContextBranch(data.repositoryId, data.branch);
+	}
+
+	toJSON(): ContextBranchData {
+		return { repositoryId: this.repositoryId, branch: this.branch };
+	}
+}
+
+export class Context {
+	constructor(
+		public readonly id: string,
+		public readonly name: string,
+		public readonly branches: ContextBranch[],
+		public readonly isDefault: boolean = false,
+	) {}
+
+	getBranchForRepository(repositoryId: string): string | undefined {
+		return this.branches.find((b) => b.repositoryId === repositoryId)?.branch;
+	}
+
+	getWorktreePath(projectPath: string, repository: Repository): string {
+		const normalizedProject = projectPath.endsWith("/") ? projectPath.slice(0, -1) : projectPath;
+		const normalizedRel = repository.relPath.startsWith("./")
+			? repository.relPath.slice(2)
+			: repository.relPath;
+		const repoParent = `${normalizedProject}/${normalizedRel}`.replace(/\/[^/]*$/, "");
+		const branch = this.getBranchForRepository(repository.id);
+		return this.isDefault
+			? `${normalizedProject}/${normalizedRel}`
+			: `${repoParent}/${branch}`;
+	}
+
+	static create(name: string, repositories: Repository[], branchName: string, isDefault = false): Context {
+		return new Context(
+			crypto.randomUUID(),
+			name,
+			repositories.map((repo) => new ContextBranch(repo.id, branchName)),
+			isDefault,
+		);
+	}
+
+	static fromJSON(data: ContextData): Context {
+		return new Context(
+			data.id,
+			data.name,
+			(data.branches ?? []).map(ContextBranch.fromJSON),
+			data.isDefault ?? false,
+		);
+	}
+
+	toJSON(): ContextData {
+		return {
+			id: this.id,
+			name: this.name,
+			branches: this.branches.map((b) => b.toJSON()),
+			isDefault: this.isDefault,
+		};
+	}
+}
+
+export class Project {
+	constructor(
+		public readonly name: string,
+		public readonly tag: string,
+		public readonly path: string,
+		public readonly repositories: Repository[],
+		public readonly contexts: Context[],
+		public readonly icon?: string,
+	) {}
+
+	findRepository(repositoryId: string): Repository | undefined {
+		return this.repositories.find((r) => r.id === repositoryId);
+	}
+
+	get defaultContext(): Context | undefined {
+		return this.contexts.find((c) => c.isDefault);
+	}
+
+	addContext(context: Context): Project {
+		return new Project(this.name, this.tag, this.path, this.repositories, [...this.contexts, context], this.icon);
+	}
+
+	removeContext(contextId: string): Project {
+		return new Project(
+			this.name,
+			this.tag,
+			this.path,
+			this.repositories,
+			this.contexts.filter((c) => c.id !== contextId),
+			this.icon,
+		);
+	}
+
+	static fromJSON(data: ProjectData): Project {
+		return new Project(
+			data.name,
+			data.tag,
+			data.path,
+			(data.repositories ?? []).map(Repository.fromJSON),
+			(data.contexts ?? []).map(Context.fromJSON),
+			data.icon,
+		);
+	}
+
+	toJSON(): ProjectData {
+		return {
+			name: this.name,
+			tag: this.tag,
+			path: this.path,
+			icon: this.icon,
+			repositories: this.repositories.map((r) => r.toJSON()),
+			contexts: this.contexts.map((c) => c.toJSON()),
+		};
+	}
+}
+
+export type RepositoryData = {
 	id: string;
 	name: string;
 	relPath: string;
 	icon?: string;
 };
 
-export type Project = {
+export type ContextBranchData = {
+	repositoryId: string;
+	branch: string;
+};
+
+export type ContextData = {
+	id: string;
+	name: string;
+	branches: ContextBranchData[];
+	isDefault?: boolean;
+};
+
+export type ProjectData = {
 	name: string;
 	tag: string;
 	path: string;
 	icon?: string;
-	subprojects: SubProject[];
+	repositories: RepositoryData[];
+	contexts: ContextData[];
 };

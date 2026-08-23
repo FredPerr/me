@@ -1,4 +1,5 @@
 import { Stack, Text } from "@mantine/core";
+import { useTranslation } from "react-i18next";
 import type { Project } from "@/models/Project";
 import { ProjectListItem } from "./ProjectListItem";
 
@@ -10,6 +11,7 @@ type ProjectListProps = {
 };
 
 export function ProjectList({ projects, onEdit, onDelete, searchValue }: ProjectListProps) {
+	const { t } = useTranslation();
 	const filteredProjects = projects.filter((p) => {
 		const combineString = `${p.name}${p.path}${p.tag}`.toLowerCase().trim();
 		return combineString.includes(searchValue.toLowerCase());
@@ -27,7 +29,7 @@ export function ProjectList({ projects, onEdit, onDelete, searchValue }: Project
 					/>
 				))
 			) : (
-				<Text c="dimmed">No projects configured yet.</Text>
+				<Text c="dimmed">{t("settings.projects.noProjects")}</Text>
 			)}
 		</Stack>
 	);

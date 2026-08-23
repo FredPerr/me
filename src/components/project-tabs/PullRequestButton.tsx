@@ -1,6 +1,7 @@
 import { ActionIcon, Tooltip } from "@mantine/core";
 import { GitPullRequestIcon } from "@phosphor-icons/react";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { useTranslation } from "react-i18next";
 
 type PullRequestButtonProps = {
 	prUrl: string | null;
@@ -8,12 +9,13 @@ type PullRequestButtonProps = {
 };
 
 export function PullRequestButton({ prUrl, remoteUrl }: PullRequestButtonProps) {
+	const { t } = useTranslation();
 	const isGitHub = !!prUrl;
 	const tooltipLabel = isGitHub
-		? "Create pull request"
+		? t("project.createPullRequest")
 		: remoteUrl
-			? "PR creation only available for GitHub"
-			: "No remote configured";
+			? t("project.prNotAvailable")
+			: t("project.noRemoteConfigured");
 
 	function handleClick() {
 		if (prUrl) {

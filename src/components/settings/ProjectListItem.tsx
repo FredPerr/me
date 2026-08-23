@@ -1,6 +1,7 @@
 import { ActionIcon, Card, Group, Text } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import { PencilSimpleIcon, TrashIcon } from "@phosphor-icons/react";
+import { useTranslation } from "react-i18next";
 import type { Project } from "@/models/Project";
 import { ProjectConfirmDeleteModal } from "./ProjectConfirmDeleteModal";
 
@@ -11,6 +12,7 @@ type ProjectListItemProps = {
 };
 
 export function ProjectListItem({ project, onEdit, onDelete }: ProjectListItemProps) {
+	const { t } = useTranslation();
 	const [opened, { open, close }] = useDisclosure(false);
 	return (
 		<Card withBorder padding="sm">
@@ -18,8 +20,9 @@ export function ProjectListItem({ project, onEdit, onDelete }: ProjectListItemPr
 				<div>
 					<Text fw={500}>{project.name}</Text>
 					<Text size="sm" c="dimmed">
-						{project.path || "No path configured"}
+						{project.path}
 					</Text>
+					<Text>{t("settings.projects.repoCount", { count: project.repositories.length })}</Text>
 				</div>
 				<Group gap="xs">
 					<ActionIcon variant="subtle" onClick={() => onEdit(project)} aria-label="Edit project">

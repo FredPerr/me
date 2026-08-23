@@ -7,11 +7,10 @@ import {
   TextInput,
   Title,
 } from "@mantine/core";
-import {
-  useDisclosure,
-} from "@mantine/hooks";
+import { useDisclosure } from "@mantine/hooks";
 import { PlusIcon, XIcon } from "@phosphor-icons/react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useProjects } from "@/hooks/useProjects";
 import type { Project } from "@/models/Project";
 import { ProjectDirectory } from "@/models/ProjectDirectory";
@@ -19,6 +18,7 @@ import { ProjectForm } from "./ProjectForm";
 import { ProjectList } from "./ProjectList";
 
 export function ProjectSettings() {
+  const { t } = useTranslation();
   const { projects, reload } = useProjects();
   const [editingProject, setEditingProject] = useState<Project | undefined>();
   const [opened, { open, close }] = useDisclosure(false);
@@ -48,11 +48,11 @@ export function ProjectSettings() {
   return (
     <Stack gap="lg">
       <Group justify="space-between">
-        <Title order={3}>Projects</Title>
+        <Title order={3}>{t("settings.projects.title")}</Title>
         <Group>
           <TextInput
             value={searchFilter}
-			placeholder="Search a project"
+            placeholder={t("settings.projects.searchPlaceholder")}
             onChange={(e) => {
               setSearchFilter(e.currentTarget.value);
             }}
@@ -69,7 +69,7 @@ export function ProjectSettings() {
           />
 
           <Button leftSection={<PlusIcon />} onClick={handleAdd}>
-            Add project
+            {t("settings.projects.addProject")}
           </Button>
         </Group>
       </Group>
@@ -85,7 +85,7 @@ export function ProjectSettings() {
         opened={opened}
         onClose={close}
         size="lg"
-        title={editingProject ? "Edit project" : "Add project"}
+        title={editingProject ? t("settings.projects.editProject") : t("settings.projects.addProject")}
       >
         <ProjectForm
           initialProject={editingProject}

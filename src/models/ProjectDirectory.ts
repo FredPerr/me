@@ -8,7 +8,7 @@ import {
 	remove,
 	writeTextFile,
 } from "@tauri-apps/plugin-fs";
-import type { Project } from "@/models/Project";
+import { Project, type ProjectData } from "@/models/Project";
 
 const PROJECTS_DIR = "projects";
 
@@ -27,7 +27,8 @@ export const ProjectDirectory = {
 			if (entry.name?.endsWith(".json")) {
 				const filePath = `${PROJECTS_DIR}/${entry.name}`;
 				const content = await readTextFile(filePath, { baseDir: BaseDirectory.AppData });
-				projects.push(JSON.parse(content) as Project);
+				const data: ProjectData = JSON.parse(content);
+				projects.push(Project.fromJSON(data));
 			}
 		}
 
@@ -37,7 +38,7 @@ export const ProjectDirectory = {
 	async saveProject(project: Project): Promise<void> {
 		await ensureProjectsDirectory();
 		const filePath = `${PROJECTS_DIR}/${project.tag}.json`;
-		const content = JSON.stringify(project, null, 2);
+		const content = JSON.stringify(project.toJSON(), null, 2);
 
 		await writeTextFile(filePath, content, { baseDir: BaseDirectory.AppData });
 	},
