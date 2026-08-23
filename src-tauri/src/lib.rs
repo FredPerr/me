@@ -17,6 +17,11 @@ async fn open_in_ide(command: String, path: String) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+async fn check_path_exists(path: String) -> bool {
+    std::path::Path::new(&path).exists()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -30,6 +35,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             greet,
             open_in_ide,
+            check_path_exists,
             git::get_git_remote_url,
             git::list_worktrees,
             git::get_worktree_status,

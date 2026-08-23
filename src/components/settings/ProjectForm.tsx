@@ -31,9 +31,11 @@ export function ProjectForm({
   );
   const [configPath, setConfigPath] = useState("");
   const [isGitRoot, setIsGitRoot] = useState<boolean | null>(null);
+  const [repositoriesValid, setRepositoriesValid] = useState(true);
 
   const isMultiRepo = repositories.length > 1 || (repositories.length === 1 && repositories[0].relPath !== ".");
   const isEditing = !!initialProject;
+  const canSubmit = isMultiRepo ? repositoriesValid : isGitRoot !== false;
 
   useEffect(() => {
     if (initialProject) {
@@ -132,6 +134,7 @@ export function ProjectForm({
           onChange={setRepositories}
           projectName={name}
           projectPath={path}
+          onValidityChange={setRepositoriesValid}
         />
         {isEditing && configPath && (
           <TextInput
@@ -165,7 +168,7 @@ export function ProjectForm({
           <Button variant="subtle" onClick={onCancel}>
             {t("common.cancel")}
           </Button>
-          <Button type="submit">{isEditing ? t("common.save") : t("common.add")}</Button>
+          <Button type="submit" disabled={!canSubmit}>{isEditing ? t("common.save") : t("common.add")}</Button>
         </Group>
       </Stack>
     </form>

@@ -7,10 +7,11 @@ type ContextsGridProps = {
 	contexts: Context[];
 	project: Project;
 	onDelete: (contextId: string) => void;
+	onCreate: (params: { name: string; branchName: string; baseBranches: Record<string, string> }) => Promise<void>;
 	searchFilter?: string;
 };
 
-export function ContextsGrid({ contexts, project, onDelete, searchFilter }: ContextsGridProps) {
+export function ContextsGrid({ contexts, project, onDelete, onCreate, searchFilter }: ContextsGridProps) {
 	const { t } = useTranslation();
 	const filtered = searchFilter
 		? contexts.filter((c) => c.name.toLowerCase().includes(searchFilter.toLowerCase()))
@@ -23,7 +24,7 @@ export function ContextsGrid({ contexts, project, onDelete, searchFilter }: Cont
 	return (
 		<SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} spacing="sm">
 			{filtered.map((context) => (
-				<ContextCard key={context.id} context={context} project={project} onDelete={onDelete} />
+				<ContextCard key={context.id} context={context} project={project} onDelete={onDelete} onCreate={onCreate} />
 			))}
 		</SimpleGrid>
 	);

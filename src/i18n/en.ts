@@ -74,6 +74,8 @@ export const en = {
 			created: "Context created",
 			createdMessage: "Created context \"{{name}}\"",
 			createFailed: "Failed to create context",
+			createFromContext: "Create context from this",
+			createFromContextDescription: "Create a new context branching from \"{{name}}\".",
 			deleted: "Context deleted",
 			deleteFailed: "Failed to delete context",
 			noBaseBranch: "No base branch available",

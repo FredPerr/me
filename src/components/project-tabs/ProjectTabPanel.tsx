@@ -53,6 +53,7 @@ export function ProjectTabPanel({ project }: ProjectTabPanelProps) {
 					contexts={contexts}
 					project={project}
 					onDelete={deleteContext}
+					onCreate={createContext}
 					searchFilter={searchFilter}
 				/>
 				<Divider />

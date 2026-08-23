@@ -1,7 +1,7 @@
 import { ActionIcon, Alert, Button, Group, Stack, Switch, TextInput, Tooltip } from "@mantine/core";
 import { FolderIcon, GitBranchIcon, PlusIcon, TrashIcon, WarningIcon } from "@phosphor-icons/react";
 import { invoke } from "@tauri-apps/api/core";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { IconPicker } from "@/components/shared/IconPicker";
 import { pickRepositoryFolder } from "@/hooks/useFolderPicker";
@@ -13,9 +13,10 @@ type RepositoryFormListProps = {
 	onChange: (repositories: RepositoryData[]) => void;
 	projectName: string;
 	projectPath: string;
+	onValidityChange?: (allValid: boolean) => void;
 };
 
-export function RepositoryFormList({ repositories, onChange, projectName, projectPath }: RepositoryFormListProps) {
+export function RepositoryFormList({ repositories, onChange, projectName, projectPath, onValidityChange }: RepositoryFormListProps) {
 	const { t } = useTranslation();
 	const [multiRepo, setMultiRepo] = useState(repositories.length > 1 || (repositories.length === 1 && repositories[0].relPath !== "."));
 	const [gitStatus, setGitStatus] = useState<Record<string, boolean>>({});
@@ -26,6 +27,16 @@ export function RepositoryFormList({ repositories, onChange, projectName, projec
 		}
 	}, [repositories.length]);
 
+	const resolveAndCheckGit = useCallback(async (repoId: string, relPath: string) => {
+		try {
+			const resolved = await resolvePath(relPath, { basePath: projectPath });
+			const isGit = await invoke<boolean>("check_is_git_repository", { path: resolved });
+			setGitStatus((prev) => ({ ...prev, [repoId]: isGit }));
+		} catch {
+			setGitStatus((prev) => ({ ...prev, [repoId]: false }));
+		}
+	}, [projectPath]);
+
 	useEffect(() => {
 		if (!multiRepo) return;
 		for (const repo of repositories) {
@@ -35,15 +46,16 @@ export function RepositoryFormList({ repositories, onChange, projectName, projec
 		}
 	}, [multiRepo, repositories, resolveAndCheckGit]);
 
-	async function resolveAndCheckGit(repoId: string, relPath: string) {
-		try {
-			const resolved = await resolvePath(relPath, { basePath: projectPath });
-			const isGit = await invoke<boolean>("check_is_git_repository", { path: resolved });
-			setGitStatus((prev) => ({ ...prev, [repoId]: isGit }));
-		} catch {
-			setGitStatus((prev) => ({ ...prev, [repoId]: false }));
+	useEffect(() => {
+		if (!onValidityChange) return;
+		if (!multiRepo) {
+			onValidityChange(true);
+			return;
 		}
-	}
+		const allHavePath = repositories.every((r) => r.relPath);
+		const allValid = allHavePath && repositories.length > 0 && repositories.every((r) => gitStatus[r.id] === true);
+		onValidityChange(allValid);
+	}, [multiRepo, repositories, gitStatus, onValidityChange]);
 
 	function handleMultiRepoToggle(checked: boolean) {
 		setMultiRepo(checked);

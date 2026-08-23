@@ -1,7 +1,6 @@
 import { notifications } from "@mantine/notifications";
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useState } from "react";
-import { useProjects } from "@/hooks/useProjects";
 import { Context, ContextBranch, type Project } from "@/models/Project";
 import { ProjectDirectory } from "@/models/ProjectDirectory";
 
@@ -12,10 +11,12 @@ type CreateContextParams = {
 };
 
 export function useContexts(project: Project) {
-	const { reload } = useProjects();
 	const [defaultContext, setDefaultContext] = useState<Context | null>(null);
+	const [persistedContexts, setPersistedContexts] = useState<Context[]>(project.contexts ?? []);
 
-	const persistedContexts = project.contexts ?? [];
+	useEffect(() => {
+		setPersistedContexts(project.contexts ?? []);
+	}, [project]);
 
 	useEffect(() => {
 		buildDefaultContext(project).then(setDefaultContext);
@@ -31,6 +32,7 @@ export function useContexts(project: Project) {
 
 			await invoke("create_context", {
 				projectPath: project.path,
+				contextName: name,
 				repos,
 			});
 
@@ -38,9 +40,9 @@ export function useContexts(project: Project) {
 			const updatedProject = project.addContext(newContext);
 
 			await ProjectDirectory.saveProject(updatedProject);
-			await reload();
+			setPersistedContexts((prev) => [...prev, newContext]);
 		},
-		[project, reload],
+		[project],
 	);
 
 	const deleteContext = useCallback(
@@ -53,6 +55,7 @@ export function useContexts(project: Project) {
 			try {
 				await invoke("delete_context", {
 					projectPath: project.path,
+					contextName: context.name,
 					repos,
 				});
 			} catch (error) {
@@ -66,9 +69,9 @@ export function useContexts(project: Project) {
 
 			const updatedProject = project.removeContext(contextId);
 			await ProjectDirectory.saveProject(updatedProject);
-			await reload();
+			setPersistedContexts((prev) => prev.filter((c) => c.id !== contextId));
 		},
-		[project, contexts, reload],
+		[project, contexts],
 	);
 
 	return { contexts, defaultContext, createContext, deleteContext };
@@ -107,6 +110,7 @@ async function buildRepoInputs(
 		const resolvedPath = await repo.resolveAbsolutePath(project.path);
 		inputs.push({
 			rel_path: resolvedPath,
+			name: repo.name,
 			branch: branchName,
 			base_branch: baseBranches[repo.id] ?? "main",
 		});
@@ -122,6 +126,7 @@ async function buildRepoInputsFromContext(project: Project, context: Context) {
 		const resolvedPath = await repo.resolveAbsolutePath(project.path);
 		inputs.push({
 			rel_path: resolvedPath,
+			name: repo.name,
 			branch: contextBranch.branch,
 			base_branch: "",
 		});

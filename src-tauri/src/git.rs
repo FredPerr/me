@@ -294,6 +294,7 @@ pub async fn delete_worktree(repo_path: String, worktree_path: String) -> Result
 #[derive(Deserialize)]
 pub struct ContextRepoInput {
     pub rel_path: String,
+    pub name: String,
     pub branch: String,
     pub base_branch: String,
 }
@@ -308,6 +309,7 @@ pub struct ContextRepoResult {
 #[tauri::command]
 pub async fn create_context(
     project_path: String,
+    context_name: String,
     repos: Vec<ContextRepoInput>,
 ) -> Result<Vec<ContextRepoResult>, String> {
     let project_dir = Path::new(&project_path);
@@ -346,12 +348,10 @@ pub async fn create_context(
                 })?;
         }
 
-        let worktree_dir = repo
-            .workdir()
-            .ok_or("Could not determine workdir")?
-            .parent()
-            .ok_or("Could not determine parent directory")?
-            .join(&repo_input.branch);
+        let worktree_dir = project_dir
+            .join(".worktrees")
+            .join(&context_name)
+            .join(&repo_input.name);
 
         let worktree_path = worktree_dir.to_string_lossy().to_string();
 
@@ -387,6 +387,7 @@ pub async fn create_context(
 #[tauri::command]
 pub async fn delete_context(
     project_path: String,
+    context_name: String,
     repos: Vec<ContextRepoInput>,
 ) -> Result<(), String> {
     let project_dir = Path::new(&project_path);
@@ -395,15 +396,10 @@ pub async fn delete_context(
         let repo_path = project_dir.join(&repo_input.rel_path);
         let repo_path_str = repo_path.to_string_lossy().to_string();
 
-        let repo = Repository::open(&repo_path)
-            .map_err(|e| format!("Failed to open repo at '{}': {}", repo_input.rel_path, e))?;
-
-        let worktree_dir = repo
-            .workdir()
-            .ok_or("Could not determine workdir")?
-            .parent()
-            .ok_or("Could not determine parent directory")?
-            .join(&repo_input.branch);
+        let worktree_dir = project_dir
+            .join(".worktrees")
+            .join(&context_name)
+            .join(&repo_input.name);
 
         let worktree_path = worktree_dir.to_string_lossy().to_string();
 
@@ -434,6 +430,17 @@ pub async fn delete_context(
                     worktree_path, e
                 )
             })?;
+        }
+    }
+
+    let context_dir = project_dir.join(".worktrees").join(&context_name);
+    if context_dir.exists() {
+        let is_empty = context_dir
+            .read_dir()
+            .map(|mut d| d.next().is_none())
+            .unwrap_or(false);
+        if is_empty {
+            std::fs::remove_dir(&context_dir).ok();
         }
     }
 
