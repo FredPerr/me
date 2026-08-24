@@ -1,4 +1,17 @@
-import { Box, Button, Checkbox, Group, Modal, Select, Stack, Text, TextInput } from "@mantine/core";
+import {
+	ActionIcon,
+	Box,
+	Button,
+	Checkbox,
+	Group,
+	Modal,
+	Select,
+	Stack,
+	Text,
+	TextInput,
+	Tooltip,
+} from "@mantine/core";
+import { CopyIcon, PaintBrushHouseholdIcon } from "@phosphor-icons/react";
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -79,6 +92,19 @@ export function CreateFromContextModal({
 
 	const hasErrors = Object.keys(branchErrors).length > 0;
 
+	function copyNameToBranches() {
+		if (!contextName.trim()) return;
+		setRepoStates((prev) => {
+			const next = { ...prev };
+			for (const id of Object.keys(next)) {
+				if (next[id].createBranch) {
+					next[id] = { ...next[id], branchName: contextName.trim() };
+				}
+			}
+			return next;
+		});
+	}
+
 	async function validateBranches(): Promise<boolean> {
 		const errors: Record<string, string> = {};
 
@@ -146,6 +172,19 @@ export function CreateFromContextModal({
 					value={contextName}
 					onChange={(e) => setContextName(e.currentTarget.value)}
 					required
+					rightSection={
+						<Tooltip label={t("contexts.copyNameToBranches")}>
+							<ActionIcon
+								variant="subtle"
+								size="sm"
+								disabled={!contextName.trim()}
+								onClick={copyNameToBranches}
+								aria-label={t("contexts.copyNameToBranches")}
+							>
+								<PaintBrushHouseholdIcon size={16} />
+							</ActionIcon>
+						</Tooltip>
+					}
 				/>
 				{project.repositories.map((repo) => {
 					const state = repoStates[repo.id];

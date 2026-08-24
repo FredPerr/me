@@ -6,6 +6,7 @@ export class Repository {
 		public readonly name: string,
 		public readonly relPath: string,
 		public readonly icon?: string,
+		public readonly postCheckoutCommand?: string,
 	) {}
 
 	async resolveAbsolutePath(projectPath: string): Promise<string> {
@@ -17,11 +18,17 @@ export class Repository {
 	}
 
 	static fromJSON(data: RepositoryData): Repository {
-		return new Repository(data.id, data.name, data.relPath, data.icon);
+		return new Repository(data.id, data.name, data.relPath, data.icon, data.postCheckoutCommand);
 	}
 
 	toJSON(): RepositoryData {
-		return { id: this.id, name: this.name, relPath: this.relPath, icon: this.icon };
+		return {
+			id: this.id,
+			name: this.name,
+			relPath: this.relPath,
+			icon: this.icon,
+			postCheckoutCommand: this.postCheckoutCommand,
+		};
 	}
 }
 
@@ -101,6 +108,7 @@ export class Project {
 		public readonly repositories: Repository[],
 		public readonly contexts: Context[],
 		public readonly icon?: string,
+		public readonly symlinks: string[] = [],
 	) {}
 
 	findRepository(repositoryId: string): Repository | undefined {
@@ -112,7 +120,7 @@ export class Project {
 	}
 
 	addContext(context: Context): Project {
-		return new Project(this.name, this.tag, this.path, this.repositories, [...this.contexts, context], this.icon);
+		return new Project(this.name, this.tag, this.path, this.repositories, [...this.contexts, context], this.icon, this.symlinks);
 	}
 
 	removeContext(contextId: string): Project {
@@ -123,6 +131,7 @@ export class Project {
 			this.repositories,
 			this.contexts.filter((c) => c.id !== contextId),
 			this.icon,
+			this.symlinks,
 		);
 	}
 
@@ -134,6 +143,7 @@ export class Project {
 			(data.repositories ?? []).map(Repository.fromJSON),
 			(data.contexts ?? []).map(Context.fromJSON),
 			data.icon,
+			data.symlinks ?? [],
 		);
 	}
 
@@ -145,6 +155,7 @@ export class Project {
 			icon: this.icon,
 			repositories: this.repositories.map((r) => r.toJSON()),
 			contexts: this.contexts.map((c) => c.toJSON()),
+			symlinks: this.symlinks,
 		};
 	}
 }
@@ -154,6 +165,7 @@ export type RepositoryData = {
 	name: string;
 	relPath: string;
 	icon?: string;
+	postCheckoutCommand?: string;
 };
 
 export type ContextBranchData = {
@@ -176,4 +188,5 @@ export type ProjectData = {
 	icon?: string;
 	repositories: RepositoryData[];
 	contexts: ContextData[];
+	symlinks?: string[];
 };

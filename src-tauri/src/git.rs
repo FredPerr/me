@@ -299,6 +299,8 @@ pub struct ContextRepoInput {
     pub base_branch: String,
     #[serde(default)]
     pub linked: bool,
+    #[serde(default)]
+    pub post_checkout_command: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -313,6 +315,7 @@ pub async fn create_context(
     project_path: String,
     context_name: String,
     repos: Vec<ContextRepoInput>,
+    symlinks: Vec<String>,
 ) -> Result<Vec<ContextRepoResult>, String> {
     let project_dir = Path::new(&project_path);
     let mut results: Vec<ContextRepoResult> = Vec::new();
@@ -386,6 +389,13 @@ pub async fn create_context(
 
             let worktree_path = worktree_dir.to_string_lossy().to_string();
 
+            // Prune stale worktree references before adding
+            std::process::Command::new("git")
+                .args(["worktree", "prune"])
+                .current_dir(&repo_path_str)
+                .output()
+                .ok();
+
             let output = std::process::Command::new("git")
                 .args(["worktree", "add", &worktree_path, &repo_input.branch])
                 .current_dir(&repo_path_str)
@@ -413,6 +423,75 @@ pub async fn create_context(
         }
     }
 
+    // Run post-checkout commands
+    for repo_input in &repos {
+        if repo_input.linked {
+            continue;
+        }
+        if let Some(ref cmd) = repo_input.post_checkout_command {
+            if cmd.is_empty() {
+                continue;
+            }
+            let worktree_dir = project_dir
+                .join(".worktrees")
+                .join(&context_name)
+                .join(&repo_input.name);
+            let worktree_path_str = worktree_dir.to_string_lossy().to_string();
+
+            std::process::Command::new("sh")
+                .args(["-c", cmd])
+                .current_dir(&worktree_path_str)
+                .output()
+                .ok();
+        }
+    }
+
+    // Create symlinks for configured paths
+    let context_dir = project_dir.join(".worktrees").join(&context_name);
+    for symlink_rel in &symlinks {
+        let source = project_dir.join(symlink_rel);
+        let link_name = Path::new(symlink_rel)
+            .file_name()
+            .unwrap_or_else(|| std::ffi::OsStr::new(symlink_rel));
+        let link_path = context_dir.join(link_name);
+
+        if link_path.exists() || link_path.is_symlink() {
+            continue;
+        }
+
+        if let Some(parent) = link_path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| {
+                format!("Failed to create directory for symlink '{}': {}", symlink_rel, e)
+            })?;
+        }
+
+        #[cfg(unix)]
+        {
+            if source.is_dir() {
+                std::os::unix::fs::symlink(&source, &link_path).map_err(|e| {
+                    format!("Failed to symlink '{}': {}", symlink_rel, e)
+                })?;
+            } else {
+                std::os::unix::fs::symlink(&source, &link_path).map_err(|e| {
+                    format!("Failed to symlink '{}': {}", symlink_rel, e)
+                })?;
+            }
+        }
+
+        #[cfg(windows)]
+        {
+            if source.is_dir() {
+                std::os::windows::fs::symlink_dir(&source, &link_path).map_err(|e| {
+                    format!("Failed to symlink '{}': {}", symlink_rel, e)
+                })?;
+            } else {
+                std::os::windows::fs::symlink_file(&source, &link_path).map_err(|e| {
+                    format!("Failed to symlink '{}': {}", symlink_rel, e)
+                })?;
+            }
+        }
+    }
+
     Ok(results)
 }
 
@@ -421,6 +500,7 @@ pub async fn delete_context(
     project_path: String,
     context_name: String,
     repos: Vec<ContextRepoInput>,
+    symlinks: Vec<String>,
 ) -> Result<(), String> {
     let project_dir = Path::new(&project_path);
 
@@ -471,10 +551,29 @@ pub async fn delete_context(
                     )
                 })?;
             }
+
+            // Prune stale worktree references
+            std::process::Command::new("git")
+                .args(["worktree", "prune"])
+                .current_dir(&repo_path_str)
+                .output()
+                .ok();
         }
     }
 
+    // Remove configured symlinks
     let context_dir = project_dir.join(".worktrees").join(&context_name);
+    for symlink_rel in &symlinks {
+        let link_name = Path::new(symlink_rel)
+            .file_name()
+            .unwrap_or_else(|| std::ffi::OsStr::new(symlink_rel));
+        let link_path = context_dir.join(link_name);
+
+        if link_path.is_symlink() {
+            std::fs::remove_file(&link_path).ok();
+        }
+    }
+
     if context_dir.exists() {
         let is_empty = context_dir
             .read_dir()

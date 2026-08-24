@@ -41,6 +41,7 @@ export function useContexts(project: Project) {
 					projectPath: project.path,
 					contextName: name,
 					repos,
+					symlinks: project.symlinks,
 				});
 			}
 
@@ -74,6 +75,7 @@ export function useContexts(project: Project) {
 					projectPath: project.path,
 					contextName: context.name,
 					repos,
+					symlinks: project.symlinks,
 				});
 			} catch (error) {
 				notifications.show({
@@ -132,6 +134,7 @@ async function buildRepoInputs(project: Project, repoConfigs: RepositoryBranchCo
 			branch: config.createBranch ? config.branchName : config.baseBranch,
 			base_branch: config.baseBranch,
 			linked: !config.createBranch,
+			post_checkout_command: repo.postCheckoutCommand ?? null,
 		});
 	}
 	return inputs;
