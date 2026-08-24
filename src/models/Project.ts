@@ -29,14 +29,15 @@ export class ContextBranch {
 	constructor(
 		public readonly repositoryId: string,
 		public readonly branch: string,
+		public readonly linked: boolean = false,
 	) {}
 
 	static fromJSON(data: ContextBranchData): ContextBranch {
-		return new ContextBranch(data.repositoryId, data.branch);
+		return new ContextBranch(data.repositoryId, data.branch, data.linked ?? false);
 	}
 
 	toJSON(): ContextBranchData {
-		return { repositoryId: this.repositoryId, branch: this.branch };
+		return { repositoryId: this.repositoryId, branch: this.branch, linked: this.linked };
 	}
 }
 
@@ -158,6 +159,7 @@ export type RepositoryData = {
 export type ContextBranchData = {
 	repositoryId: string;
 	branch: string;
+	linked?: boolean;
 };
 
 export type ContextData = {

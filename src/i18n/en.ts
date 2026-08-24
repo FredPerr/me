@@ -76,6 +76,7 @@ export const en = {
 			newBranchName: "New context branch",
 			createNewBranch: "Create new branch",
 			keepExistingBranch: "Keep current branch",
+			linked: "linked",
 			branchAlreadyInUse: "\"{{branch}}\" is already checked out in {{worktree}}",
 			contextName: "Context name",
 			created: "Context created",

@@ -297,6 +297,8 @@ pub struct ContextRepoInput {
     pub name: String,
     pub branch: String,
     pub base_branch: String,
+    #[serde(default)]
+    pub linked: bool,
 }
 
 #[derive(Serialize)]
@@ -317,68 +319,98 @@ pub async fn create_context(
 
     for repo_input in &repos {
         let repo_path = project_dir.join(&repo_input.rel_path);
-        let repo_path_str = repo_path.to_string_lossy().to_string();
-
-        let repo = Repository::open(&repo_path)
-            .map_err(|e| format!("Failed to open repo at '{}': {}", repo_input.rel_path, e))?;
-
-        let branch_exists = repo
-            .find_branch(&repo_input.branch, git2::BranchType::Local)
-            .is_ok();
-
-        if !branch_exists {
-            let base_commit = {
-                let base_ref = repo
-                    .find_branch(&repo_input.base_branch, git2::BranchType::Local)
-                    .map_err(|e| {
-                        format!(
-                            "Base branch '{}' not found in '{}': {}",
-                            repo_input.base_branch, repo_input.rel_path, e
-                        )
-                    })?;
-                base_ref.get().peel_to_commit().map_err(|e| e.to_string())?
-            };
-
-            repo.branch(&repo_input.branch, &base_commit, false)
-                .map_err(|e| {
-                    format!(
-                        "Failed to create branch '{}' in '{}': {}",
-                        repo_input.branch, repo_input.rel_path, e
-                    )
-                })?;
-        }
-
         let worktree_dir = project_dir
             .join(".worktrees")
             .join(&context_name)
             .join(&repo_input.name);
 
-        let worktree_path = worktree_dir.to_string_lossy().to_string();
+        if repo_input.linked {
+            if let Some(parent) = worktree_dir.parent() {
+                std::fs::create_dir_all(parent).map_err(|e| {
+                    format!("Failed to create parent directory: {}", e)
+                })?;
+            }
 
-        let output = std::process::Command::new("git")
-            .args(["worktree", "add", &worktree_path, &repo_input.branch])
-            .current_dir(&repo_path_str)
-            .output()
-            .map_err(|e| {
+            #[cfg(unix)]
+            std::os::unix::fs::symlink(&repo_path, &worktree_dir).map_err(|e| {
                 format!(
-                    "Failed to create worktree in '{}': {}",
-                    repo_input.rel_path, e
+                    "Failed to create symlink for '{}': {}",
+                    repo_input.name, e
                 )
             })?;
 
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(format!(
-                "git worktree add failed in '{}': {}",
-                repo_input.rel_path, stderr
-            ));
-        }
+            #[cfg(windows)]
+            std::os::windows::fs::symlink_dir(&repo_path, &worktree_dir).map_err(|e| {
+                format!(
+                    "Failed to create symlink for '{}': {}",
+                    repo_input.name, e
+                )
+            })?;
 
-        results.push(ContextRepoResult {
-            rel_path: repo_input.rel_path.clone(),
-            worktree_path: normalize_path(&worktree_path),
-            branch: repo_input.branch.clone(),
-        });
+            results.push(ContextRepoResult {
+                rel_path: repo_input.rel_path.clone(),
+                worktree_path: normalize_path(&worktree_dir.to_string_lossy()),
+                branch: repo_input.branch.clone(),
+            });
+        } else {
+            let repo_path_str = repo_path.to_string_lossy().to_string();
+
+            let repo = Repository::open(&repo_path)
+                .map_err(|e| format!("Failed to open repo at '{}': {}", repo_input.rel_path, e))?;
+
+            let branch_exists = repo
+                .find_branch(&repo_input.branch, git2::BranchType::Local)
+                .is_ok();
+
+            if !branch_exists {
+                let base_commit = {
+                    let base_ref = repo
+                        .find_branch(&repo_input.base_branch, git2::BranchType::Local)
+                        .map_err(|e| {
+                            format!(
+                                "Base branch '{}' not found in '{}': {}",
+                                repo_input.base_branch, repo_input.rel_path, e
+                            )
+                        })?;
+                    base_ref.get().peel_to_commit().map_err(|e| e.to_string())?
+                };
+
+                repo.branch(&repo_input.branch, &base_commit, false)
+                    .map_err(|e| {
+                        format!(
+                            "Failed to create branch '{}' in '{}': {}",
+                            repo_input.branch, repo_input.rel_path, e
+                        )
+                    })?;
+            }
+
+            let worktree_path = worktree_dir.to_string_lossy().to_string();
+
+            let output = std::process::Command::new("git")
+                .args(["worktree", "add", &worktree_path, &repo_input.branch])
+                .current_dir(&repo_path_str)
+                .output()
+                .map_err(|e| {
+                    format!(
+                        "Failed to create worktree in '{}': {}",
+                        repo_input.rel_path, e
+                    )
+                })?;
+
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                return Err(format!(
+                    "git worktree add failed in '{}': {}",
+                    repo_input.rel_path, stderr
+                ));
+            }
+
+            results.push(ContextRepoResult {
+                rel_path: repo_input.rel_path.clone(),
+                worktree_path: normalize_path(&worktree_path),
+                branch: repo_input.branch.clone(),
+            });
+        }
     }
 
     Ok(results)
@@ -403,33 +435,42 @@ pub async fn delete_context(
 
         let worktree_path = worktree_dir.to_string_lossy().to_string();
 
-        let output = std::process::Command::new("git")
-            .args(["worktree", "remove", "--force", &worktree_path])
-            .current_dir(&repo_path_str)
-            .output()
-            .map_err(|e| {
+        if worktree_dir.is_symlink() {
+            std::fs::remove_file(&worktree_dir).map_err(|e| {
                 format!(
-                    "Failed to remove worktree in '{}': {}",
-                    repo_input.rel_path, e
-                )
-            })?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(format!(
-                "git worktree remove failed in '{}': {}",
-                repo_input.rel_path, stderr
-            ));
-        }
-
-        let wt_path = Path::new(&worktree_path);
-        if wt_path.exists() {
-            std::fs::remove_dir_all(wt_path).map_err(|e| {
-                format!(
-                    "Failed to delete worktree directory '{}': {}",
+                    "Failed to remove symlink '{}': {}",
                     worktree_path, e
                 )
             })?;
+        } else if worktree_dir.exists() {
+            let output = std::process::Command::new("git")
+                .args(["worktree", "remove", "--force", &worktree_path])
+                .current_dir(&repo_path_str)
+                .output()
+                .map_err(|e| {
+                    format!(
+                        "Failed to remove worktree in '{}': {}",
+                        repo_input.rel_path, e
+                    )
+                })?;
+
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                return Err(format!(
+                    "git worktree remove failed in '{}': {}",
+                    repo_input.rel_path, stderr
+                ));
+            }
+
+            let wt_path = Path::new(&worktree_path);
+            if wt_path.exists() {
+                std::fs::remove_dir_all(wt_path).map_err(|e| {
+                    format!(
+                        "Failed to delete worktree directory '{}': {}",
+                        worktree_path, e
+                    )
+                })?;
+            }
         }
     }
 

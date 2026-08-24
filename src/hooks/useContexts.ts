@@ -34,9 +34,9 @@ export function useContexts(project: Project) {
 
 	const createContext = useCallback(
 		async ({ name, repositories: repoConfigs }: CreateContextParams) => {
-			const reposToCreate = repoConfigs.filter((r) => r.createBranch);
-			if (reposToCreate.length > 0) {
-				const repos = await buildRepoInputs(project, reposToCreate);
+			const repos = await buildRepoInputs(project, repoConfigs);
+
+			if (repos.length > 0) {
 				await invoke("create_context", {
 					projectPath: project.path,
 					contextName: name,
@@ -44,9 +44,14 @@ export function useContexts(project: Project) {
 				});
 			}
 
-			const branches = repoConfigs
-				.filter((r) => r.createBranch)
-				.map((r) => new ContextBranch(r.repositoryId, r.branchName));
+			const branches = repoConfigs.map(
+				(r) =>
+					new ContextBranch(
+						r.repositoryId,
+						r.createBranch ? r.branchName : r.baseBranch,
+						!r.createBranch,
+					),
+			);
 
 			const newContext = new Context(crypto.randomUUID(), name, branches, false);
 			const updatedProject = project.addContext(newContext);
@@ -124,8 +129,9 @@ async function buildRepoInputs(project: Project, repoConfigs: RepositoryBranchCo
 		inputs.push({
 			rel_path: resolvedPath,
 			name: repo.name,
-			branch: config.branchName,
+			branch: config.createBranch ? config.branchName : config.baseBranch,
 			base_branch: config.baseBranch,
+			linked: !config.createBranch,
 		});
 	}
 	return inputs;
@@ -142,6 +148,7 @@ async function buildRepoInputsFromContext(project: Project, context: Context) {
 			name: repo.name,
 			branch: contextBranch.branch,
 			base_branch: "",
+			linked: contextBranch.linked,
 		});
 	}
 	return inputs;

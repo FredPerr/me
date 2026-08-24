@@ -108,8 +108,14 @@ export function ContextCard({ context, project, onDelete, onCreate }: ContextCar
 						{context.branches.map((cb) => {
 							const repo = project.findRepository(cb.repositoryId);
 							return (
-								<Badge key={cb.repositoryId} size="xs" variant="light">
+								<Badge
+									key={cb.repositoryId}
+									size="xs"
+									variant={cb.linked ? "outline" : "light"}
+									color={cb.linked ? "gray" : undefined}
+								>
 									{repo?.name ?? "?"}: {cb.branch}
+									{cb.linked ? ` (${t("contexts.linked")})` : ""}
 								</Badge>
 							);
 						})}
