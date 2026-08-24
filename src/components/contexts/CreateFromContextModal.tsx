@@ -1,6 +1,8 @@
-import { Button, Group, Modal, Stack, Text, TextInput } from "@mantine/core";
-import { useState } from "react";
+import { Box, Button, Checkbox, Group, Modal, Select, Stack, Text, TextInput } from "@mantine/core";
+import { invoke } from "@tauri-apps/api/core";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import type { CreateContextParams, RepositoryBranchConfig } from "@/hooks/useContexts";
 import type { Context, Project } from "@/models/Project";
 
 type CreateFromContextModalProps = {
@@ -8,7 +10,13 @@ type CreateFromContextModalProps = {
 	onClose: () => void;
 	sourceContext: Context;
 	project: Project;
-	onCreate: (params: { name: string; branchName: string; baseBranches: Record<string, string> }) => Promise<void>;
+	onCreate: (params: CreateContextParams) => Promise<void>;
+};
+
+type RepositoryFormState = {
+	createBranch: boolean;
+	branchName: string;
+	baseBranch: string;
 };
 
 export function CreateFromContextModal({
@@ -19,29 +27,107 @@ export function CreateFromContextModal({
 	onCreate,
 }: CreateFromContextModalProps) {
 	const { t } = useTranslation();
-	const [branchName, setBranchName] = useState("");
-	const [baseBranches, setBaseBranches] = useState<Record<string, string>>(() =>
+	const [contextName, setContextName] = useState("");
+	const [repoStates, setRepoStates] = useState<Record<string, RepositoryFormState>>(() =>
 		Object.fromEntries(
-			sourceContext.branches.map((cb) => [cb.repositoryId, cb.branch]),
+			project.repositories.map((repo) => {
+				const sourceBranch = sourceContext.getBranchForRepository(repo.id) ?? "main";
+				return [repo.id, { createBranch: true, branchName: "", baseBranch: sourceBranch }];
+			}),
 		),
 	);
 	const [loading, setLoading] = useState(false);
+	const [branchErrors, setBranchErrors] = useState<Record<string, string>>({});
+	const [branchOptions, setBranchOptions] = useState<Record<string, string[]>>({});
 
-	function handleBaseBranchChange(repositoryId: string, value: string) {
-		setBaseBranches((prev) => ({ ...prev, [repositoryId]: value }));
+	useEffect(() => {
+		async function fetchBranches() {
+			const options: Record<string, string[]> = {};
+			for (const repo of project.repositories) {
+				try {
+					const resolvedPath = await repo.resolveAbsolutePath(project.path);
+					const branches = await invoke<string[]>("list_branches", { path: resolvedPath });
+					options[repo.id] = branches;
+				} catch {
+					options[repo.id] = [];
+				}
+			}
+			setBranchOptions(options);
+		}
+		if (opened) {
+			fetchBranches();
+		}
+	}, [opened, project]);
+
+	function updateRepoState(repositoryId: string, patch: Partial<RepositoryFormState>) {
+		setRepoStates((prev) => ({
+			...prev,
+			[repositoryId]: { ...prev[repositoryId], ...patch },
+		}));
+		if (patch.branchName !== undefined) {
+			setBranchErrors((prev) => {
+				const next = { ...prev };
+				delete next[repositoryId];
+				return next;
+			});
+		}
+	}
+
+	const hasAtLeastOneBranch = Object.values(repoStates).some(
+		(s) => s.createBranch && s.branchName.trim(),
+	);
+
+	const hasErrors = Object.keys(branchErrors).length > 0;
+
+	async function validateBranches(): Promise<boolean> {
+		const errors: Record<string, string> = {};
+
+		for (const repo of project.repositories) {
+			const state = repoStates[repo.id];
+			if (!state.createBranch || !state.branchName.trim()) continue;
+
+			try {
+				const resolvedPath = await repo.resolveAbsolutePath(project.path);
+				const worktrees = await invoke<{ branch: string | null; path: string }[]>(
+					"list_worktrees",
+					{ path: resolvedPath },
+				);
+				const conflicting = worktrees.find((wt) => wt.branch === state.branchName.trim());
+				if (conflicting) {
+					errors[repo.id] = t("contexts.branchAlreadyInUse", {
+						branch: state.branchName.trim(),
+						worktree: conflicting.path,
+					});
+				}
+			} catch {
+				// skip validation if we can't list worktrees
+			}
+		}
+
+		setBranchErrors(errors);
+		return Object.keys(errors).length === 0;
 	}
 
 	async function handleSubmit() {
-		if (!branchName.trim()) return;
+		if (!contextName.trim() || !hasAtLeastOneBranch) return;
 
 		setLoading(true);
 		try {
-			await onCreate({
-				name: branchName.trim(),
-				branchName: branchName.trim(),
-				baseBranches,
+			const isValid = await validateBranches();
+			if (!isValid) return;
+
+			const repositories: RepositoryBranchConfig[] = project.repositories.map((repo) => {
+				const state = repoStates[repo.id];
+				return {
+					repositoryId: repo.id,
+					createBranch: state.createBranch && !!state.branchName.trim(),
+					branchName: state.branchName.trim(),
+					baseBranch: state.baseBranch,
+				};
 			});
-			setBranchName("");
+
+			await onCreate({ name: contextName.trim(), repositories });
+			setContextName("");
 			onClose();
 		} finally {
 			setLoading(false);
@@ -49,35 +135,77 @@ export function CreateFromContextModal({
 	}
 
 	return (
-		<Modal opened={opened} onClose={onClose} title={t("contexts.createFromContext")}>
+		<Modal opened={opened} onClose={onClose} title={t("contexts.createFromContext")} size="lg">
 			<Stack gap="md">
 				<Text size="sm" c="dimmed">
 					{t("contexts.createFromContextDescription", { name: sourceContext.name })}
 				</Text>
 				<TextInput
-					label={t("contexts.newBranchName")}
+					label={t("contexts.contextName")}
 					placeholder="feature/my-feature"
-					value={branchName}
-					onChange={(e) => setBranchName(e.currentTarget.value)}
+					value={contextName}
+					onChange={(e) => setContextName(e.currentTarget.value)}
 					required
 				/>
 				{project.repositories.map((repo) => {
-					const currentBase = baseBranches[repo.id] ?? "";
+					const state = repoStates[repo.id];
 					return (
-						<TextInput
+						<Box
 							key={repo.id}
-							label={`${t("contexts.baseBranch")} — ${repo.name}`}
-							value={currentBase}
-							onChange={(e) => handleBaseBranchChange(repo.id, e.currentTarget.value)}
-							size="xs"
-						/>
+							p="xs"
+							style={{
+								border: "1px solid var(--mantine-color-default-border)",
+								borderRadius: "var(--mantine-radius-sm)",
+							}}
+						>
+							<Stack gap="xs">
+								<Checkbox
+									label={`${t("contexts.createNewBranch")} — ${repo.name}`}
+									checked={state.createBranch}
+									onChange={(e) =>
+										updateRepoState(repo.id, { createBranch: e.currentTarget.checked })
+									}
+								/>
+								{state.createBranch && (
+									<Group gap="xs" grow>
+										<Select
+											label={t("contexts.baseBranch")}
+											value={state.baseBranch}
+											onChange={(value) => updateRepoState(repo.id, { baseBranch: value ?? "" })}
+											data={branchOptions[repo.id] ?? []}
+											searchable
+											size="xs"
+										/>
+										<TextInput
+											label={t("contexts.newBranchName")}
+											placeholder="feature/my-feature"
+											value={state.branchName}
+											onChange={(e) =>
+												updateRepoState(repo.id, { branchName: e.currentTarget.value })
+											}
+											error={branchErrors[repo.id]}
+											size="xs"
+										/>
+									</Group>
+								)}
+								{!state.createBranch && (
+									<Text size="xs" c="dimmed">
+										{t("contexts.keepExistingBranch")}: {state.baseBranch}
+									</Text>
+								)}
+							</Stack>
+						</Box>
 					);
 				})}
 				<Group justify="flex-end">
 					<Button variant="subtle" onClick={onClose}>
 						{t("common.cancel")}
 					</Button>
-					<Button onClick={handleSubmit} loading={loading} disabled={!branchName.trim()}>
+					<Button
+						onClick={handleSubmit}
+						loading={loading}
+						disabled={!contextName.trim() || !hasAtLeastOneBranch || hasErrors}
+					>
 						{t("common.create")}
 					</Button>
 				</Group>

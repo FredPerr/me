@@ -4,11 +4,19 @@ import { useCallback, useEffect, useState } from "react";
 import { Context, ContextBranch, type Project } from "@/models/Project";
 import { ProjectDirectory } from "@/models/ProjectDirectory";
 
+type RepositoryBranchConfig = {
+	repositoryId: string;
+	createBranch: boolean;
+	branchName: string;
+	baseBranch: string;
+};
+
 type CreateContextParams = {
 	name: string;
-	branchName: string;
-	baseBranches: Record<string, string>;
+	repositories: RepositoryBranchConfig[];
 };
+
+export type { CreateContextParams, RepositoryBranchConfig };
 
 export function useContexts(project: Project) {
 	const [defaultContext, setDefaultContext] = useState<Context | null>(null);
@@ -22,21 +30,25 @@ export function useContexts(project: Project) {
 		buildDefaultContext(project).then(setDefaultContext);
 	}, [project]);
 
-	const contexts = defaultContext
-		? [defaultContext, ...persistedContexts]
-		: persistedContexts;
+	const contexts = defaultContext ? [defaultContext, ...persistedContexts] : persistedContexts;
 
 	const createContext = useCallback(
-		async ({ name, branchName, baseBranches }: CreateContextParams) => {
-			const repos = await buildRepoInputs(project, branchName, baseBranches);
+		async ({ name, repositories: repoConfigs }: CreateContextParams) => {
+			const reposToCreate = repoConfigs.filter((r) => r.createBranch);
+			if (reposToCreate.length > 0) {
+				const repos = await buildRepoInputs(project, reposToCreate);
+				await invoke("create_context", {
+					projectPath: project.path,
+					contextName: name,
+					repos,
+				});
+			}
 
-			await invoke("create_context", {
-				projectPath: project.path,
-				contextName: name,
-				repos,
-			});
+			const branches = repoConfigs
+				.filter((r) => r.createBranch)
+				.map((r) => new ContextBranch(r.repositoryId, r.branchName));
 
-			const newContext = Context.create(name, project.repositories, branchName);
+			const newContext = new Context(crypto.randomUUID(), name, branches, false);
 			const updatedProject = project.addContext(newContext);
 
 			await ProjectDirectory.saveProject(updatedProject);
@@ -86,7 +98,10 @@ async function buildDefaultContext(project: Project): Promise<Context | null> {
 		try {
 			const resolvedPath = await repo.resolveAbsolutePath(project.path);
 			const branchList = await invoke<string[]>("list_branches", { path: resolvedPath });
-			const defaultBranch = branchList.find((b) => b === "main") ?? branchList.find((b) => b === "master") ?? branchList[0];
+			const defaultBranch =
+				branchList.find((b) => b === "main") ??
+				branchList.find((b) => b === "master") ??
+				branchList[0];
 			if (defaultBranch) {
 				branches.push(new ContextBranch(repo.id, defaultBranch));
 			}
@@ -100,19 +115,17 @@ async function buildDefaultContext(project: Project): Promise<Context | null> {
 	return new Context("default", "default", branches, true);
 }
 
-async function buildRepoInputs(
-	project: Project,
-	branchName: string,
-	baseBranches: Record<string, string>,
-) {
+async function buildRepoInputs(project: Project, repoConfigs: RepositoryBranchConfig[]) {
 	const inputs = [];
-	for (const repo of project.repositories) {
+	for (const config of repoConfigs) {
+		const repo = project.findRepository(config.repositoryId);
+		if (!repo) continue;
 		const resolvedPath = await repo.resolveAbsolutePath(project.path);
 		inputs.push({
 			rel_path: resolvedPath,
 			name: repo.name,
-			branch: branchName,
-			base_branch: baseBranches[repo.id] ?? "main",
+			branch: config.branchName,
+			base_branch: config.baseBranch,
 		});
 	}
 	return inputs;

@@ -3,7 +3,6 @@ import { ArrowSquareOutIcon, ArrowsClockwiseIcon } from "@phosphor-icons/react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ContextsGrid } from "@/components/contexts/ContextsGrid";
-import { CreateContextForm } from "@/components/contexts/CreateContextForm";
 import { SearchContextInput } from "@/components/contexts/SearchContextInput";
 import { GitRemoteLink } from "@/components/shared/GitRemoteLink";
 import { useActiveWorkspaces } from "@/hooks/useActiveWorkspaces";
@@ -56,8 +55,6 @@ export function ProjectTabPanel({ project }: ProjectTabPanelProps) {
 					onCreate={createContext}
 					searchFilter={searchFilter}
 				/>
-				<Divider />
-				<CreateContextForm project={project} onCreate={createContext} />
 			</Stack>
 		</TabsPanel>
 	);

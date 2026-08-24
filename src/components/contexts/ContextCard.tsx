@@ -5,6 +5,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useActiveWorkspaces } from "@/hooks/useActiveWorkspaces";
+import type { CreateContextParams } from "@/hooks/useContexts";
 import { useOpenInIde } from "@/hooks/useOpenInIde";
 import type { Context, Project } from "@/models/Project";
 import { CreateFromContextModal } from "./CreateFromContextModal";
@@ -13,7 +14,7 @@ type ContextCardProps = {
 	context: Context;
 	project: Project;
 	onDelete: (contextId: string) => void;
-	onCreate: (params: { name: string; branchName: string; baseBranches: Record<string, string> }) => Promise<void>;
+	onCreate: (params: CreateContextParams) => Promise<void>;
 };
 
 export function ContextCard({ context, project, onDelete, onCreate }: ContextCardProps) {
@@ -118,9 +119,7 @@ export function ContextCard({ context, project, onDelete, onCreate }: ContextCar
 
 			<Modal opened={opened} onClose={closeModal} title={t("contexts.deleteConfirmTitle")}>
 				<Stack gap="md">
-					<Text size="sm">
-						{t("contexts.deleteConfirmMessage", { name: context.name })}
-					</Text>
+					<Text size="sm">{t("contexts.deleteConfirmMessage", { name: context.name })}</Text>
 					<Text size="sm" c="dimmed">
 						{t("contexts.branch")}: {branchName}
 					</Text>
