@@ -24,6 +24,7 @@ export function GeneralSettings() {
 	const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(true);
 	const [refreshInterval, setRefreshInterval] = useState<number>(5);
 	const [settingsFilePath, setSettingsFilePath] = useState("");
+	const [ignoredPortsInput, setIgnoredPortsInput] = useState("");
 
 	useEffect(() => {
 		async function resolveSettingsPath() {
@@ -38,16 +39,23 @@ export function GeneralSettings() {
 			setIdeCommand(settings.ideCommand);
 			setAutoRefreshEnabled(settings.workspaceRefreshInterval !== null);
 			setRefreshInterval(settings.workspaceRefreshInterval ?? 5);
+			setIgnoredPortsInput((settings.ignoredPorts ?? []).join(", "));
 		}
 	}, [settings]);
 
 	async function handleSave() {
 		if (!settings) return;
 		try {
+			const ignoredPorts = ignoredPortsInput
+				.split(",")
+				.map((s) => Number.parseInt(s.trim(), 10))
+				.filter((n) => !Number.isNaN(n) && n > 0);
+
 			await save({
 				...settings,
 				ideCommand,
 				workspaceRefreshInterval: autoRefreshEnabled ? refreshInterval : null,
+				ignoredPorts,
 			});
 			notifications.show({
 				title: t("settings.general.saved"),
@@ -90,6 +98,13 @@ export function GeneralSettings() {
 					max={60}
 				/>
 			)}
+			<TextInput
+				label={t("settings.general.ignoredPorts")}
+				description={t("settings.general.ignoredPortsDescription")}
+				placeholder="5000, 7000"
+				value={ignoredPortsInput}
+				onChange={(event) => setIgnoredPortsInput(event.currentTarget.value)}
+			/>
 			<TextInput
 				label={t("settings.general.settingsFile")}
 				description={t("settings.general.settingsFileDescription")}

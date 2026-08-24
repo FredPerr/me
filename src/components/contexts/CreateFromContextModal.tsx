@@ -11,7 +11,7 @@ import {
 	TextInput,
 	Tooltip,
 } from "@mantine/core";
-import { CopyIcon, PaintBrushHouseholdIcon } from "@phosphor-icons/react";
+import { PaintBrushHouseholdIcon } from "@phosphor-icons/react";
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
