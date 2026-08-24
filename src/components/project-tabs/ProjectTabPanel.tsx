@@ -1,17 +1,5 @@
-import {
-	ActionIcon,
-	Badge,
-	Button,
-	Divider,
-	Group,
-	Stack,
-	TabsPanel,
-	Text,
-	Title,
-	Tooltip,
-} from "@mantine/core";
-import { ArrowSquareOutIcon, ArrowsClockwiseIcon, GlobeIcon } from "@phosphor-icons/react";
-import { openUrl } from "@tauri-apps/plugin-opener";
+import { ActionIcon, Button, Divider, Group, Stack, TabsPanel, Tooltip } from "@mantine/core";
+import { ArrowSquareOutIcon, ArrowsClockwiseIcon } from "@phosphor-icons/react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ContextsGrid } from "@/components/contexts/ContextsGrid";
@@ -70,37 +58,8 @@ export function ProjectTabPanel({ project }: ProjectTabPanelProps) {
 					onDelete={deleteContext}
 					onCreate={createContext}
 					searchFilter={searchFilter}
+					ports={ports}
 				/>
-				{ports.length > 0 && (
-					<>
-						<Divider />
-						<Title order={5}>{t("project.ports")}</Title>
-						<Group gap="xs" wrap="wrap">
-							{ports.map((p) => (
-								<Tooltip
-									key={p.port}
-									label={`${p.processName} (pid ${p.pid})${p.contextName ? ` — ${p.contextName}` : ""}${p.repositoryName ? ` / ${p.repositoryName}` : ""}`}
-								>
-									<Badge
-										size="lg"
-										variant="light"
-										leftSection={<GlobeIcon size={14} />}
-										style={{ cursor: "pointer" }}
-										onClick={() => openUrl(`http://localhost:${p.port}`)}
-									>
-										:{p.port}
-										{p.contextName && (
-											<Text span size="xs" c="dimmed" ml={4}>
-												{p.contextName}
-												{p.repositoryName ? ` / ${p.repositoryName}` : ""}
-											</Text>
-										)}
-									</Badge>
-								</Tooltip>
-							))}
-						</Group>
-					</>
-				)}
 			</Stack>
 		</TabsPanel>
 	);

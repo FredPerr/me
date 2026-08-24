@@ -1,11 +1,19 @@
 import { ActionIcon, Badge, Button, Card, Group, Modal, Stack, Text, Tooltip } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
-import { ArrowSquareOutIcon, GitBranchIcon, NetworkIcon, TrashIcon } from "@phosphor-icons/react";
+import {
+	ArrowSquareOutIcon,
+	GitBranchIcon,
+	GlobeIcon,
+	NetworkIcon,
+	TrashIcon,
+} from "@phosphor-icons/react";
 import { invoke } from "@tauri-apps/api/core";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useActiveWorkspaces } from "@/hooks/useActiveWorkspaces";
 import type { CreateContextParams } from "@/hooks/useContexts";
+import type { MatchedPort } from "@/hooks/useListeningPorts";
 import { useOpenInIde } from "@/hooks/useOpenInIde";
 import type { Context, Project } from "@/models/Project";
 import { CreateFromContextModal } from "./CreateFromContextModal";
@@ -15,9 +23,10 @@ type ContextCardProps = {
 	project: Project;
 	onDelete: (contextId: string) => void;
 	onCreate: (params: CreateContextParams) => Promise<void>;
+	ports: MatchedPort[];
 };
 
-export function ContextCard({ context, project, onDelete, onCreate }: ContextCardProps) {
+export function ContextCard({ context, project, onDelete, onCreate, ports }: ContextCardProps) {
 	const { t } = useTranslation();
 	const { open, isAvailable } = useOpenInIde();
 	const { isActive } = useActiveWorkspaces();
@@ -26,11 +35,11 @@ export function ContextCard({ context, project, onDelete, onCreate }: ContextCar
 	const [deleting, setDeleting] = useState(false);
 
 	const branchName = context.branches[0]?.branch ?? context.name;
-	const worktreePath = `${project.path}/.worktrees/${context.name}`;
+	const projectBase = project.path.endsWith("/") ? project.path.slice(0, -1) : project.path;
+	const worktreePath = `${projectBase}/.worktrees/${context.name}`;
 	const isContextActive = isActive(worktreePath);
 
 	async function handleOpenAll() {
-		const worktreePath = `${project.path}/.worktrees/${context.name}`;
 		const worktreeExists = await invoke<boolean>("check_path_exists", { path: worktreePath });
 		await open(worktreeExists ? worktreePath : project.path);
 	}
@@ -120,6 +129,28 @@ export function ContextCard({ context, project, onDelete, onCreate }: ContextCar
 							);
 						})}
 					</Group>
+					{ports.length > 0 && (
+						<Group gap="xs">
+							{ports.map((p) => (
+								<Tooltip
+									key={p.port}
+									label={`${p.processName}${p.repositoryName ? ` — ${p.repositoryName}` : ""}`}
+								>
+									<Badge
+										size="xs"
+										variant="dot"
+										color="green"
+										style={{ cursor: "pointer" }}
+										onClick={() => openUrl(`http://localhost:${p.port}`)}
+									>
+										<Group gap={4} wrap="nowrap">
+											<GlobeIcon size={10} />:{p.port}
+										</Group>
+									</Badge>
+								</Tooltip>
+							))}
+						</Group>
+					)}
 				</Stack>
 			</Card>
 

@@ -45,7 +45,7 @@ export function useActiveWorkspaces() {
 		const normalized = path.endsWith("/") ? path.slice(0, -1) : path;
 		return activeWorkspaces.some((workspace) => {
 			const normalizedWorkspace = workspace.endsWith("/") ? workspace.slice(0, -1) : workspace;
-			return normalizedWorkspace === normalized;
+			return normalizedWorkspace === normalized || normalizedWorkspace.startsWith(`${normalized}/`);
 		});
 	}
 
