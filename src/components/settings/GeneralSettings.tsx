@@ -1,5 +1,18 @@
-import { Button, Group, NumberInput, Stack, Switch, TextInput, Title } from "@mantine/core";
+import {
+	ActionIcon,
+	Button,
+	Group,
+	NumberInput,
+	Stack,
+	Switch,
+	TextInput,
+	Title,
+	Tooltip,
+} from "@mantine/core";
 import { notifications } from "@mantine/notifications";
+import { FolderOpenIcon } from "@phosphor-icons/react";
+import { appDataDir } from "@tauri-apps/api/path";
+import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppSettings } from "@/hooks/useAppSettings";
@@ -10,6 +23,15 @@ export function GeneralSettings() {
 	const [ideCommand, setIdeCommand] = useState("");
 	const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(true);
 	const [refreshInterval, setRefreshInterval] = useState<number>(5);
+	const [settingsFilePath, setSettingsFilePath] = useState("");
+
+	useEffect(() => {
+		async function resolveSettingsPath() {
+			const dataDir = await appDataDir();
+			setSettingsFilePath(dataDir);
+		}
+		resolveSettingsPath();
+	}, []);
 
 	useEffect(() => {
 		if (settings) {
@@ -68,6 +90,26 @@ export function GeneralSettings() {
 					max={60}
 				/>
 			)}
+			<TextInput
+				label={t("settings.general.settingsFile")}
+				description={t("settings.general.settingsFileDescription")}
+				value={settingsFilePath}
+				readOnly
+				disabled
+				rightSection={
+					<Tooltip label={t("settings.general.openSettingsFile")}>
+						<ActionIcon
+							variant="subtle"
+							size="sm"
+							disabled={!settingsFilePath}
+							onClick={() => revealItemInDir(settingsFilePath)}
+							aria-label={t("settings.general.openSettingsFile")}
+						>
+							<FolderOpenIcon size={16} />
+						</ActionIcon>
+					</Tooltip>
+				}
+			/>
 			<Group justify="flex-end">
 				<Button onClick={handleSave}>{t("common.save")}</Button>
 			</Group>
