@@ -3,7 +3,6 @@ import { FolderIcon, GitBranchIcon, PlusIcon, TrashIcon, WarningIcon } from "@ph
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { IconPicker } from "@/components/shared/IconPicker";
 import { pickRepositoryFolder } from "@/hooks/useFolderPicker";
 import type { RepositoryData } from "@/models/Project";
 import { resolvePath } from "@/utils/resolvePath";
@@ -148,12 +147,8 @@ export function RepositoryFormList({
 						</Button>
 					</Group>
 					{repositories.map((repository, index) => (
-						<Stack key={repository.id} gap={2}>
+						<Stack key={repository.id} gap={2} bd="3px solid dark.6" p="md" bdrs={"lg"}>
 							<Group gap="xs" align="flex-end">
-								<IconPicker
-									value={repository.icon ?? ""}
-									onChange={(value) => handleUpdate(index, "icon", value)}
-								/>
 								<TextInput
 									label={t("settings.repositories.name")}
 									placeholder="backend"
@@ -171,7 +166,7 @@ export function RepositoryFormList({
 									onChange={(e) => handleUpdate(index, "relPath", e.currentTarget.value)}
 									style={{ flex: 2 }}
 									size="xs"
-									rightSectionWidth={50}
+									rightSectionWidth={75}
 									rightSection={
 										<Group gap={4} wrap="nowrap">
 											{repository.relPath && gitStatus[repository.id] !== undefined && (
@@ -202,21 +197,23 @@ export function RepositoryFormList({
 													<FolderIcon size={14} />
 												</ActionIcon>
 											</Tooltip>
+
+											<ActionIcon
+												variant="subtle"
+												color="red"
+												size="sm"
+												onClick={() => handleRemove(index)}
+												disabled={repositories.length <= 1}
+												aria-label="Remove repository"
+											>
+												<TrashIcon size={14} />
+											</ActionIcon>
 										</Group>
 									}
 								/>
-								<ActionIcon
-									variant="subtle"
-									color="red"
-									size="sm"
-									onClick={() => handleRemove(index)}
-									disabled={repositories.length <= 1}
-									aria-label="Remove repository"
-								>
-									<TrashIcon size={14} />
-								</ActionIcon>
 							</Group>
 							<TextInput
+								label={t("settings.repositories.postCheckoutCommandLabel")}
 								placeholder={t("settings.repositories.postCheckoutCommandPlaceholder")}
 								value={repository.postCheckoutCommand ?? ""}
 								onChange={(e) => handleUpdate(index, "postCheckoutCommand", e.currentTarget.value)}

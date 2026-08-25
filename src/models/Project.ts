@@ -5,7 +5,6 @@ export class Repository {
 		public readonly id: string,
 		public readonly name: string,
 		public readonly relPath: string,
-		public readonly icon?: string,
 		public readonly postCheckoutCommand?: string,
 	) {}
 
@@ -13,12 +12,12 @@ export class Repository {
 		return resolvePath(this.relPath, { basePath: projectPath });
 	}
 
-	static create(name: string, relPath: string, icon?: string): Repository {
-		return new Repository(crypto.randomUUID(), name, relPath, icon);
+	static create(name: string, relPath: string): Repository {
+		return new Repository(crypto.randomUUID(), name, relPath);
 	}
 
 	static fromJSON(data: RepositoryData): Repository {
-		return new Repository(data.id, data.name, data.relPath, data.icon, data.postCheckoutCommand);
+		return new Repository(data.id, data.name, data.relPath, data.postCheckoutCommand);
 	}
 
 	toJSON(): RepositoryData {
@@ -26,7 +25,6 @@ export class Repository {
 			id: this.id,
 			name: this.name,
 			relPath: this.relPath,
-			icon: this.icon,
 			postCheckoutCommand: this.postCheckoutCommand,
 		};
 	}
@@ -67,12 +65,15 @@ export class Context {
 			: repository.relPath;
 		const repoParent = `${normalizedProject}/${normalizedRel}`.replace(/\/[^/]*$/, "");
 		const branch = this.getBranchForRepository(repository.id);
-		return this.isDefault
-			? `${normalizedProject}/${normalizedRel}`
-			: `${repoParent}/${branch}`;
+		return this.isDefault ? `${normalizedProject}/${normalizedRel}` : `${repoParent}/${branch}`;
 	}
 
-	static create(name: string, repositories: Repository[], branchName: string, isDefault = false): Context {
+	static create(
+		name: string,
+		repositories: Repository[],
+		branchName: string,
+		isDefault = false,
+	): Context {
 		return new Context(
 			crypto.randomUUID(),
 			name,
@@ -120,7 +121,15 @@ export class Project {
 	}
 
 	addContext(context: Context): Project {
-		return new Project(this.name, this.tag, this.path, this.repositories, [...this.contexts, context], this.icon, this.symlinks);
+		return new Project(
+			this.name,
+			this.tag,
+			this.path,
+			this.repositories,
+			[...this.contexts, context],
+			this.icon,
+			this.symlinks,
+		);
 	}
 
 	removeContext(contextId: string): Project {
@@ -164,7 +173,6 @@ export type RepositoryData = {
 	id: string;
 	name: string;
 	relPath: string;
-	icon?: string;
 	postCheckoutCommand?: string;
 };
 

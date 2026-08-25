@@ -84,7 +84,7 @@ export function ProjectSettings() {
       <Modal
         opened={opened}
         onClose={close}
-        size="lg"
+        size="xl"
         title={editingProject ? t("settings.projects.editProject") : t("settings.projects.addProject")}
       >
         <ProjectForm
