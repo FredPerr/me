@@ -152,7 +152,7 @@ export function CreateFromContextModal({
 				};
 			});
 
-			await onCreate({ name: contextName.trim(), repositories });
+			await onCreate({ name: contextName.trim(), repositories, baseContextName: sourceContext.name });
 			setContextName("");
 			onClose();
 		} finally {

@@ -129,6 +129,11 @@ export function ContextCard({ context, project, onDelete, onCreate, ports }: Con
 							);
 						})}
 					</Group>
+					{context.baseContextName && (
+						<Text size="xs" c="dimmed">
+							{t("contexts.baseContext")}: {context.baseContextName}
+						</Text>
+					)}
 					{ports.length > 0 && (
 						<Group gap="xs">
 							{ports.map((p) => (

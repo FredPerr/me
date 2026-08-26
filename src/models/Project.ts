@@ -42,7 +42,11 @@ export class ContextBranch {
 	}
 
 	toJSON(): ContextBranchData {
-		return { repositoryId: this.repositoryId, branch: this.branch, linked: this.linked };
+		return {
+			repositoryId: this.repositoryId,
+			branch: this.branch,
+			linked: this.linked,
+		};
 	}
 }
 
@@ -52,6 +56,7 @@ export class Context {
 		public readonly name: string,
 		public readonly branches: ContextBranch[],
 		public readonly isDefault: boolean = false,
+		public readonly baseContextName?: string,
 	) {}
 
 	getBranchForRepository(repositoryId: string): string | undefined {
@@ -88,6 +93,7 @@ export class Context {
 			data.name,
 			(data.branches ?? []).map(ContextBranch.fromJSON),
 			data.isDefault ?? false,
+			data.baseContextName,
 		);
 	}
 
@@ -97,6 +103,7 @@ export class Context {
 			name: this.name,
 			branches: this.branches.map((b) => b.toJSON()),
 			isDefault: this.isDefault,
+			baseContextName: this.baseContextName,
 		};
 	}
 }
@@ -187,6 +194,7 @@ export type ContextData = {
 	name: string;
 	branches: ContextBranchData[];
 	isDefault?: boolean;
+	baseContextName?: string;
 };
 
 export type ProjectData = {

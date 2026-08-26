@@ -14,6 +14,7 @@ type RepositoryBranchConfig = {
 type CreateContextParams = {
 	name: string;
 	repositories: RepositoryBranchConfig[];
+	baseContextName?: string;
 };
 
 export type { CreateContextParams, RepositoryBranchConfig };
@@ -33,7 +34,7 @@ export function useContexts(project: Project) {
 	const contexts = defaultContext ? [defaultContext, ...persistedContexts] : persistedContexts;
 
 	const createContext = useCallback(
-		async ({ name, repositories: repoConfigs }: CreateContextParams) => {
+		async ({ name, repositories: repoConfigs, baseContextName }: CreateContextParams) => {
 			const repos = await buildRepoInputs(project, repoConfigs);
 
 			if (repos.length > 0) {
@@ -54,7 +55,7 @@ export function useContexts(project: Project) {
 					),
 			);
 
-			const newContext = new Context(crypto.randomUUID(), name, branches, false);
+			const newContext = new Context(crypto.randomUUID(), name, branches, false, baseContextName);
 			const updatedProject = project.addContext(newContext);
 
 			await ProjectDirectory.saveProject(updatedProject);

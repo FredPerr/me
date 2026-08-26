@@ -81,6 +81,7 @@ export const en = {
 			deleteWarning: "This will remove worktrees and delete their folders from disk.",
 			branch: "Branch",
 			baseBranch: "Base branch",
+			baseContext: "From",
 			newBranchName: "New context branch",
 			createNewBranch: "Create new branch",
 			keepExistingBranch: "Keep current branch",
