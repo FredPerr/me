@@ -1,9 +1,22 @@
-import { ActionIcon, Badge, Button, Card, Group, Modal, Stack, Text, Tooltip } from "@mantine/core";
+import {
+	ActionIcon,
+	Badge,
+	Button,
+	Card,
+	Flex,
+	Group,
+	Modal,
+	Stack,
+	Text,
+	Tooltip,
+} from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import {
-	ArrowSquareOutIcon,
+	AppWindowIcon,
 	GitBranchIcon,
 	GlobeIcon,
+	InfoIcon,
+	LinkIcon,
 	NetworkIcon,
 	TrashIcon,
 } from "@phosphor-icons/react";
@@ -21,7 +34,7 @@ import { CreateFromContextModal } from "./CreateFromContextModal";
 type ContextCardProps = {
 	context: Context;
 	project: Project;
-	onDelete: (contextId: string) => void;
+	onDelete: (contextId: string) => Promise<void> | void;
 	onCreate: (params: CreateContextParams) => Promise<void>;
 	ports: MatchedPort[];
 };
@@ -39,7 +52,7 @@ export function ContextCard({ context, project, onDelete, onCreate, ports }: Con
 	const worktreePath = `${projectBase}/.worktrees/${context.name}`;
 	const isContextActive = isActive(worktreePath);
 
-	async function handleOpenAll() {
+	async function handleOpenInIDE() {
 		const worktreeExists = await invoke<boolean>("check_path_exists", { path: worktreePath });
 		await open(worktreeExists ? worktreePath : project.path);
 	}
@@ -59,28 +72,36 @@ export function ContextCard({ context, project, onDelete, onCreate, ports }: Con
 				style={isContextActive ? { borderColor: "var(--mantine-color-green-6)" } : undefined}
 			>
 				<Stack gap="xs">
-					<Group justify="space-between">
-						<Group gap="xs">
-							<NetworkIcon size={16} />
-							<Text fw={500} size="sm">
-								{context.name}
+					<Flex justify="space-between">
+						<Flex gap="xs">
+							<NetworkIcon
+								size={16}
+								color={isContextActive ? "var(--mantine-color-green-6)" : undefined}
+							/>
+							<Text fw={600} size="xs" c={context.isDefault ? "primary.2" : undefined}>
+								{context.isDefault ? t("common.default") : context.name}
 							</Text>
-							{context.isDefault && (
-								<Badge size="xs" variant="outline">
-									{t("common.default")}
-								</Badge>
+						</Flex>
+						<Flex gap={3}>
+							{context.baseContextName && (
+								<Tooltip label={`${t("contexts.baseContext")}: ${context.baseContextName}`}>
+									<ActionIcon
+										variant="subtle"
+										size="sm"
+										radius={2}
+										bg="transparent"
+										disabled
+										aria-label="Base context info"
+									>
+										<InfoIcon size={16} />
+									</ActionIcon>
+								</Tooltip>
 							)}
-							{isContextActive && (
-								<Badge size="xs" color="green">
-									{t("common.active")}
-								</Badge>
-							)}
-						</Group>
-						<Group gap="xs">
 							<Tooltip label={t("contexts.createFromContext")}>
 								<ActionIcon
 									variant="subtle"
 									size="sm"
+									radius={2}
 									onClick={openCreateModal}
 									aria-label="Create context from this"
 								>
@@ -90,12 +111,13 @@ export function ContextCard({ context, project, onDelete, onCreate, ports }: Con
 							<Tooltip label={t("contexts.openAllInIde")}>
 								<ActionIcon
 									variant="subtle"
+									radius={2}
 									size="sm"
-									onClick={handleOpenAll}
+									onClick={handleOpenInIDE}
 									disabled={!isAvailable}
 									aria-label="Open all in IDE"
 								>
-									<ArrowSquareOutIcon size={16} />
+									<AppWindowIcon size={16} />
 								</ActionIcon>
 							</Tooltip>
 							{!context.isDefault && (
@@ -103,6 +125,7 @@ export function ContextCard({ context, project, onDelete, onCreate, ports }: Con
 									<ActionIcon
 										variant="subtle"
 										color="red"
+										radius={2}
 										size="sm"
 										onClick={openModal}
 										aria-label="Delete context"
@@ -111,29 +134,20 @@ export function ContextCard({ context, project, onDelete, onCreate, ports }: Con
 									</ActionIcon>
 								</Tooltip>
 							)}
-						</Group>
-					</Group>
-					<Group gap="xs">
-						{context.branches.map((cb) => {
+						</Flex>
+					</Flex>
+					<Stack gap={0}>
+						{context.branches.map((cb, index) => {
 							const repo = project.findRepository(cb.repositoryId);
+							const isLast = index === context.branches.length - 1;
 							return (
-								<Badge
-									key={cb.repositoryId}
-									size="xs"
-									variant={cb.linked ? "outline" : "light"}
-									color={cb.linked ? "gray" : undefined}
-								>
-									{repo?.name ?? "?"}: {cb.branch}
-									{cb.linked ? ` (${t("contexts.linked")})` : ""}
-								</Badge>
+								<Text key={cb.repositoryId} size="xs" c="dark.1" style={{ fontFamily: "monospace" }}>
+									{isLast ? "└─ " : "├─ "}
+									{repo?.name ?? "?"} ({cb.linked ? <LinkIcon size={10}/> : <GitBranchIcon color="var(--mantine-color-primary-1)" size={10}/>})
+								</Text>
 							);
 						})}
-					</Group>
-					{context.baseContextName && (
-						<Text size="xs" c="dimmed">
-							{t("contexts.baseContext")}: {context.baseContextName}
-						</Text>
-					)}
+					</Stack>
 					{ports.length > 0 && (
 						<Group gap="xs">
 							{ports.map((p) => (
