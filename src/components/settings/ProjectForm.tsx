@@ -21,7 +21,13 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { IconPicker } from "@/components/shared/IconPicker";
 import { pickFolder } from "@/hooks/useFolderPicker";
-import { Project, type ProjectData, type RepositoryData } from "@/models/Project";
+import {
+	Context,
+	ContextBranch,
+	Project,
+	type ProjectData,
+	type RepositoryData,
+} from "@/models/Project";
 import { ProjectDirectory } from "@/models/ProjectDirectory";
 import { resolvePath } from "@/utils/resolvePath";
 import { RepositoryFormList } from "./RepositoryFormList";
@@ -80,13 +86,37 @@ export function ProjectForm({ initialProject, onSubmit, onCancel }: ProjectFormP
 		event.preventDefault();
 		const resolvedPath = await resolvePath(path, { isFolder: true });
 
+		let contexts = initialProject?.contexts.map((c) => c.toJSON()) ?? [];
+
+		if (!isEditing) {
+			const defaultBranches = await Promise.all(
+				repositories.map(async (repo) => {
+					try {
+						const repoPath = await resolvePath(repo.relPath, { basePath: resolvedPath });
+						const branches = await invoke<string[]>("list_branches", { path: repoPath });
+						const branch =
+							branches.find((b) => b === "main") ??
+							branches.find((b) => b === "master") ??
+							branches[0] ??
+							"main";
+						return new ContextBranch(repo.id, branch);
+					} catch {
+						return new ContextBranch(repo.id, "main");
+					}
+				}),
+			);
+
+			const defaultContext = new Context(crypto.randomUUID(), "default", defaultBranches, true);
+			contexts = [defaultContext.toJSON()];
+		}
+
 		const projectData: ProjectData = {
 			name,
 			tag,
 			path: resolvedPath,
 			icon: icon || undefined,
 			repositories,
-			contexts: initialProject?.contexts.map((c) => c.toJSON()) ?? [],
+			contexts,
 			symlinks: symlinks.filter((s) => s.trim()),
 		};
 

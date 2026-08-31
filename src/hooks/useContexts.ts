@@ -27,9 +27,15 @@ export function useContexts(project: Project) {
 		setPersistedContexts(project.contexts ?? []);
 	}, [project]);
 
+	const hasPersistedDefault = (project.contexts ?? []).some((c) => c.isDefault);
+
 	useEffect(() => {
-		buildDefaultContext(project).then(setDefaultContext);
-	}, [project]);
+		if (hasPersistedDefault) {
+			setDefaultContext(null);
+		} else {
+			buildDefaultContext(project).then(setDefaultContext);
+		}
+	}, [project, hasPersistedDefault]);
 
 	const contexts = defaultContext ? [defaultContext, ...persistedContexts] : persistedContexts;
 
@@ -43,6 +49,7 @@ export function useContexts(project: Project) {
 					contextName: name,
 					repos,
 					symlinks: project.symlinks,
+					baseContextName: baseContextName ?? null,
 				});
 			}
 

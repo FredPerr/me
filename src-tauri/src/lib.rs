@@ -1,5 +1,4 @@
 mod git;
-mod ports;
 mod shortcuts;
 mod workspace_detector;
 
@@ -46,7 +45,6 @@ pub fn run() {
             git::create_context,
             git::delete_context,
             git::check_is_git_repository,
-            ports::list_listening_ports,
             workspace_detector::get_active_workspaces
         ])
         .setup(|app| {

@@ -1,32 +1,19 @@
-import {
-	ActionIcon,
-	Badge,
-	Button,
-	Card,
-	Flex,
-	Group,
-	Modal,
-	Stack,
-	Text,
-	Tooltip,
-} from "@mantine/core";
+import { ActionIcon, Button, Card, Flex, Group, Modal, Stack, Text, Tooltip } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import {
 	AppWindowIcon,
 	GitBranchIcon,
-	GlobeIcon,
 	InfoIcon,
-	LinkIcon,
+	LockIcon,
 	NetworkIcon,
 	TrashIcon,
 } from "@phosphor-icons/react";
 import { invoke } from "@tauri-apps/api/core";
-import { openUrl } from "@tauri-apps/plugin-opener";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useActiveWorkspaces } from "@/hooks/useActiveWorkspaces";
+import { useContextDiffStats } from "@/hooks/useContextDiffStats";
 import type { CreateContextParams } from "@/hooks/useContexts";
-import type { MatchedPort } from "@/hooks/useListeningPorts";
 import { useOpenInIde } from "@/hooks/useOpenInIde";
 import type { Context, Project } from "@/models/Project";
 import { CreateFromContextModal } from "./CreateFromContextModal";
@@ -34,15 +21,16 @@ import { CreateFromContextModal } from "./CreateFromContextModal";
 type ContextCardProps = {
 	context: Context;
 	project: Project;
+	allContexts: Context[];
 	onDelete: (contextId: string) => Promise<void> | void;
 	onCreate: (params: CreateContextParams) => Promise<void>;
-	ports: MatchedPort[];
 };
 
-export function ContextCard({ context, project, onDelete, onCreate, ports }: ContextCardProps) {
+export function ContextCard({ context, project, allContexts, onDelete, onCreate }: ContextCardProps) {
 	const { t } = useTranslation();
 	const { open, isAvailable } = useOpenInIde();
 	const { isActive } = useActiveWorkspaces();
+	const { statsByRepository, hasBaseContext } = useContextDiffStats(context, project, allContexts);
 	const [opened, { open: openModal, close: closeModal }] = useDisclosure(false);
 	const [createOpened, { open: openCreateModal, close: closeCreateModal }] = useDisclosure(false);
 	const [deleting, setDeleting] = useState(false);
@@ -139,37 +127,60 @@ export function ContextCard({ context, project, onDelete, onCreate, ports }: Con
 					<Stack gap={0}>
 						{context.branches.map((cb, index) => {
 							const repo = project.findRepository(cb.repositoryId);
+							const stats = statsByRepository[cb.repositoryId];
 							const isLast = index === context.branches.length - 1;
+							const hasChanges = stats && (stats.filesAdded > 0 || stats.filesModified > 0 || stats.filesDeleted > 0 || stats.insertions > 0 || stats.deletions > 0);
 							return (
-								<Text key={cb.repositoryId} size="xs" c="dark.1" style={{ fontFamily: "monospace" }}>
-									{isLast ? "└─ " : "├─ "}
-									{repo?.name ?? "?"} ({cb.linked ? <LinkIcon size={10}/> : <GitBranchIcon color="var(--mantine-color-primary-1)" size={10}/>})
-								</Text>
+								<Flex
+									key={cb.repositoryId}
+									align="center"
+									justify="space-between"
+								>
+									<Text
+										size="xs"
+										c="dark.1"
+										style={{ fontFamily: "monospace" }}
+									>
+										{isLast ? "└─ " : "├─ "}
+										{repo?.name ?? "?"} (
+										{cb.linked ? (
+											<LockIcon size={10} />
+										) : (
+											<GitBranchIcon color="var(--mantine-color-primary-1)" size={10} />
+										)}
+										)
+									</Text>
+									{!context.isDefault && !hasBaseContext && (
+										<Text size="xs" c="red.3" style={{ fontFamily: "monospace" }}>
+											whoops
+										</Text>
+									)}
+									{hasChanges && (
+										<Text size="xs" style={{ fontFamily: "monospace" }}>
+											{stats.filesAdded > 0 && (
+												<Text span size="xs" c="green.5">+{stats.filesAdded.toLocaleString()}</Text>
+											)}
+											{stats.filesModified > 0 && (
+												<Text span size="xs" c="yellow.5"> ~{stats.filesModified.toLocaleString()}</Text>
+											)}
+											{stats.filesDeleted > 0 && (
+												<Text span size="xs" c="red.5"> -{stats.filesDeleted.toLocaleString()}</Text>
+											)}
+											<Text span size="xs" c="dimmed"> files </Text>
+											<Text span size="xs" c="green.5">
+												+{stats.insertions.toLocaleString()}
+											</Text>
+											<Text span size="xs" c="dimmed">/</Text>
+											<Text span size="xs" c="red.5">
+												-{stats.deletions.toLocaleString()}
+											</Text>
+											<Text span size="xs" c="dimmed"> lines</Text>
+										</Text>
+									)}
+								</Flex>
 							);
 						})}
 					</Stack>
-					{ports.length > 0 && (
-						<Group gap="xs">
-							{ports.map((p) => (
-								<Tooltip
-									key={p.port}
-									label={`${p.processName}${p.repositoryName ? ` — ${p.repositoryName}` : ""}`}
-								>
-									<Badge
-										size="xs"
-										variant="dot"
-										color="green"
-										style={{ cursor: "pointer" }}
-										onClick={() => openUrl(`http://localhost:${p.port}`)}
-									>
-										<Group gap={4} wrap="nowrap">
-											<GlobeIcon size={10} />:{p.port}
-										</Group>
-									</Badge>
-								</Tooltip>
-							))}
-						</Group>
-					)}
 				</Stack>
 			</Card>
 

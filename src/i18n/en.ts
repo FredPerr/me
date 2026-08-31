@@ -27,8 +27,6 @@ export const en = {
 				saved: "Settings saved",
 				savedMessage: "Your settings have been saved successfully.",
 				saveError: "Failed to save settings.",
-				ignoredPorts: "Ignored ports",
-				ignoredPortsDescription: "Comma-separated list of ports to hide from detection (e.g. 5000, 7000).",
 			},
 			projects: {
 				title: "Projects",
@@ -103,15 +101,12 @@ export const en = {
 			settings: "Settings",
 		},
 		project: {
-			openInIde: "Open in IDE",
+			openInIde: "Open root in IDE",
 			noProjects: "No projects configured. Add some in Settings.",
 			openRepository: "Open repository",
 			createPullRequest: "Create pull request",
 			prNotAvailable: "PR creation only available for GitHub",
 			noRemoteConfigured: "No remote configured",
-			ports: "Active ports",
-			noPorts: "No active ports detected",
-			openPort: "Open in browser",
 		},
 	},
 } as const;

@@ -65,12 +65,13 @@ export class Context {
 
 	getWorktreePath(projectPath: string, repository: Repository): string {
 		const normalizedProject = projectPath.endsWith("/") ? projectPath.slice(0, -1) : projectPath;
-		const normalizedRel = repository.relPath.startsWith("./")
-			? repository.relPath.slice(2)
-			: repository.relPath;
-		const repoParent = `${normalizedProject}/${normalizedRel}`.replace(/\/[^/]*$/, "");
-		const branch = this.getBranchForRepository(repository.id);
-		return this.isDefault ? `${normalizedProject}/${normalizedRel}` : `${repoParent}/${branch}`;
+		if (this.isDefault) {
+			const normalizedRel = repository.relPath.startsWith("./")
+				? repository.relPath.slice(2)
+				: repository.relPath;
+			return `${normalizedProject}/${normalizedRel}`;
+		}
+		return `${normalizedProject}/.worktrees/${this.name}/${repository.name}`;
 	}
 
 	static create(

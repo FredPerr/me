@@ -1,7 +1,6 @@
 import { SimpleGrid, Text } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import type { CreateContextParams } from "@/hooks/useContexts";
-import type { MatchedPort } from "@/hooks/useListeningPorts";
 import type { Context, Project } from "@/models/Project";
 import { ContextCard } from "./ContextCard";
 
@@ -11,7 +10,6 @@ type ContextsGridProps = {
 	onDelete: (contextId: string) => void;
 	onCreate: (params: CreateContextParams) => Promise<void>;
 	searchFilter?: string;
-	ports: MatchedPort[];
 };
 
 export function ContextsGrid({
@@ -20,7 +18,6 @@ export function ContextsGrid({
 	onDelete,
 	onCreate,
 	searchFilter,
-	ports,
 }: ContextsGridProps) {
 	const { t } = useTranslation();
 	const filtered = searchFilter
@@ -42,11 +39,9 @@ export function ContextsGrid({
 					key={context.id}
 					context={context}
 					project={project}
+					allContexts={contexts}
 					onDelete={onDelete}
 					onCreate={onCreate}
-					ports={ports.filter(
-						(p) => p.contextName === context.name || (context.isDefault && p.contextName === null),
-					)}
 				/>
 			))}
 		</SimpleGrid>

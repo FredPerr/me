@@ -126,11 +126,18 @@ pub struct WorktreeStatus {
 }
 
 #[tauri::command]
-pub async fn get_worktree_status(path: String) -> Result<WorktreeStatus, String> {
+pub async fn get_worktree_status(path: String, base_branch: Option<String>) -> Result<WorktreeStatus, String> {
     let repo = Repository::open(&path).map_err(|e| e.to_string())?;
 
-    let changed_files = count_changed_files(&repo)?;
-    let (insertions, deletions) = count_changed_lines(&repo);
+    let (changed_files, insertions, deletions) = match &base_branch {
+        Some(base) => count_diff_against_base(&repo, base)?,
+        None => {
+            let files = count_changed_files(&repo)?;
+            let (ins, del) = count_changed_lines(&repo);
+            (files, ins, del)
+        }
+    };
+
     let pr_url = build_pr_url(&repo);
 
     Ok(WorktreeStatus {
@@ -187,17 +194,82 @@ fn count_changed_files(repo: &Repository) -> Result<FileChangeCounts, String> {
 }
 
 fn count_changed_lines(repo: &Repository) -> (usize, usize) {
-    let diff = match repo.diff_index_to_workdir(None, None) {
-        Ok(d) => d,
-        Err(_) => return (0, 0),
+    let mut total_insertions: usize = 0;
+    let mut total_deletions: usize = 0;
+
+    if let Ok(diff) = repo.diff_index_to_workdir(None, None) {
+        if let Ok(stats) = diff.stats() {
+            total_insertions += stats.insertions();
+            total_deletions += stats.deletions();
+        }
+    }
+
+    if let Ok(head) = repo.head() {
+        if let Ok(tree) = head.peel_to_tree() {
+            if let Ok(diff) = repo.diff_tree_to_index(Some(&tree), None, None) {
+                if let Ok(stats) = diff.stats() {
+                    total_insertions += stats.insertions();
+                    total_deletions += stats.deletions();
+                }
+            }
+        }
+    }
+
+    (total_insertions, total_deletions)
+}
+
+fn resolve_branch_commit<'a>(repo: &'a Repository, branch_name: &str) -> Result<git2::Commit<'a>, String> {
+    if let Ok(branch) = repo.find_branch(branch_name, git2::BranchType::Local) {
+        return branch.get().peel_to_commit().map_err(|e| e.to_string());
+    }
+    if let Ok(branch) = repo.find_branch(branch_name, git2::BranchType::Remote) {
+        return branch.get().peel_to_commit().map_err(|e| e.to_string());
+    }
+    // Try as a full ref name (e.g. "origin/develop")
+    let reference = repo
+        .find_reference(&format!("refs/remotes/{}", branch_name))
+        .map_err(|e| format!("Branch '{}' not found: {}", branch_name, e))?;
+    reference.peel_to_commit().map_err(|e| e.to_string())
+}
+
+fn count_diff_against_base(repo: &Repository, base_branch: &str) -> Result<(FileChangeCounts, usize, usize), String> {
+    let base_commit = resolve_branch_commit(repo, base_branch)?;
+
+    let head_commit = repo.head().map_err(|e| e.to_string())?
+        .peel_to_commit().map_err(|e| e.to_string())?;
+
+    let merge_base_oid = repo
+        .merge_base(base_commit.id(), head_commit.id())
+        .map_err(|e| format!("Could not find merge base: {}", e))?;
+    let merge_base_commit = repo.find_commit(merge_base_oid).map_err(|e| e.to_string())?;
+    let merge_base_tree = merge_base_commit.tree().map_err(|e| e.to_string())?;
+
+    let head_tree = head_commit.tree().map_err(|e| e.to_string())?;
+
+    let diff = repo
+        .diff_tree_to_tree(Some(&merge_base_tree), Some(&head_tree), None)
+        .map_err(|e| e.to_string())?;
+
+    let stats = diff.stats().map_err(|e| e.to_string())?;
+
+    let mut counts = FileChangeCounts {
+        added: 0,
+        modified: 0,
+        deleted: 0,
+        renamed: 0,
     };
 
-    let stats = match diff.stats() {
-        Ok(s) => s,
-        Err(_) => return (0, 0),
-    };
+    for delta in diff.deltas() {
+        match delta.status() {
+            git2::Delta::Added => counts.added += 1,
+            git2::Delta::Deleted => counts.deleted += 1,
+            git2::Delta::Modified => counts.modified += 1,
+            git2::Delta::Renamed => counts.renamed += 1,
+            _ => {}
+        }
+    }
 
-    (stats.insertions(), stats.deletions())
+    Ok((counts, stats.insertions(), stats.deletions()))
 }
 
 fn build_pr_url(repo: &Repository) -> Option<String> {
@@ -316,6 +388,7 @@ pub async fn create_context(
     context_name: String,
     repos: Vec<ContextRepoInput>,
     symlinks: Vec<String>,
+    base_context_name: Option<String>,
 ) -> Result<Vec<ContextRepoResult>, String> {
     let project_dir = Path::new(&project_path);
     let mut results: Vec<ContextRepoResult> = Vec::new();
@@ -328,6 +401,16 @@ pub async fn create_context(
             .join(&repo_input.name);
 
         if repo_input.linked {
+            let symlink_target = match &base_context_name {
+                Some(base_name) if base_name != "default" => {
+                    project_dir
+                        .join(".worktrees")
+                        .join(base_name)
+                        .join(&repo_input.name)
+                }
+                _ => repo_path.clone(),
+            };
+
             if let Some(parent) = worktree_dir.parent() {
                 std::fs::create_dir_all(parent).map_err(|e| {
                     format!("Failed to create parent directory: {}", e)
@@ -335,7 +418,7 @@ pub async fn create_context(
             }
 
             #[cfg(unix)]
-            std::os::unix::fs::symlink(&repo_path, &worktree_dir).map_err(|e| {
+            std::os::unix::fs::symlink(&symlink_target, &worktree_dir).map_err(|e| {
                 format!(
                     "Failed to create symlink for '{}': {}",
                     repo_input.name, e
@@ -343,7 +426,7 @@ pub async fn create_context(
             })?;
 
             #[cfg(windows)]
-            std::os::windows::fs::symlink_dir(&repo_path, &worktree_dir).map_err(|e| {
+            std::os::windows::fs::symlink_dir(&symlink_target, &worktree_dir).map_err(|e| {
                 format!(
                     "Failed to create symlink for '{}': {}",
                     repo_input.name, e
