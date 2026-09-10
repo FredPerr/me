@@ -1,4 +1,5 @@
 mod git;
+mod ide_launcher;
 mod shortcuts;
 mod workspace_detector;
 
@@ -8,13 +9,8 @@ fn greet(name: &str) -> String {
 }
 
 #[tauri::command]
-async fn open_in_ide(command: String, path: String) -> Result<(), String> {
-    std::process::Command::new("sh")
-        .arg("-c")
-        .arg(format!("{} \"{}\"", command, path))
-        .spawn()
-        .map_err(|e| e.to_string())?;
-    Ok(())
+async fn open_in_ide(command: String, path: String, shell: Option<String>) -> Result<(), String> {
+    ide_launcher::launch(&command, &path, shell.as_deref())
 }
 
 #[tauri::command]

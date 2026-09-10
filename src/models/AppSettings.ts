@@ -2,6 +2,7 @@ import { BaseDirectory, exists, readTextFile, writeTextFile } from "@tauri-apps/
 
 export type AppSettings = {
 	ideCommand: string;
+	shell: string | null;
 	workspaceRefreshInterval: number | null;
 };
 
@@ -9,6 +10,7 @@ const SETTINGS_FILE = "settings.json";
 
 const DEFAULT_SETTINGS: AppSettings = {
 	ideCommand: "kiro",
+	shell: null,
 	workspaceRefreshInterval: 5,
 };
 

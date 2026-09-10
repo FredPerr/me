@@ -8,7 +8,11 @@ export function useOpenInIde() {
 	const open = useCallback(
 		async (projectPath: string) => {
 			if (settings?.ideCommand && projectPath) {
-				await invoke("open_in_ide", { command: settings.ideCommand, path: projectPath });
+				await invoke("open_in_ide", {
+					command: settings.ideCommand,
+					path: projectPath,
+					shell: settings.shell,
+				});
 			}
 		},
 		[settings],
