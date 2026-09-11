@@ -41,6 +41,7 @@ pub fn run() {
             git::create_context,
             git::delete_context,
             git::check_is_git_repository,
+            git::pull_worktree,
             workspace_detector::get_active_workspaces
         ])
         .setup(|app| {

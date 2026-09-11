@@ -107,6 +107,11 @@ export const en = {
 			createPullRequest: "Create pull request",
 			prNotAvailable: "PR creation only available for GitHub",
 			noRemoteConfigured: "No remote configured",
+			pullContexts: "Pull all branches from remote",
+			pullDoneTitle: "Branches updated",
+			pullDoneMessage: "Pulled {{count}} branch(es) from remote",
+			pullFailedTitle: "Pull failed",
+			pullFailedMessage: "Failed to pull {{count}} branch(es)",
 		},
 	},
 } as const;

@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { ContextsGrid } from "@/components/contexts/ContextsGrid";
 import { SearchContextInput } from "@/components/contexts/SearchContextInput";
 import { GitRemoteLink } from "@/components/shared/GitRemoteLink";
+import { PullContextsButton } from "@/components/shared/PullContextsButton";
 import { useContexts } from "@/hooks/useContexts";
 import { useOpenInIde } from "@/hooks/useOpenInIde";
 import type { Project } from "@/models/Project";
@@ -26,6 +27,7 @@ export function ProjectTabPanel({ project }: ProjectTabPanelProps) {
 					<SearchContextInput value={searchFilter} onChange={setSearchFilter} />
 					<Group gap="xs">
 						<GitRemoteLink path={project.path} />
+						<PullContextsButton project={project} />
 						<Button
 							leftSection={<AppWindowIcon size={16} />}
 							size="xs"

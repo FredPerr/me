@@ -670,6 +670,48 @@ pub async fn delete_context(
     Ok(())
 }
 
+#[derive(Serialize)]
+pub struct PullResult {
+    pub path: String,
+    pub pulled: bool,
+    pub message: Option<String>,
+}
+
+#[tauri::command]
+pub async fn pull_worktree(path: String) -> Result<PullResult, String> {
+    let repo = match Repository::open(&path) {
+        Ok(repo) => repo,
+        Err(e) => return Err(format!("Failed to open repository at '{}': {}", path, e)),
+    };
+
+    // Skip when there is no remote configured for this repository.
+    if repo.find_remote("origin").is_err() {
+        return Ok(PullResult {
+            path: normalize_path(&path),
+            pulled: false,
+            message: Some("No remote configured".to_string()),
+        });
+    }
+
+    let output = std::process::Command::new("git")
+        .args(["pull", "--ff-only"])
+        .current_dir(&path)
+        .output()
+        .map_err(|e| format!("Failed to run git pull: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("git pull failed: {}", stderr.trim()));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    Ok(PullResult {
+        path: normalize_path(&path),
+        pulled: true,
+        message: Some(stdout.trim().to_string()),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
