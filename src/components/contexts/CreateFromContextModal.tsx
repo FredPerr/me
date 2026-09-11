@@ -50,6 +50,7 @@ export function CreateFromContextModal({
 		),
 	);
 	const [loading, setLoading] = useState(false);
+	const [syncBranchNames, setSyncBranchNames] = useState(true);
 	const [branchErrors, setBranchErrors] = useState<Record<string, string>>({});
 	const [branchOptions, setBranchOptions] = useState<Record<string, string[]>>({});
 
@@ -92,17 +93,32 @@ export function CreateFromContextModal({
 
 	const hasErrors = Object.keys(branchErrors).length > 0;
 
-	function copyNameToBranches() {
-		if (!contextName.trim()) return;
+	function syncBranchesToName(name: string) {
+		const trimmed = name.trim();
 		setRepoStates((prev) => {
 			const next = { ...prev };
 			for (const id of Object.keys(next)) {
 				if (next[id].createBranch) {
-					next[id] = { ...next[id], branchName: contextName.trim() };
+					next[id] = { ...next[id], branchName: trimmed };
 				}
 			}
 			return next;
 		});
+	}
+
+	function handleContextNameChange(name: string) {
+		setContextName(name);
+		if (syncBranchNames) {
+			syncBranchesToName(name);
+		}
+	}
+
+	function toggleSync() {
+		const nextEnabled = !syncBranchNames;
+		setSyncBranchNames(nextEnabled);
+		if (nextEnabled) {
+			syncBranchesToName(contextName);
+		}
 	}
 
 	async function validateBranches(): Promise<boolean> {
@@ -170,16 +186,22 @@ export function CreateFromContextModal({
 					label={t("contexts.contextName")}
 					placeholder="feature/my-feature"
 					value={contextName}
-					onChange={(e) => setContextName(e.currentTarget.value)}
+					onChange={(e) => handleContextNameChange(e.currentTarget.value)}
 					required
 					rightSection={
-						<Tooltip label={t("contexts.copyNameToBranches")}>
+						<Tooltip
+							label={
+								syncBranchNames
+									? t("contexts.syncBranchesOn")
+									: t("contexts.syncBranchesOff")
+							}
+						>
 							<ActionIcon
-								variant="subtle"
+								variant={syncBranchNames ? "filled" : "subtle"}
 								size="sm"
-								disabled={!contextName.trim()}
-								onClick={copyNameToBranches}
-								aria-label={t("contexts.copyNameToBranches")}
+								onClick={toggleSync}
+								aria-label={t("contexts.syncBranchNames")}
+								aria-pressed={syncBranchNames}
 							>
 								<PaintBrushHouseholdIcon size={16} />
 							</ActionIcon>
@@ -201,9 +223,15 @@ export function CreateFromContextModal({
 								<Checkbox
 									label={`${t("contexts.createNewBranch")} — ${repo.name}`}
 									checked={state.createBranch}
-									onChange={(e) =>
-										updateRepoState(repo.id, { createBranch: e.currentTarget.checked })
-									}
+									onChange={(e) => {
+										const checked = e.currentTarget.checked;
+										updateRepoState(repo.id, {
+											createBranch: checked,
+											...(checked && syncBranchNames
+												? { branchName: contextName.trim() }
+												: {}),
+										});
+									}}
 								/>
 								{state.createBranch && (
 									<Group gap="xs" grow>
@@ -222,6 +250,7 @@ export function CreateFromContextModal({
 											onChange={(e) =>
 												updateRepoState(repo.id, { branchName: e.currentTarget.value })
 											}
+											readOnly={syncBranchNames}
 											error={branchErrors[repo.id]}
 											size="xs"
 										/>
