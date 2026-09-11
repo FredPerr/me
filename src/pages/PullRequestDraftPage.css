@@ -1,0 +1,78 @@
+/* Scoped theming for @uiw/react-md-editor to match the app's Mantine dark theme. */
+.pr-draft-editor {
+	/* Surfaces */
+	--color-canvas-default: var(--mantine-color-dark-7);
+	--color-canvas-subtle: var(--mantine-color-dark-6);
+	--color-border-default: var(--mantine-color-dark-4);
+	--color-border-muted: var(--mantine-color-dark-5);
+	--color-neutral-muted: var(--mantine-color-dark-5);
+
+	/* Text */
+	--color-fg-default: var(--mantine-color-gray-1);
+	--color-fg-muted: var(--mantine-color-dark-1);
+	--color-fg-subtle: var(--mantine-color-dark-2);
+
+	/* Accent (links, active states) uses the app primary */
+	--color-accent-fg: var(--mantine-color-primary-3);
+	--color-accent-emphasis: var(--mantine-color-primary-6);
+}
+
+.pr-draft-editor.w-md-editor {
+	border: 1px solid var(--mantine-color-dark-4);
+	border-radius: var(--mantine-radius-md);
+	box-shadow: none;
+	background-color: var(--mantine-color-dark-7);
+	overflow: hidden;
+}
+
+/* Toolbar */
+.pr-draft-editor .w-md-editor-toolbar {
+	background-color: var(--mantine-color-dark-6);
+	border-bottom: 1px solid var(--mantine-color-dark-4);
+	padding: 6px 8px;
+}
+
+.pr-draft-editor .w-md-editor-toolbar ul li button {
+	color: var(--mantine-color-dark-1);
+	border-radius: var(--mantine-radius-sm);
+}
+
+.pr-draft-editor .w-md-editor-toolbar ul li button:hover,
+.pr-draft-editor .w-md-editor-toolbar ul li.active button {
+	color: var(--mantine-color-primary-3);
+	background-color: var(--mantine-color-dark-5);
+}
+
+.pr-draft-editor .w-md-editor-toolbar-divider {
+	background-color: var(--mantine-color-dark-4);
+}
+
+/* Editing surface.
+   The caret layer (textarea) and the highlight layer (pre) must share
+   identical font metrics, otherwise the caret drifts into the middle of
+   characters. Apply the same font to the shared parent and both children.
+   The scope class is chained with .w-md-editor to raise specificity above
+   the library's own rules without needing !important. */
+.pr-draft-editor.w-md-editor .w-md-editor-text,
+.pr-draft-editor.w-md-editor .w-md-editor-text-input,
+.pr-draft-editor.w-md-editor .w-md-editor-text-pre,
+.pr-draft-editor.w-md-editor .w-md-editor-text-pre > code,
+.pr-draft-editor.w-md-editor .w-md-editor-text-pre .token {
+	font-family: var(--mantine-font-family-monospace);
+	font-size: 13px;
+	line-height: 1.6;
+	letter-spacing: normal;
+	tab-size: 2;
+}
+
+/* Focus ring using the app primary color */
+.pr-draft-editor.w-md-editor:focus-within {
+	border-color: var(--mantine-color-primary-6);
+	box-shadow: 0 0 0 2px var(--mantine-color-primary-9);
+}
+
+/* Preview pane */
+.pr-draft-editor .wmde-markdown {
+	background-color: var(--mantine-color-dark-7);
+	font-family: var(--mantine-font-family);
+}

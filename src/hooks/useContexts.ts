@@ -1,7 +1,7 @@
 import { notifications } from "@mantine/notifications";
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useState } from "react";
-import { Context, ContextBranch, type Project } from "@/models/Project";
+import { Context, ContextBranch, Project, type PullRequestDraft } from "@/models/Project";
 import { ProjectDirectory } from "@/models/ProjectDirectory";
 
 type RepositoryBranchConfig = {
@@ -101,7 +101,39 @@ export function useContexts(project: Project) {
 		[project, contexts],
 	);
 
-	return { contexts, defaultContext, createContext, deleteContext };
+	const savePullRequestDrafts = useCallback(
+		async (contextId: string, drafts: Record<string, PullRequestDraft>) => {
+			const target = persistedContexts.find((c) => c.id === contextId);
+			if (!target) return;
+
+			const updatedContext = target.withPullRequestDrafts(drafts);
+			const updatedProject = new Project(
+				project.name,
+				project.tag,
+				project.path,
+				project.repositories,
+				project.contexts.map((c) => (c.id === contextId ? updatedContext : c)),
+				project.icon,
+				project.symlinks,
+			);
+
+			try {
+				await ProjectDirectory.saveProject(updatedProject);
+			} catch (error) {
+				notifications.show({
+					title: "Failed to save pull request drafts",
+					message: String(error),
+					color: "red",
+				});
+				return;
+			}
+
+			setPersistedContexts((prev) => prev.map((c) => (c.id === contextId ? updatedContext : c)));
+		},
+		[project, persistedContexts],
+	);
+
+	return { contexts, defaultContext, createContext, deleteContext, savePullRequestDrafts };
 }
 
 async function buildDefaultContext(project: Project): Promise<Context | null> {

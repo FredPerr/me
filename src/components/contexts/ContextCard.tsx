@@ -3,6 +3,7 @@ import { useDisclosure } from "@mantine/hooks";
 import {
 	AppWindowIcon,
 	GitBranchIcon,
+	GitPullRequestIcon,
 	InfoIcon,
 	LockIcon,
 	NetworkIcon,
@@ -11,6 +12,7 @@ import {
 import { invoke } from "@tauri-apps/api/core";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useNavigate } from "react-router";
 import { useActiveWorkspaces } from "@/hooks/useActiveWorkspaces";
 import { useContextDiffStats } from "@/hooks/useContextDiffStats";
 import type { CreateContextParams } from "@/hooks/useContexts";
@@ -26,8 +28,15 @@ type ContextCardProps = {
 	onCreate: (params: CreateContextParams) => Promise<void>;
 };
 
-export function ContextCard({ context, project, allContexts, onDelete, onCreate }: ContextCardProps) {
+export function ContextCard({
+	context,
+	project,
+	allContexts,
+	onDelete,
+	onCreate,
+}: ContextCardProps) {
 	const { t } = useTranslation();
+	const navigate = useNavigate();
 	const { open, isAvailable } = useOpenInIde();
 	const { isActive } = useActiveWorkspaces();
 	const { statsByRepository, hasBaseContext } = useContextDiffStats(context, project, allContexts);
@@ -43,6 +52,10 @@ export function ContextCard({ context, project, allContexts, onDelete, onCreate 
 	async function handleOpenInIDE() {
 		const worktreeExists = await invoke<boolean>("check_path_exists", { path: worktreePath });
 		await open(worktreeExists ? worktreePath : project.path);
+	}
+
+	function handleDraftPullRequests() {
+		navigate(`/projects/${project.tag}/contexts/${context.id}/pull-requests`);
 	}
 
 	async function handleDelete() {
@@ -96,6 +109,19 @@ export function ContextCard({ context, project, allContexts, onDelete, onCreate 
 									<GitBranchIcon size={16} />
 								</ActionIcon>
 							</Tooltip>
+							{!context.isDefault && (
+								<Tooltip label={t("contexts.draftPullRequest")}>
+									<ActionIcon
+										variant="subtle"
+										size="sm"
+										radius={2}
+										onClick={handleDraftPullRequests}
+										aria-label="Draft pull requests"
+									>
+										<GitPullRequestIcon size={16} />
+									</ActionIcon>
+								</Tooltip>
+							)}
 							<Tooltip label={t("contexts.openAllInIde")}>
 								<ActionIcon
 									variant="subtle"
@@ -129,18 +155,16 @@ export function ContextCard({ context, project, allContexts, onDelete, onCreate 
 							const repo = project.findRepository(cb.repositoryId);
 							const stats = statsByRepository[cb.repositoryId];
 							const isLast = index === context.branches.length - 1;
-							const hasChanges = stats && (stats.filesAdded > 0 || stats.filesModified > 0 || stats.filesDeleted > 0 || stats.insertions > 0 || stats.deletions > 0);
+							const hasChanges =
+								stats &&
+								(stats.filesAdded > 0 ||
+									stats.filesModified > 0 ||
+									stats.filesDeleted > 0 ||
+									stats.insertions > 0 ||
+									stats.deletions > 0);
 							return (
-								<Flex
-									key={cb.repositoryId}
-									align="center"
-									justify="space-between"
-								>
-									<Text
-										size="xs"
-										c="dark.1"
-										style={{ fontFamily: "monospace" }}
-									>
+								<Flex key={cb.repositoryId} align="center" justify="space-between">
+									<Text size="xs" c="dark.1" style={{ fontFamily: "monospace" }}>
 										{isLast ? "└─ " : "├─ "}
 										{repo?.name ?? "?"} (
 										{cb.linked ? (
@@ -158,23 +182,39 @@ export function ContextCard({ context, project, allContexts, onDelete, onCreate 
 									{hasChanges && (
 										<Text size="xs" style={{ fontFamily: "monospace" }}>
 											{stats.filesAdded > 0 && (
-												<Text span size="xs" c="green.5">+{stats.filesAdded.toLocaleString()}</Text>
+												<Text span size="xs" c="green.5">
+													+{stats.filesAdded.toLocaleString()}
+												</Text>
 											)}
 											{stats.filesModified > 0 && (
-												<Text span size="xs" c="yellow.5"> ~{stats.filesModified.toLocaleString()}</Text>
+												<Text span size="xs" c="yellow.5">
+													{" "}
+													~{stats.filesModified.toLocaleString()}
+												</Text>
 											)}
 											{stats.filesDeleted > 0 && (
-												<Text span size="xs" c="red.5"> -{stats.filesDeleted.toLocaleString()}</Text>
+												<Text span size="xs" c="red.5">
+													{" "}
+													-{stats.filesDeleted.toLocaleString()}
+												</Text>
 											)}
-											<Text span size="xs" c="dimmed"> files </Text>
+											<Text span size="xs" c="dimmed">
+												{" "}
+												files{" "}
+											</Text>
 											<Text span size="xs" c="green.5">
 												+{stats.insertions.toLocaleString()}
 											</Text>
-											<Text span size="xs" c="dimmed">/</Text>
+											<Text span size="xs" c="dimmed">
+												/
+											</Text>
 											<Text span size="xs" c="red.5">
 												-{stats.deletions.toLocaleString()}
 											</Text>
-											<Text span size="xs" c="dimmed"> lines</Text>
+											<Text span size="xs" c="dimmed">
+												{" "}
+												lines
+											</Text>
 										</Text>
 									)}
 								</Flex>

@@ -57,10 +57,26 @@ export class Context {
 		public readonly branches: ContextBranch[],
 		public readonly isDefault: boolean = false,
 		public readonly baseContextName?: string,
+		public readonly pullRequestDrafts: Record<string, PullRequestDraft> = {},
 	) {}
 
 	getBranchForRepository(repositoryId: string): string | undefined {
 		return this.branches.find((b) => b.repositoryId === repositoryId)?.branch;
+	}
+
+	getPullRequestDraft(repositoryId: string): PullRequestDraft | undefined {
+		return this.pullRequestDrafts[repositoryId];
+	}
+
+	withPullRequestDrafts(drafts: Record<string, PullRequestDraft>): Context {
+		return new Context(
+			this.id,
+			this.name,
+			this.branches,
+			this.isDefault,
+			this.baseContextName,
+			drafts,
+		);
 	}
 
 	getWorktreePath(projectPath: string, repository: Repository): string {
@@ -95,6 +111,7 @@ export class Context {
 			(data.branches ?? []).map(ContextBranch.fromJSON),
 			data.isDefault ?? false,
 			data.baseContextName,
+			data.pullRequestDrafts ?? {},
 		);
 	}
 
@@ -105,6 +122,7 @@ export class Context {
 			branches: this.branches.map((b) => b.toJSON()),
 			isDefault: this.isDefault,
 			baseContextName: this.baseContextName,
+			pullRequestDrafts: this.pullRequestDrafts,
 		};
 	}
 }
@@ -190,12 +208,18 @@ export type ContextBranchData = {
 	linked?: boolean;
 };
 
+export type PullRequestDraft = {
+	title: string;
+	description: string;
+};
+
 export type ContextData = {
 	id: string;
 	name: string;
 	branches: ContextBranchData[];
 	isDefault?: boolean;
 	baseContextName?: string;
+	pullRequestDrafts?: Record<string, PullRequestDraft>;
 };
 
 export type ProjectData = {

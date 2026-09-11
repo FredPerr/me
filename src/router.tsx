@@ -1,14 +1,19 @@
-import { createBrowserRouter } from "react-router";
+import { createHashRouter } from "react-router";
 import { AppLayout } from "@/layouts/AppLayout";
 import { HomePage } from "@/pages/HomePage";
+import { PullRequestDraftPage } from "@/pages/PullRequestDraftPage";
 import { SettingsPage } from "@/pages/SettingsPage";
 
-export const router = createBrowserRouter([
+export const router = createHashRouter([
 	{
 		element: <AppLayout />,
 		children: [
 			{ path: "/", element: <HomePage /> },
 			{ path: "/settings", element: <SettingsPage /> },
+			{
+				path: "/projects/:projectTag/contexts/:contextId/pull-requests",
+				element: <PullRequestDraftPage />,
+			},
 		],
 	},
 ]);
