@@ -1,5 +1,5 @@
 import { ActionIcon, Stack, Tooltip } from "@mantine/core";
-import { CodeIcon, GearSixIcon } from "@phosphor-icons/react";
+import { CodeIcon, GearSixIcon, GitPullRequestIcon } from "@phosphor-icons/react";
 import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate } from "react-router";
 
@@ -11,6 +11,11 @@ type NavItem = {
 
 const TOP_ITEMS: NavItem[] = [
 	{ path: "/", labelKey: "navigation.projects", icon: <CodeIcon size={24} /> },
+	{
+		path: "/pull-requests",
+		labelKey: "navigation.pullRequests",
+		icon: <GitPullRequestIcon size={24} />,
+	},
 ];
 
 const BOTTOM_ITEMS: NavItem[] = [

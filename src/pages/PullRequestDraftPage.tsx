@@ -16,7 +16,7 @@ import { ArrowLeftIcon, CheckIcon, CopyIcon } from "@phosphor-icons/react";
 import MDEditor from "@uiw/react-md-editor";
 import "@uiw/react-md-editor/markdown-editor.css";
 import "./PullRequestDraftPage.css";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router";
 import { useContexts } from "@/hooks/useContexts";
@@ -102,7 +102,37 @@ function PullRequestDraftView({ project, context }: PullRequestDraftViewProps) {
 	const navigate = useNavigate();
 	const { savePullRequestDrafts } = useContexts(project);
 	const [drafts, setDrafts] = useState<Record<string, PullRequestDraft>>(context.pullRequestDrafts);
-	const [saving, setSaving] = useState(false);
+
+	const draftsRef = useRef(drafts);
+	draftsRef.current = drafts;
+
+	const saveRef = useRef(savePullRequestDrafts);
+	saveRef.current = savePullRequestDrafts;
+
+	const contextIdRef = useRef(context.id);
+	contextIdRef.current = context.id;
+
+	useEffect(() => {
+		function autoSave() {
+			saveRef.current(contextIdRef.current, draftsRef.current);
+		}
+
+		function handleVisibilityChange() {
+			if (document.visibilityState === "hidden") {
+				autoSave();
+			}
+		}
+
+		window.addEventListener("blur", autoSave);
+		document.addEventListener("visibilitychange", handleVisibilityChange);
+
+		return () => {
+			window.removeEventListener("blur", autoSave);
+			document.removeEventListener("visibilitychange", handleVisibilityChange);
+			// Persist on unmount (navigating away from the page).
+			autoSave();
+		};
+	}, []);
 
 	const repositories = context.branches
 		.map((branch) => ({ branch, repository: project.findRepository(branch.repositoryId) }))
@@ -112,41 +142,24 @@ function PullRequestDraftView({ project, context }: PullRequestDraftViewProps) {
 		setDrafts((prev) => ({ ...prev, [repositoryId]: draft }));
 	}
 
-	async function handleSave() {
-		setSaving(true);
-		await savePullRequestDrafts(context.id, drafts);
-		setSaving(false);
-	}
-
-	async function handleBack() {
-		await savePullRequestDrafts(context.id, drafts);
-		navigate("/");
+	function handleBack() {
+		navigate("/pull-requests");
 	}
 
 	return (
 		<Stack gap="md">
-			<Group justify="space-between">
-				<Group gap="sm">
-					<Tooltip label={t("common.back")}>
-						<ActionIcon
-							variant="subtle"
-							size="lg"
-							onClick={handleBack}
-							aria-label={t("common.back")}
-						>
-							<ArrowLeftIcon size={20} />
-						</ActionIcon>
-					</Tooltip>
-					<Stack gap={0}>
-						<Title order={3}>{t("contexts.draftPullRequestTitle")}</Title>
-						<Text size="sm" c="dimmed">
-							{t("contexts.draftPullRequestDescription", { name: context.name })}
-						</Text>
-					</Stack>
-				</Group>
-				<Button onClick={handleSave} loading={saving}>
-					{t("common.save")}
-				</Button>
+			<Group gap="sm">
+				<Tooltip label={t("common.back")}>
+					<ActionIcon variant="subtle" size="lg" onClick={handleBack} aria-label={t("common.back")}>
+						<ArrowLeftIcon size={20} />
+					</ActionIcon>
+				</Tooltip>
+				<Stack gap={0}>
+					<Title order={3}>{t("contexts.draftPullRequestTitle")}</Title>
+					<Text size="sm" c="dimmed">
+						{t("contexts.draftPullRequestDescription", { name: context.name })}
+					</Text>
+				</Stack>
 			</Group>
 			{repositories.length === 0 ? (
 				<Text size="sm" c="dimmed">

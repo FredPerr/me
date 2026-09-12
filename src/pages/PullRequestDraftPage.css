@@ -59,8 +59,6 @@
 .pr-draft-editor.w-md-editor .w-md-editor-text-pre > code,
 .pr-draft-editor.w-md-editor .w-md-editor-text-pre .token {
 	font-family: var(--mantine-font-family-monospace);
-	font-size: 13px;
-	line-height: 1.6;
 	letter-spacing: normal;
 	tab-size: 2;
 }

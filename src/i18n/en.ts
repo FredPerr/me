@@ -116,7 +116,18 @@ export const en = {
 		},
 		navigation: {
 			projects: "Projects",
+			pullRequests: "Pull requests",
 			settings: "Settings",
+		},
+		pullRequests: {
+			title: "Pull requests",
+			activeTab: "Active",
+			draftsTab: "Drafts",
+			noDrafts: "No draft pull requests yet.",
+			untitledDraft: "Untitled draft",
+			notConnectedTitle: "No git provider connected",
+			notConnectedDescription:
+				"Connect a git provider like GitHub or Bitbucket to view your active pull requests here.",
 		},
 		project: {
 			openInIde: "Open root in IDE",
