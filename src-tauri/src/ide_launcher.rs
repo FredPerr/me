@@ -146,9 +146,6 @@ mod tests {
 
     #[test]
     fn absolute_path_to_missing_file_resolves_to_none() {
-        assert_eq!(
-            resolve_binary("/definitely/not/here/kiro", None),
-            None
-        );
+        assert_eq!(resolve_binary("/definitely/not/here/kiro", None), None);
     }
 }

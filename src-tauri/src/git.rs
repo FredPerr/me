@@ -126,7 +126,10 @@ pub struct WorktreeStatus {
 }
 
 #[tauri::command]
-pub async fn get_worktree_status(path: String, base_branch: Option<String>) -> Result<WorktreeStatus, String> {
+pub async fn get_worktree_status(
+    path: String,
+    base_branch: Option<String>,
+) -> Result<WorktreeStatus, String> {
     let repo = Repository::open(&path).map_err(|e| e.to_string())?;
 
     let (changed_files, insertions, deletions) = match &base_branch {
@@ -218,7 +221,10 @@ fn count_changed_lines(repo: &Repository) -> (usize, usize) {
     (total_insertions, total_deletions)
 }
 
-fn resolve_branch_commit<'a>(repo: &'a Repository, branch_name: &str) -> Result<git2::Commit<'a>, String> {
+fn resolve_branch_commit<'a>(
+    repo: &'a Repository,
+    branch_name: &str,
+) -> Result<git2::Commit<'a>, String> {
     if let Ok(branch) = repo.find_branch(branch_name, git2::BranchType::Local) {
         return branch.get().peel_to_commit().map_err(|e| e.to_string());
     }
@@ -232,16 +238,24 @@ fn resolve_branch_commit<'a>(repo: &'a Repository, branch_name: &str) -> Result<
     reference.peel_to_commit().map_err(|e| e.to_string())
 }
 
-fn count_diff_against_base(repo: &Repository, base_branch: &str) -> Result<(FileChangeCounts, usize, usize), String> {
+fn count_diff_against_base(
+    repo: &Repository,
+    base_branch: &str,
+) -> Result<(FileChangeCounts, usize, usize), String> {
     let base_commit = resolve_branch_commit(repo, base_branch)?;
 
-    let head_commit = repo.head().map_err(|e| e.to_string())?
-        .peel_to_commit().map_err(|e| e.to_string())?;
+    let head_commit = repo
+        .head()
+        .map_err(|e| e.to_string())?
+        .peel_to_commit()
+        .map_err(|e| e.to_string())?;
 
     let merge_base_oid = repo
         .merge_base(base_commit.id(), head_commit.id())
         .map_err(|e| format!("Could not find merge base: {}", e))?;
-    let merge_base_commit = repo.find_commit(merge_base_oid).map_err(|e| e.to_string())?;
+    let merge_base_commit = repo
+        .find_commit(merge_base_oid)
+        .map_err(|e| e.to_string())?;
     let merge_base_tree = merge_base_commit.tree().map_err(|e| e.to_string())?;
 
     let head_tree = head_commit.tree().map_err(|e| e.to_string())?;
@@ -402,35 +416,26 @@ pub async fn create_context(
 
         if repo_input.linked {
             let symlink_target = match &base_context_name {
-                Some(base_name) if base_name != "default" => {
-                    project_dir
-                        .join(".worktrees")
-                        .join(base_name)
-                        .join(&repo_input.name)
-                }
+                Some(base_name) if base_name != "default" => project_dir
+                    .join(".worktrees")
+                    .join(base_name)
+                    .join(&repo_input.name),
                 _ => repo_path.clone(),
             };
 
             if let Some(parent) = worktree_dir.parent() {
-                std::fs::create_dir_all(parent).map_err(|e| {
-                    format!("Failed to create parent directory: {}", e)
-                })?;
+                std::fs::create_dir_all(parent)
+                    .map_err(|e| format!("Failed to create parent directory: {}", e))?;
             }
 
             #[cfg(unix)]
             std::os::unix::fs::symlink(&symlink_target, &worktree_dir).map_err(|e| {
-                format!(
-                    "Failed to create symlink for '{}': {}",
-                    repo_input.name, e
-                )
+                format!("Failed to create symlink for '{}': {}", repo_input.name, e)
             })?;
 
             #[cfg(windows)]
             std::os::windows::fs::symlink_dir(&symlink_target, &worktree_dir).map_err(|e| {
-                format!(
-                    "Failed to create symlink for '{}': {}",
-                    repo_input.name, e
-                )
+                format!("Failed to create symlink for '{}': {}", repo_input.name, e)
             })?;
 
             results.push(ContextRepoResult {
@@ -544,33 +549,32 @@ pub async fn create_context(
 
         if let Some(parent) = link_path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| {
-                format!("Failed to create directory for symlink '{}': {}", symlink_rel, e)
+                format!(
+                    "Failed to create directory for symlink '{}': {}",
+                    symlink_rel, e
+                )
             })?;
         }
 
         #[cfg(unix)]
         {
             if source.is_dir() {
-                std::os::unix::fs::symlink(&source, &link_path).map_err(|e| {
-                    format!("Failed to symlink '{}': {}", symlink_rel, e)
-                })?;
+                std::os::unix::fs::symlink(&source, &link_path)
+                    .map_err(|e| format!("Failed to symlink '{}': {}", symlink_rel, e))?;
             } else {
-                std::os::unix::fs::symlink(&source, &link_path).map_err(|e| {
-                    format!("Failed to symlink '{}': {}", symlink_rel, e)
-                })?;
+                std::os::unix::fs::symlink(&source, &link_path)
+                    .map_err(|e| format!("Failed to symlink '{}': {}", symlink_rel, e))?;
             }
         }
 
         #[cfg(windows)]
         {
             if source.is_dir() {
-                std::os::windows::fs::symlink_dir(&source, &link_path).map_err(|e| {
-                    format!("Failed to symlink '{}': {}", symlink_rel, e)
-                })?;
+                std::os::windows::fs::symlink_dir(&source, &link_path)
+                    .map_err(|e| format!("Failed to symlink '{}': {}", symlink_rel, e))?;
             } else {
-                std::os::windows::fs::symlink_file(&source, &link_path).map_err(|e| {
-                    format!("Failed to symlink '{}': {}", symlink_rel, e)
-                })?;
+                std::os::windows::fs::symlink_file(&source, &link_path)
+                    .map_err(|e| format!("Failed to symlink '{}': {}", symlink_rel, e))?;
             }
         }
     }
@@ -599,12 +603,8 @@ pub async fn delete_context(
         let worktree_path = worktree_dir.to_string_lossy().to_string();
 
         if worktree_dir.is_symlink() {
-            std::fs::remove_file(&worktree_dir).map_err(|e| {
-                format!(
-                    "Failed to remove symlink '{}': {}",
-                    worktree_path, e
-                )
-            })?;
+            std::fs::remove_file(&worktree_dir)
+                .map_err(|e| format!("Failed to remove symlink '{}': {}", worktree_path, e))?;
         } else if worktree_dir.exists() {
             let output = std::process::Command::new("git")
                 .args(["worktree", "remove", "--force", &worktree_path])

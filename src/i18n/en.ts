@@ -119,6 +119,18 @@ export const en = {
 			pullRequests: "Pull requests",
 			settings: "Settings",
 		},
+		updater: {
+			available: "Update available",
+			availableMessage: "Version {{version}} is available. Downloading now...",
+			downloading: "Downloading update",
+			installing: "Installing update",
+			readyTitle: "Update ready",
+			readyMessage: "The app will restart to finish updating.",
+			upToDate: "You're up to date",
+			upToDateMessage: "You already have the latest version.",
+			failedTitle: "Update failed",
+			failedMessage: "Could not check for or install the update.",
+		},
 		pullRequests: {
 			title: "Pull requests",
 			activeTab: "Active",

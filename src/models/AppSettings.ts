@@ -1,4 +1,4 @@
-import { BaseDirectory, exists, readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
+import { load } from "@tauri-apps/plugin-store";
 
 export type AppSettings = {
 	ideCommand: string;
@@ -6,7 +6,8 @@ export type AppSettings = {
 	workspaceRefreshInterval: number | null;
 };
 
-const SETTINGS_FILE = "settings.json";
+const SETTINGS_STORE_FILE = "settings.json";
+const SETTINGS_KEY = "settings";
 
 const DEFAULT_SETTINGS: AppSettings = {
 	ideCommand: "kiro",
@@ -14,20 +15,21 @@ const DEFAULT_SETTINGS: AppSettings = {
 	workspaceRefreshInterval: 5,
 };
 
+async function openStore() {
+	return load(SETTINGS_STORE_FILE, { autoSave: true });
+}
+
 export const AppSettingsRepository = {
 	async load(): Promise<AppSettings> {
-		const fileExists = await exists(SETTINGS_FILE, { baseDir: BaseDirectory.AppData });
+		const store = await openStore();
+		const stored = await store.get<Partial<AppSettings>>(SETTINGS_KEY);
 
-		if (!fileExists) {
-			return DEFAULT_SETTINGS;
-		}
-
-		const content = await readTextFile(SETTINGS_FILE, { baseDir: BaseDirectory.AppData });
-		return { ...DEFAULT_SETTINGS, ...JSON.parse(content) };
+		return { ...DEFAULT_SETTINGS, ...stored };
 	},
 
 	async save(settings: AppSettings): Promise<void> {
-		const content = JSON.stringify(settings, null, 2);
-		await writeTextFile(SETTINGS_FILE, content, { baseDir: BaseDirectory.AppData });
+		const store = await openStore();
+		await store.set(SETTINGS_KEY, settings);
+		await store.save();
 	},
 };

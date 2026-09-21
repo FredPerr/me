@@ -1,0 +1,76 @@
+name: Release (macOS)
+
+# Publishes a macOS ARM (.dmg) release on every push to main.
+# Can also be run manually from the Actions tab.
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release-macos:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Bump patch version
+        id: version
+        run: |
+          # Bump package.json patch (no git tag), keep tauri.conf.json in sync.
+          NEW_VERSION=$(npm version patch --no-git-tag-version | sed 's/^v//')
+          node -e "const f='src-tauri/tauri.conf.json';const c=require('./'+f);c.version='$NEW_VERSION';require('fs').writeFileSync(f, JSON.stringify(c,null,2)+'\n')"
+          echo "version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Commit version bump
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add package.json src-tauri/tauri.conf.json
+          # [skip ci] prevents this commit from re-triggering the workflow.
+          git commit -m "chore: release v${{ steps.version.outputs.version }} [skip ci]"
+          git push
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+
+      - name: Cache Rust build
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.18.0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build and release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          args: --target aarch64-apple-darwin
+          tagName: v${{ steps.version.outputs.version }}
+          releaseName: "me v${{ steps.version.outputs.version }}"
+          # Publish immediately so releases/latest serves latest.json to the updater.
+          releaseDraft: false
+          prerelease: false
+          includeUpdaterJson: true

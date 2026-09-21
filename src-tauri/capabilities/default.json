@@ -33,6 +33,8 @@
     {
       "identifier": "fs:allow-remove",
       "allow": [{ "path": "$APPDATA/**" }]
-    }
+    },
+    "store:default",
+    "process:default"
   ]
 }
