@@ -146,13 +146,6 @@ export function CreateFromBranchesModal({
 				<Text size="sm" c="dimmed">
 					{t("contexts.createFromBranchesDescription")}
 				</Text>
-				<TextInput
-					label={t("contexts.contextName")}
-					placeholder="feature/my-feature"
-					value={contextName}
-					onChange={(e) => setContextName(e.currentTarget.value)}
-					required
-				/>
 				{project.repositories.map((repo) => {
 					const branch = selectedBranches[repo.id] ?? null;
 					return (
@@ -204,6 +197,13 @@ export function CreateFromBranchesModal({
 						</Box>
 					);
 				})}
+				<TextInput
+					label={t("contexts.contextName")}
+					placeholder="feature/my-feature"
+					value={contextName}
+					onChange={(e) => setContextName(e.currentTarget.value)}
+					required
+				/>
 				<Group justify="flex-end">
 					<Button variant="subtle" onClick={handleClose}>
 						{t("common.cancel")}
