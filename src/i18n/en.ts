@@ -99,6 +99,13 @@ export const en = {
 			createFailed: "Failed to create context",
 			createFromContext: "Create context from this",
 			createFromContextDescription: 'Create a new context branching from "{{name}}".',
+			createFromBranches: "Create from branches",
+			createFromBranchesDescription:
+				"Create a context from existing local branches. Pick a branch for each repository, or leave one empty to link it to the current checkout.",
+			selectExistingBranch: "Select an existing branch",
+			copyBranchToName: "Use this branch as the context name",
+			repoWillBeLinked:
+				"No branch selected — this repository will be linked to the current checkout.",
 			draftPullRequest: "Draft pull requests",
 			draftPullRequestTitle: "Draft pull requests",
 			draftPullRequestDescription:

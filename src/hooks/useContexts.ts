@@ -1,7 +1,13 @@
 import { notifications } from "@mantine/notifications";
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useState } from "react";
-import { Context, ContextBranch, Project, type PullRequestDraft } from "@/models/Project";
+import {
+	Context,
+	ContextBranch,
+	Project,
+	type PullRequestDraft,
+	type Repository,
+} from "@/models/Project";
 import { ProjectDirectory } from "@/models/ProjectDirectory";
 
 type RepositoryBranchConfig = {
@@ -17,7 +23,22 @@ type CreateContextParams = {
 	baseContextName?: string;
 };
 
-export type { CreateContextParams, RepositoryBranchConfig };
+type ExistingBranchConfig = {
+	repositoryId: string;
+	branch: string | null;
+};
+
+type CreateContextFromBranchesParams = {
+	name: string;
+	repositories: ExistingBranchConfig[];
+};
+
+export type {
+	CreateContextFromBranchesParams,
+	CreateContextParams,
+	ExistingBranchConfig,
+	RepositoryBranchConfig,
+};
 
 export function useContexts(project: Project) {
 	const [defaultContext, setDefaultContext] = useState<Context | null>(null);
@@ -63,6 +84,33 @@ export function useContexts(project: Project) {
 			);
 
 			const newContext = new Context(crypto.randomUUID(), name, branches, false, baseContextName);
+			const updatedProject = project.addContext(newContext);
+
+			await ProjectDirectory.saveProject(updatedProject);
+			setPersistedContexts((prev) => [...prev, newContext]);
+		},
+		[project],
+	);
+
+	const createContextFromBranches = useCallback(
+		async ({ name, repositories: branchConfigs }: CreateContextFromBranchesParams) => {
+			const repos = await buildRepoInputsFromExistingBranches(project, branchConfigs);
+
+			if (repos.length > 0) {
+				await invoke("create_context", {
+					projectPath: project.path,
+					contextName: name,
+					repos,
+					symlinks: project.symlinks,
+					baseContextName: null,
+				});
+			}
+
+			const branches = repos.map(
+				(repo) => new ContextBranch(repo.repository_id, repo.branch, repo.linked),
+			);
+
+			const newContext = new Context(crypto.randomUUID(), name, branches, false);
 			const updatedProject = project.addContext(newContext);
 
 			await ProjectDirectory.saveProject(updatedProject);
@@ -133,7 +181,14 @@ export function useContexts(project: Project) {
 		[project, persistedContexts],
 	);
 
-	return { contexts, defaultContext, createContext, deleteContext, savePullRequestDrafts };
+	return {
+		contexts,
+		defaultContext,
+		createContext,
+		createContextFromBranches,
+		deleteContext,
+		savePullRequestDrafts,
+	};
 }
 
 async function buildDefaultContext(project: Project): Promise<Context | null> {
@@ -174,6 +229,47 @@ async function buildRepoInputs(project: Project, repoConfigs: RepositoryBranchCo
 			branch: config.createBranch ? config.branchName : config.baseBranch,
 			base_branch: config.baseBranch,
 			linked: !config.createBranch,
+			post_checkout_command: repo.postCheckoutCommand ?? null,
+		});
+	}
+	return inputs;
+}
+
+async function resolveDefaultBranch(project: Project, repo: Repository): Promise<string> {
+	try {
+		const resolvedPath = await repo.resolveAbsolutePath(project.path);
+		const branchList = await invoke<string[]>("list_branches", { path: resolvedPath });
+		return (
+			branchList.find((b) => b === "main") ??
+			branchList.find((b) => b === "master") ??
+			branchList[0] ??
+			""
+		);
+	} catch {
+		return "";
+	}
+}
+
+async function buildRepoInputsFromExistingBranches(
+	project: Project,
+	branchConfigs: ExistingBranchConfig[],
+) {
+	const inputs = [];
+	for (const config of branchConfigs) {
+		const repo = project.findRepository(config.repositoryId);
+		if (!repo) continue;
+
+		const resolvedPath = await repo.resolveAbsolutePath(project.path);
+		const isLinked = !config.branch;
+		const branch = config.branch ?? (await resolveDefaultBranch(project, repo));
+
+		inputs.push({
+			repository_id: repo.id,
+			rel_path: resolvedPath,
+			name: repo.name,
+			branch,
+			base_branch: branch,
+			linked: isLinked,
 			post_checkout_command: repo.postCheckoutCommand ?? null,
 		});
 	}

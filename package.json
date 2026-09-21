@@ -3,6 +3,8 @@
 	"private": true,
 	"version": "0.1.1",
 	"type": "module",
+	"author": "Frédéric Perron",
+	"license": "PolyForm-Noncommercial-1.0.0",
 	"scripts": {
 		"dev": "vite",
 		"build": "tsc && vite build",
@@ -27,7 +29,7 @@
 		"@tauri-apps/plugin-process": "^2.3.1",
 		"@tauri-apps/plugin-shell": "~2.3.5",
 		"@tauri-apps/plugin-store": "~2.4.5",
-		"@tauri-apps/plugin-updater": "^2.11.0",
+		"@tauri-apps/plugin-updater": "^2.12.0",
 		"@tauri-apps/plugin-window-state": "~2.4.1",
 		"@uiw/react-md-editor": "4.1.2",
 		"i18next": "^26.4.0",

@@ -1,8 +1,10 @@
 import { Button, Divider, Group, Stack, TabsPanel } from "@mantine/core";
-import { AppWindowIcon } from "@phosphor-icons/react";
+import { useDisclosure } from "@mantine/hooks";
+import { AppWindowIcon, GitBranchIcon } from "@phosphor-icons/react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ContextsGrid } from "@/components/contexts/ContextsGrid";
+import { CreateFromBranchesModal } from "@/components/contexts/CreateFromBranchesModal";
 import { SearchContextInput } from "@/components/contexts/SearchContextInput";
 import { GitRemoteLink } from "@/components/shared/GitRemoteLink";
 import { PullContextsButton } from "@/components/shared/PullContextsButton";
@@ -17,8 +19,11 @@ type ProjectTabPanelProps = {
 export function ProjectTabPanel({ project }: ProjectTabPanelProps) {
 	const { t } = useTranslation();
 	const { open, isAvailable } = useOpenInIde();
-	const { contexts, createContext, deleteContext } = useContexts(project);
+	const { contexts, createContext, createContextFromBranches, deleteContext } =
+		useContexts(project);
 	const [searchFilter, setSearchFilter] = useState("");
+	const [fromBranchesOpened, { open: openFromBranches, close: closeFromBranches }] =
+		useDisclosure(false);
 
 	return (
 		<TabsPanel value={project.tag}>
@@ -28,6 +33,14 @@ export function ProjectTabPanel({ project }: ProjectTabPanelProps) {
 					<Group gap="xs">
 						<GitRemoteLink path={project.path} />
 						<PullContextsButton project={project} />
+						<Button
+							variant="default"
+							leftSection={<GitBranchIcon size={16} />}
+							size="xs"
+							onClick={openFromBranches}
+						>
+							{t("contexts.createFromBranches")}
+						</Button>
 						<Button
 							leftSection={<AppWindowIcon size={16} />}
 							size="xs"
@@ -47,6 +60,12 @@ export function ProjectTabPanel({ project }: ProjectTabPanelProps) {
 					searchFilter={searchFilter}
 				/>
 			</Stack>
+			<CreateFromBranchesModal
+				opened={fromBranchesOpened}
+				onClose={closeFromBranches}
+				project={project}
+				onCreate={createContextFromBranches}
+			/>
 		</TabsPanel> // group under a tag for features
 	);
 }
