@@ -141,6 +141,9 @@ export const en = {
 			pullDoneMessage: "Pulled {{count}} branch(es) from remote",
 			pullFailedTitle: "Pull failed",
 			pullFailedMessage: "Failed to pull {{count}} branch(es)",
+			pullFailedDetails: "Failed to pull {{count}} branch(es):\n{{reasons}}",
+			pullFailedHint:
+				"A pull is fast-forward only. Open the affected worktree and resolve it manually (e.g. commit, stash, or rebase your local changes), then try again.",
 		},
 	},
 } as const;

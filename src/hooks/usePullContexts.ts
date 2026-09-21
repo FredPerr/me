@@ -24,6 +24,11 @@ function collectWorktreePaths(project: Project): string[] {
 	return [...paths];
 }
 
+function describeFailure(path: string, reason: unknown): string {
+	const message = reason instanceof Error ? reason.message : String(reason);
+	return `• ${path}: ${message}`;
+}
+
 export function usePullContexts(project: Project) {
 	const { t } = useTranslation();
 	const [pulling, setPulling] = useState(false);
@@ -39,13 +44,21 @@ export function usePullContexts(project: Project) {
 			const pulledCount = results.filter(
 				(result) => result.status === "fulfilled" && result.value.pulled,
 			).length;
-			const failures = results.filter((result) => result.status === "rejected");
+			const failureReasons = results.flatMap((result, index) =>
+				result.status === "rejected" ? [describeFailure(paths[index], result.reason)] : [],
+			);
 
-			if (failures.length > 0) {
+			if (failureReasons.length > 0) {
 				notifications.show({
 					title: t("project.pullFailedTitle"),
-					message: t("project.pullFailedMessage", { count: failures.length }),
+					message: `${t("project.pullFailedDetails", {
+						count: failureReasons.length,
+						reasons: failureReasons.join("\n"),
+					})}\n\n${t("project.pullFailedHint")}`,
 					color: "red",
+					autoClose: false,
+					withCloseButton: true,
+					style: { whiteSpace: "pre-line" },
 				});
 				return;
 			}

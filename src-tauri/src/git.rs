@@ -677,6 +677,26 @@ pub struct PullResult {
     pub message: Option<String>,
 }
 
+fn has_upstream(repo: &Repository) -> bool {
+    let Ok(head) = repo.head() else {
+        return false;
+    };
+
+    if !head.is_branch() {
+        return false;
+    }
+
+    let Some(branch_name) = head.shorthand() else {
+        return false;
+    };
+
+    let Ok(branch) = repo.find_branch(branch_name, git2::BranchType::Local) else {
+        return false;
+    };
+
+    branch.upstream().is_ok()
+}
+
 #[tauri::command]
 pub async fn pull_worktree(path: String) -> Result<PullResult, String> {
     let repo = match Repository::open(&path) {
@@ -690,6 +710,14 @@ pub async fn pull_worktree(path: String) -> Result<PullResult, String> {
             path: normalize_path(&path),
             pulled: false,
             message: Some("No remote configured".to_string()),
+        });
+    }
+
+    if !has_upstream(&repo) {
+        return Ok(PullResult {
+            path: normalize_path(&path),
+            pulled: false,
+            message: Some("No upstream branch (not pushed yet)".to_string()),
         });
     }
 
