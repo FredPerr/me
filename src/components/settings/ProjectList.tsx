@@ -7,7 +7,7 @@ type ProjectListProps = {
 	projects: Project[];
 	onEdit: (project: Project) => void;
 	onDelete: (project: Project) => void;
-	searchValue: string
+	searchValue: string;
 };
 
 export function ProjectList({ projects, onEdit, onDelete, searchValue }: ProjectListProps) {

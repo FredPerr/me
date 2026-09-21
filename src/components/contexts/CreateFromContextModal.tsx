@@ -168,7 +168,11 @@ export function CreateFromContextModal({
 				};
 			});
 
-			await onCreate({ name: contextName.trim(), repositories, baseContextName: sourceContext.name });
+			await onCreate({
+				name: contextName.trim(),
+				repositories,
+				baseContextName: sourceContext.name,
+			});
 			setContextName("");
 			onClose();
 		} finally {
@@ -190,11 +194,7 @@ export function CreateFromContextModal({
 					required
 					rightSection={
 						<Tooltip
-							label={
-								syncBranchNames
-									? t("contexts.syncBranchesOn")
-									: t("contexts.syncBranchesOff")
-							}
+							label={syncBranchNames ? t("contexts.syncBranchesOn") : t("contexts.syncBranchesOff")}
 						>
 							<ActionIcon
 								variant={syncBranchNames ? "filled" : "subtle"}
@@ -227,9 +227,7 @@ export function CreateFromContextModal({
 										const checked = e.currentTarget.checked;
 										updateRepoState(repo.id, {
 											createBranch: checked,
-											...(checked && syncBranchNames
-												? { branchName: contextName.trim() }
-												: {}),
+											...(checked && syncBranchNames ? { branchName: contextName.trim() } : {}),
 										});
 									}}
 								/>

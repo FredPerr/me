@@ -18,7 +18,12 @@ export function GitRemoteLink({ path }: GitRemoteLinkProps) {
 
 	return (
 		<Tooltip label={t("project.openRepository")}>
-			<ActionIcon variant="subtle" size="sm" onClick={() => openUrl(remoteUrl)} aria-label="Open repository">
+			<ActionIcon
+				variant="subtle"
+				size="sm"
+				onClick={() => openUrl(remoteUrl)}
+				aria-label="Open repository"
+			>
 				<GithubLogoIcon size={16} />
 			</ActionIcon>
 		</Tooltip>
