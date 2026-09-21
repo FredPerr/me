@@ -1,8 +1,9 @@
 import { ActionIcon, Tooltip } from "@mantine/core";
+import { useDisclosure } from "@mantine/hooks";
 import { CloudArrowDownIcon } from "@phosphor-icons/react";
 import { useTranslation } from "react-i18next";
-import { useGitRemote } from "@/hooks/useGitRemote";
-import { usePullContexts } from "@/hooks/usePullContexts";
+import { RepositoryBranchesModal } from "@/components/shared/RepositoryBranchesModal";
+import { useProjectHasRemote } from "@/hooks/useProjectHasRemote";
 import type { Project } from "@/models/Project";
 
 type PullContextsButtonProps = {
@@ -11,24 +12,21 @@ type PullContextsButtonProps = {
 
 export function PullContextsButton({ project }: PullContextsButtonProps) {
 	const { t } = useTranslation();
-	const { remoteUrl } = useGitRemote(project.path);
-	const { pullAll, pulling } = usePullContexts(project);
+	const { hasRemote } = useProjectHasRemote(project);
+	const [opened, { open, close }] = useDisclosure(false);
 
-	if (!remoteUrl) {
+	if (!hasRemote) {
 		return null;
 	}
 
 	return (
-		<Tooltip label={t("project.pullContexts")}>
-			<ActionIcon
-				variant="subtle"
-				size="sm"
-				loading={pulling}
-				onClick={pullAll}
-				aria-label="Pull all context branches"
-			>
-				<CloudArrowDownIcon size={16} />
-			</ActionIcon>
-		</Tooltip>
+		<>
+			<Tooltip label={t("branches.title")}>
+				<ActionIcon variant="subtle" size="sm" onClick={open} aria-label={t("branches.title")}>
+					<CloudArrowDownIcon size={16} />
+				</ActionIcon>
+			</Tooltip>
+			<RepositoryBranchesModal opened={opened} onClose={close} project={project} />
+		</>
 	);
 }

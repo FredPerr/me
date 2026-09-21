@@ -31,7 +31,7 @@ export function ProjectTabPanel({ project }: ProjectTabPanelProps) {
 				<Group justify="space-between">
 					<SearchContextInput value={searchFilter} onChange={setSearchFilter} />
 					<Group gap="xs">
-						<GitRemoteLink path={project.path} />
+						<GitRemoteLink project={project} />
 						<PullContextsButton project={project} />
 						<Button
 							variant="default"

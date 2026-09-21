@@ -2,6 +2,7 @@ import { notifications } from "@mantine/notifications";
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useErrorModal } from "@/components/shared/ErrorModalProvider";
 import type { Project } from "@/models/Project";
 
 type PullResult = {
@@ -31,6 +32,7 @@ function describeFailure(path: string, reason: unknown): string {
 
 export function usePullContexts(project: Project) {
 	const { t } = useTranslation();
+	const { showError } = useErrorModal();
 	const [pulling, setPulling] = useState(false);
 
 	const pullAll = useCallback(async () => {
@@ -49,16 +51,11 @@ export function usePullContexts(project: Project) {
 			);
 
 			if (failureReasons.length > 0) {
-				notifications.show({
+				showError({
 					title: t("project.pullFailedTitle"),
-					message: `${t("project.pullFailedDetails", {
-						count: failureReasons.length,
-						reasons: failureReasons.join("\n"),
-					})}\n\n${t("project.pullFailedHint")}`,
-					color: "red",
-					autoClose: false,
-					withCloseButton: true,
-					style: { whiteSpace: "pre-line" },
+					description: t("project.pullFailedMessage", { count: failureReasons.length }),
+					details: failureReasons.join("\n"),
+					hint: t("project.pullFailedHint"),
 				});
 				return;
 			}
@@ -71,7 +68,7 @@ export function usePullContexts(project: Project) {
 		} finally {
 			setPulling(false);
 		}
-	}, [project, t]);
+	}, [project, t, showError]);
 
 	return { pullAll, pulling };
 }
