@@ -36,26 +36,16 @@ jobs:
           git commit -m "chore: release v${{ steps.version.outputs.version }} [skip ci]"
           git push
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-apple-darwin
+      - name: Install toolchain (mise)
+        uses: jdx/mise-action@v2
+
+      - name: Add macOS ARM Rust target
+        run: rustup target add aarch64-apple-darwin
 
       - name: Cache Rust build
         uses: swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 11.18.0
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
 
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile

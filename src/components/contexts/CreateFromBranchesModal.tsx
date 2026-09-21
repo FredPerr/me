@@ -78,9 +78,8 @@ export function CreateFromBranchesModal({
 		}
 	}
 
-	const selectedCount = Object.values(selectedBranches).filter(Boolean).length;
 	const hasErrors = Object.keys(branchErrors).length > 0;
-	const canSubmit = !!contextName.trim() && selectedCount > 0 && !hasErrors;
+	const canSubmit = !!contextName.trim() && !hasErrors;
 
 	async function validateSelectedBranches(): Promise<boolean> {
 		const errors: Record<string, string> = {};
