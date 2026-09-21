@@ -1,3 +1,6 @@
+#[cfg(desktop)]
+use tauri::Manager;
+
 mod git;
 mod ide_launcher;
 mod shortcuts;
@@ -20,11 +23,21 @@ async fn check_path_exists(path: String) -> bool {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let mut builder = tauri::Builder::default();
+
+    #[cfg(desktop)]
+    {
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.set_focus();
+            }
+        }));
+    }
+
+    builder
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
-        .plugin(tauri_plugin_single_instance::init(|_app, _args, _cwd| {}))
         .plugin(tauri_plugin_window_state::Builder::new().build())
         .plugin(shortcuts::plugin())
         .plugin(tauri_plugin_opener::init())
