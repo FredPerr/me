@@ -16,6 +16,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { CreateContextFromBranchesParams, ExistingBranchConfig } from "@/hooks/useContexts";
 import type { Project } from "@/models/Project";
+import { fuzzySelectFilter } from "@/utils/fuzzySelectFilter";
 
 type CreateFromBranchesModalProps = {
 	opened: boolean;
@@ -37,12 +38,14 @@ export function CreateFromBranchesModal({
 	const [selectedBranches, setSelectedBranches] = useState<Record<string, string | null>>({});
 	const [branchOptions, setBranchOptions] = useState<Record<string, string[]>>({});
 	const [branchErrors, setBranchErrors] = useState<Record<string, string>>({});
+	const [loadingBranches, setLoadingBranches] = useState(false);
 	const [loading, setLoading] = useState(false);
 
 	useEffect(() => {
 		if (!opened) return;
 
 		async function fetchBranches() {
+			setLoadingBranches(true);
 			const options: Record<string, string[]> = {};
 			for (const repo of project.repositories) {
 				try {
@@ -53,6 +56,7 @@ export function CreateFromBranchesModal({
 				}
 			}
 			setBranchOptions(options);
+			setLoadingBranches(false);
 		}
 
 		fetchBranches();
@@ -163,13 +167,20 @@ export function CreateFromBranchesModal({
 							<Group gap="xs" align="flex-end" wrap="nowrap">
 								<Select
 									label={repo.name}
-									placeholder={t("contexts.selectExistingBranch")}
+									placeholder={
+										loadingBranches
+											? t("contexts.loadingBranches")
+											: t("contexts.selectExistingBranch")
+									}
 									value={branch}
 									onChange={(value) => selectBranch(repo.id, value)}
 									data={branchOptions[repo.id] ?? []}
 									error={branchErrors[repo.id]}
+									nothingFoundMessage={t("contexts.noBranchesFound")}
+									disabled={loadingBranches}
 									searchable
 									clearable
+									filter={fuzzySelectFilter}
 									size="xs"
 									style={{ flex: 1 }}
 								/>

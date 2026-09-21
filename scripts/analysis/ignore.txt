@@ -1,0 +1,7 @@
+# Stable files ignored by the boy-scouting bottleneck analysis.
+#
+# A trailing /* or ** makes the entry a prefix match for a whole directory.
+
+src/infra/web/apiWrapper.ts
+src/infra/web/middlewares/authMiddleware.ts
+src/infra/config/env.ts

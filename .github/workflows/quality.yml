@@ -1,0 +1,179 @@
+name: Deterministic Quality & Bottleneck Analysis
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  autofix:
+    # Applies Biome auto-fixes and pushes them back to the PR branch so
+    # contributors don't have to run lint:fix and recommit manually.
+    # Skipped for forked PRs, where the token is read-only and pushing back
+    # is not permitted.
+    if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v6
+        with:
+          # Check out the PR head branch (not the detached merge commit) so the
+          # auto-fix commit can be pushed straight back to it.
+          ref: ${{ github.event.pull_request.head.ref }}
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+
+      - name: Setup
+        uses: ./.github/actions/setup
+
+      - name: Apply Biome fixes
+        run: pnpm lint:fix
+
+      - name: Commit and push fixes
+        run: |
+          set -euo pipefail
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "No lint fixes to apply."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "style: apply biome auto-fixes [skip ci]"
+          git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
+
+  quality:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0 # Fetches full history so git diff can compare against target branch
+
+      - name: Setup
+        uses: ./.github/actions/setup
+
+      - name: Generate Dependency Cruiser Graph
+        run: pnpm exec depcruise src --config .dependency-cruiser.cjs --output-type json --output-to dep-graph.json
+
+      - name: Get Changed Files in PR
+        id: changed-files
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          # Describe the WHOLE PR, not just the latest push. Compute the set of
+          # changed files in src/ relative to the merge-base with the target
+          # branch so the result is identical on `opened` and `synchronize`.
+          #
+          # Fetch the base branch explicitly (the checkout only guarantees the
+          # PR head is present) and use the PR head SHA from the event payload
+          # rather than HEAD, which on `synchronize` may point at a merge commit.
+          # The checkout uses fetch-depth: 0 (full history), so no depth flag
+          # here. Just ensure the base branch ref is present locally.
+          git fetch --no-tags origin "$BASE_REF"
+
+          MERGE_BASE=$(git merge-base "origin/$BASE_REF" "$PR_HEAD_SHA")
+
+          # NUL-delimited to survive unusual paths; re-joined with spaces for the
+          # detector, which splits its --changed args on whitespace.
+          FILES=$(git diff --name-only -z "$MERGE_BASE" "$PR_HEAD_SHA" \
+            | tr '\0' '\n' \
+            | grep '^src/' \
+            | tr '\n' ' ')
+          echo "files=$FILES" >> $GITHUB_OUTPUT
+
+      - name: Run Boy-Scout Bottleneck Detector
+        id: bottleneck
+        run: |
+          if [ -n "${{ steps.changed-files.outputs.files }}" ]; then
+            pnpm exec tsx scripts/analysis/main.ts --changed ${{ steps.changed-files.outputs.files }}
+          else
+            echo "No files in src/ were modified."
+          fi
+
+      - name: Post Change Impact Graph
+        if: ${{ steps.changed-files.outputs.files != '' }}
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: pnpm exec tsx scripts/analysis/change-graph-main.ts --changed ${{ steps.changed-files.outputs.files }}
+
+      - name: Nudge New Code Comments
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: pnpm run analyze:comment-nudges
+
+      - name: Nudge New String-Literal Union Types
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: pnpm run analyze:enum-nudges
+
+      - name: Upsert Bottleneck PR Comment
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const marker = '<!-- bottleneck-analysis-comment -->';
+            const commentPath = 'bottleneck-comment.md';
+
+            // Whether the detector step completed cleanly (not errored).
+            const detectorSucceeded = '${{ steps.bottleneck.outcome }}' === 'success';
+            // Empty when no src/ files changed, so the detector was skipped and
+            // wrote no comment file. In that case the PR touched nothing risky,
+            // which is itself an authoritative "all clear" result.
+            const hadChangedFiles = '${{ steps.changed-files.outputs.files }}'.trim().length > 0;
+
+            // The detector always writes an authoritative body when it runs
+            // (findings table or all-clear). Reading it is the source of truth.
+            let body = fs.existsSync(commentPath)
+              ? fs.readFileSync(commentPath, 'utf8')
+              : null;
+
+            // No file + no changed src/ files + clean run means the PR is all
+            // clear. Synthesize the all-clear body so we still update in place
+            // rather than deleting the comment on this legitimate outcome.
+            if (!body && detectorSucceeded && !hadChangedFiles) {
+              body =
+                `${marker}\n` +
+                `### ✅ No Boy-Scouting Opportunity Detected\n\n` +
+                `Analyzed 0 changed \`src/\` files.\n\n` +
+                `This PR does not modify any high blast-radius hotspots in \`src/\`.\n`;
+            }
+
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+
+            const existing = (
+              await github.rest.issues.listComments({ owner, repo, issue_number })
+            ).data.find((comment) => comment.body?.includes(marker));
+
+            // No authoritative body means the detector errored (masked by the
+            // `if: always()` upsert). Leave any existing comment untouched
+            // rather than deleting a valid finding on a failed run.
+            if (!body) {
+              return;
+            }
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number,
+                body,
+              });
+            }

@@ -14,7 +14,10 @@
 		"lint:fix": "biome check --write .",
 		"test": "vitest run",
 		"test:watch": "vitest",
-		"knip": "knip"
+		"knip": "knip",
+		"changelog:comment": "tsx scripts/changelogs/main.ts",
+		"analyze:comment-nudges": "tsx scripts/analysis/comment-nudge.ts",
+		"analyze:enum-nudges": "tsx scripts/analysis/enum-nudge.ts"
 	},
 	"dependencies": {
 		"@mantine/core": "^9.5.1",
@@ -45,7 +48,9 @@
 		"@types/react": "^19.1.8",
 		"@types/react-dom": "^19.1.6",
 		"@vitejs/plugin-react": "^4.6.0",
+		"dependency-cruiser": "^18.3.1",
 		"knip": "^6.32.2",
+		"tsx": "^4.23.13",
 		"typescript": "~5.8.3",
 		"vite": "^7.0.4",
 		"vitest": "^4.1.10"

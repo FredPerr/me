@@ -106,6 +106,8 @@ export const en = {
 			copyBranchToName: "Use this branch as the context name",
 			repoWillBeLinked:
 				"No branch selected — this repository will be linked to the current checkout.",
+			loadingBranches: "Loading branches…",
+			noBranchesFound: "No branches found",
 			draftPullRequest: "Draft pull requests",
 			draftPullRequestTitle: "Draft pull requests",
 			draftPullRequestDescription:

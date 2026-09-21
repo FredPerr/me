@@ -14,6 +14,7 @@ export default defineConfig(async () => ({
 	},
 	test: {
 		environment: "node",
+		exclude: ["**/node_modules/**", "**/dist/**", "**/.worktrees/**"],
 	},
 
 	clearScreen: false,
