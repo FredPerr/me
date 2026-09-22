@@ -48,6 +48,24 @@ export type ProviderRepository = {
 	defaultBranch: string;
 };
 
+/** Identifies a repository on a provider by owner and name. */
+export type RepositoryRef = {
+	owner: string;
+	repo: string;
+};
+
+/** An open pull request as shown on the pull-requests page. */
+export type ProviderPullRequest = {
+	number: number;
+	title: string;
+	htmlUrl: string;
+	author: string | null;
+	headBranch: string;
+	baseBranch: string;
+	draft: boolean;
+	updatedAt: string;
+};
+
 export interface GitProvider {
 	readonly id: GitProviderId;
 
@@ -65,6 +83,15 @@ export interface GitProvider {
 
 	/** List repositories accessible to the authenticated user. */
 	listRepositories(): Promise<ProviderRepository[]>;
+
+	/** List open pull requests for a repository. */
+	listPullRequests(repository: RepositoryRef): Promise<ProviderPullRequest[]>;
+
+	/**
+	 * Parse a normalized remote URL into an owner/repo ref, or null if the URL
+	 * does not belong to this provider.
+	 */
+	parseRepositoryRef(remoteUrl: string): RepositoryRef | null;
 
 	/** Remove the stored credentials for this provider. */
 	disconnect(): Promise<void>;

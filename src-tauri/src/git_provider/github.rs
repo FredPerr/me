@@ -243,6 +243,86 @@ pub async fn github_list_repositories() -> Result<Vec<GitHubRepository>, String>
         .collect())
 }
 
+// --- Pull requests ----------------------------------------------------------
+
+/// An open pull request, as shown on the pull-requests page.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitHubPullRequest {
+    pub number: u64,
+    pub title: String,
+    pub html_url: String,
+    pub author: Option<String>,
+    pub head_branch: String,
+    pub base_branch: String,
+    pub draft: bool,
+    pub updated_at: String,
+}
+
+#[derive(Deserialize)]
+struct PullRequestResponse {
+    number: u64,
+    title: String,
+    html_url: String,
+    user: Option<PullRequestUser>,
+    head: PullRequestRef,
+    base: PullRequestRef,
+    #[serde(default)]
+    draft: bool,
+    updated_at: String,
+}
+
+#[derive(Deserialize)]
+struct PullRequestUser {
+    login: String,
+}
+
+#[derive(Deserialize)]
+struct PullRequestRef {
+    #[serde(rename = "ref")]
+    ref_name: String,
+}
+
+/// List open pull requests for `owner/repo`, most recently updated first.
+#[tauri::command]
+pub async fn github_list_pull_requests(
+    owner: String,
+    repo: String,
+) -> Result<Vec<GitHubPullRequest>, String> {
+    let token = require_token().await?;
+
+    let url = format!("https://api.github.com/repos/{}/{}/pulls", owner, repo);
+    let response = http_client()?
+        .get(&url)
+        .bearer_auth(&token)
+        .header(reqwest::header::ACCEPT, "application/vnd.github+json")
+        .query(&[("state", "open"), ("sort", "updated"), ("direction", "desc")])
+        .send()
+        .await
+        .map_err(|error| error.to_string())?;
+
+    if !response.status().is_success() {
+        return Err(format!("GitHub returned status {}", response.status()));
+    }
+
+    let pull_requests: Vec<PullRequestResponse> =
+        response.json().await.map_err(|error| error.to_string())?;
+
+    Ok(pull_requests
+        .into_iter()
+        .map(|pull_request| GitHubPullRequest {
+            number: pull_request.number,
+            title: pull_request.title,
+            html_url: pull_request.html_url,
+            author: pull_request.user.map(|user| user.login),
+            head_branch: pull_request.head.ref_name,
+            base_branch: pull_request.base.ref_name,
+            draft: pull_request.draft,
+            updated_at: pull_request.updated_at,
+        })
+        .collect())
+}
+
 // --- Connection state --------------------------------------------------------
 
 /// Whether an access token is currently stored for GitHub. Used on startup to

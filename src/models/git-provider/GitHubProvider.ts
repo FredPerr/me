@@ -3,9 +3,13 @@ import type {
 	DeviceAuthorization,
 	DevicePollResult,
 	GitProvider,
+	ProviderPullRequest,
 	ProviderRepository,
 	ProviderUser,
+	RepositoryRef,
 } from "./GitProvider";
+
+const GITHUB_HOST = "github.com";
 
 /**
  * GitHub implementation of the {@link GitProvider} port. All network calls and
@@ -35,7 +39,49 @@ export class GitHubProvider implements GitProvider {
 		return invoke<ProviderRepository[]>("github_list_repositories");
 	}
 
+	listPullRequests(repository: RepositoryRef): Promise<ProviderPullRequest[]> {
+		return invoke<ProviderPullRequest[]>("github_list_pull_requests", {
+			owner: repository.owner,
+			repo: repository.repo,
+		});
+	}
+
+	parseRepositoryRef(remoteUrl: string): RepositoryRef | null {
+		return parseGitHubRepositoryRef(remoteUrl);
+	}
+
 	disconnect(): Promise<void> {
 		return invoke<void>("github_disconnect");
 	}
+}
+
+/**
+ * Extract `owner`/`repo` from a GitHub remote URL. Accepts the normalized
+ * `https://github.com/owner/repo` form the backend produces, as well as raw
+ * HTTPS/SSH URLs with an optional `.git` suffix. Returns null for non-GitHub
+ * URLs or URLs missing an owner/repo pair.
+ */
+export function parseGitHubRepositoryRef(remoteUrl: string): RepositoryRef | null {
+	const trimmed = remoteUrl.trim();
+	if (!trimmed.includes(GITHUB_HOST)) {
+		return null;
+	}
+
+	const afterHost = trimmed.split(GITHUB_HOST)[1];
+	if (!afterHost) {
+		return null;
+	}
+
+	// Strip the leading separator (":" for SSH, "/" for HTTPS) and any trailing
+	// ".git" or slashes, then take the first two path segments.
+	const path = afterHost
+		.replace(/^[:/]+/, "")
+		.replace(/\.git$/, "")
+		.replace(/\/+$/, "");
+	const segments = path.split("/").filter((segment) => segment.length > 0);
+	if (segments.length < 2) {
+		return null;
+	}
+
+	return { owner: segments[0], repo: segments[1] };
 }

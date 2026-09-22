@@ -171,6 +171,13 @@ export const en = {
 			notConnectedTitle: "No git provider connected",
 			notConnectedDescription:
 				"Connect a git provider like GitHub or Bitbucket to view your active pull requests here.",
+			goToSettings: "Connect an account in Settings",
+			loadError: "Could not load pull requests from GitHub.",
+			noOpen: "No open pull requests across your projects.",
+			noOpenForRepo: "No open pull requests.",
+			draftBadge: "Draft",
+			unknownAuthor: "unknown",
+			prMeta: "#{{number}} by {{author}} · {{branch}}",
 		},
 		project: {
 			openInIde: "Open root in IDE",

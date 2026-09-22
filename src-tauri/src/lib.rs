@@ -67,6 +67,7 @@ pub fn run() {
             git_provider::github::github_poll_for_access_token,
             git_provider::github::github_get_authenticated_user,
             git_provider::github::github_list_repositories,
+            git_provider::github::github_list_pull_requests,
             git_provider::github::github_is_connected,
             git_provider::github::github_disconnect,
             workspace_detector::get_active_workspaces
