@@ -145,6 +145,27 @@ export const en = {
 			deleteFailed: "Failed to delete context",
 			noBaseBranch: "No base branch available",
 		},
+		review: {
+			shareButton: "Share for review",
+			title: "Share pull requests for review",
+			description:
+				"Select the pull requests to share, order them, and mark dependencies. The message orders dependencies before the PRs that depend on them.",
+			notConnected: "Connect a GitHub account in Settings to load pull requests.",
+			loadError: "Could not load pull requests from GitHub.",
+			noPullRequests: "No open pull requests for this project.",
+			dependsOn: "Depends on",
+			dependsOnPlaceholder: "Pick prerequisite PRs",
+			autoFromBase: "Auto from base branch",
+			resetToAuto: "Reset to auto",
+			moveUp: "Move up",
+			moveDown: "Move down",
+			preview: "Slack message preview",
+			copyMessage: "Copy message",
+			messageHeading: "PRs ready for review:",
+			cycleTitle: "Circular dependency",
+			cycleMessage:
+				"Some pull requests depend on each other in a loop. Remove a dependency to generate the message.",
+		},
 		navigation: {
 			projects: "Projects",
 			pullRequests: "Pull requests",

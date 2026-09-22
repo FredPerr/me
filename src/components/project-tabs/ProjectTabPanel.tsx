@@ -1,11 +1,12 @@
 import { Button, Divider, Group, Stack, TabsPanel } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
-import { AppWindowIcon, GitBranchIcon } from "@phosphor-icons/react";
+import { AppWindowIcon, GitBranchIcon, ShareNetworkIcon } from "@phosphor-icons/react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ContextsGrid } from "@/components/contexts/ContextsGrid";
 import { CreateFromBranchesModal } from "@/components/contexts/CreateFromBranchesModal";
 import { SearchContextInput } from "@/components/contexts/SearchContextInput";
+import { ShareForReviewModal } from "@/components/project-tabs/ShareForReviewModal";
 import { GitRemoteLink } from "@/components/shared/GitRemoteLink";
 import { PullContextsButton } from "@/components/shared/PullContextsButton";
 import { useContexts } from "@/hooks/useContexts";
@@ -24,6 +25,7 @@ export function ProjectTabPanel({ project }: ProjectTabPanelProps) {
 	const [searchFilter, setSearchFilter] = useState("");
 	const [fromBranchesOpened, { open: openFromBranches, close: closeFromBranches }] =
 		useDisclosure(false);
+	const [shareOpened, { open: openShare, close: closeShare }] = useDisclosure(false);
 
 	return (
 		<TabsPanel value={project.tag}>
@@ -33,6 +35,14 @@ export function ProjectTabPanel({ project }: ProjectTabPanelProps) {
 					<Group gap="xs">
 						<GitRemoteLink project={project} />
 						<PullContextsButton project={project} />
+						<Button
+							variant="default"
+							leftSection={<ShareNetworkIcon size={16} />}
+							size="xs"
+							onClick={openShare}
+						>
+							{t("review.shareButton")}
+						</Button>
 						<Button
 							variant="default"
 							leftSection={<GitBranchIcon size={16} />}
@@ -66,6 +76,7 @@ export function ProjectTabPanel({ project }: ProjectTabPanelProps) {
 				project={project}
 				onCreate={createContextFromBranches}
 			/>
+			<ShareForReviewModal opened={shareOpened} onClose={closeShare} project={project} />
 		</TabsPanel> // group under a tag for features
 	);
 }
