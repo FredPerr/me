@@ -1,6 +1,7 @@
 import {
 	ActionIcon,
 	Alert,
+	Anchor,
 	Badge,
 	Button,
 	Checkbox,
@@ -28,7 +29,12 @@ import {
 	useProjectReviewPullRequests,
 } from "@/hooks/useProjectReviewPullRequests";
 import type { Project } from "@/models/Project";
-import { moveItem, orderReviewItems, type ReviewItem } from "@/models/review-share/ReviewStack";
+import {
+	inferDependencies,
+	moveItem,
+	orderReviewItems,
+	type ReviewItem,
+} from "@/models/review-share/ReviewStack";
 import { formatSlackMessage } from "@/models/review-share/SlackMessageFormatter";
 
 type ShareForReviewModalProps = {
@@ -46,10 +52,11 @@ export function ShareForReviewModal({ opened, onClose, project }: ShareForReview
 	const clipboard = useClipboard({ timeout: 1500 });
 	const { connected, loading, pullRequests, error } = useProjectReviewPullRequests(project);
 
-	// Selection state: the ordered list of included PR ids, and per-PR
-	// dependency picks. Kept keyed by id so it survives reordering.
+	// Selection state: the ordered list of included PR ids, and per-PR manual
+	// dependency overrides. An entry of `undefined` means "use the dependencies
+	// inferred from the base branch"; a set value means the user overrode them.
 	const [orderedIds, setOrderedIds] = useState<string[]>([]);
-	const [dependenciesById, setDependenciesById] = useState<Record<string, string[]>>({});
+	const [overridesById, setOverridesById] = useState<Record<string, string[] | undefined>>({});
 
 	const pullRequestById = useMemo(() => {
 		const map = new Map<string, ReviewPullRequest>();
@@ -59,17 +66,49 @@ export function ShareForReviewModal({ opened, onClose, project }: ShareForReview
 		return map;
 	}, [pullRequests]);
 
+	// Dependencies inferred from branch relationships across all PRs, computed
+	// once. In a stack, a PR's base branch is the head branch of the PR beneath
+	// it, so this reconstructs the stack without any manual input.
+	const inferredDependencies = useMemo(
+		() =>
+			inferDependencies(
+				pullRequests.map((pullRequest) => ({
+					id: itemId(pullRequest),
+					headBranch: pullRequest.headBranch,
+					baseBranch: pullRequest.baseBranch,
+				})),
+			),
+		[pullRequests],
+	);
+
+	const includedIds = useMemo(() => new Set(orderedIds), [orderedIds]);
+
+	// Effective dependencies for a PR: the manual override if set, otherwise the
+	// inferred ones — always narrowed to PRs that are currently included.
+	const effectiveDependencies = useMemo(() => {
+		const result: Record<string, string[]> = {};
+		for (const id of orderedIds) {
+			const source = overridesById[id] ?? inferredDependencies[id] ?? [];
+			result[id] = source.filter((dependencyId) => includedIds.has(dependencyId));
+		}
+		return result;
+	}, [orderedIds, overridesById, inferredDependencies, includedIds]);
+
+	function isOverridden(id: string): boolean {
+		return overridesById[id] !== undefined;
+	}
+
 	function toggleInclude(id: string, included: boolean) {
 		setOrderedIds((current) =>
 			included ? [...current, id] : current.filter((existing) => existing !== id),
 		);
 		if (!included) {
-			// Clear this PR's own dependencies and drop it from every other
-			// PR's dependency list so no stale reference survives.
-			setDependenciesById((current) => {
-				const next: Record<string, string[]> = {};
+			// Drop any manual override for the excluded PR and remove it from
+			// every other PR's override so no stale reference survives.
+			setOverridesById((current) => {
+				const next: Record<string, string[] | undefined> = {};
 				for (const [key, deps] of Object.entries(current)) {
-					if (key === id) continue;
+					if (key === id || deps === undefined) continue;
 					next[key] = deps.filter((dependencyId) => dependencyId !== id);
 				}
 				return next;
@@ -85,7 +124,11 @@ export function ShareForReviewModal({ opened, onClose, project }: ShareForReview
 	}
 
 	function setDependencies(id: string, dependencyIds: string[]) {
-		setDependenciesById((current) => ({ ...current, [id]: dependencyIds }));
+		setOverridesById((current) => ({ ...current, [id]: dependencyIds }));
+	}
+
+	function resetToInferred(id: string) {
+		setOverridesById((current) => ({ ...current, [id]: undefined }));
 	}
 
 	const reviewItems: ReviewItem[] = useMemo(
@@ -99,11 +142,11 @@ export function ShareForReviewModal({ opened, onClose, project }: ShareForReview
 						number: pullRequest.number,
 						title: pullRequest.title,
 						url: pullRequest.htmlUrl,
-						dependsOn: dependenciesById[id] ?? [],
+						dependsOn: effectiveDependencies[id] ?? [],
 					},
 				];
 			}),
-		[orderedIds, dependenciesById, pullRequestById],
+		[orderedIds, effectiveDependencies, pullRequestById],
 	);
 
 	const orderResult = useMemo(() => orderReviewItems(reviewItems), [reviewItems]);
@@ -214,10 +257,25 @@ export function ShareForReviewModal({ opened, onClose, project }: ShareForReview
 								{included && (
 									<MultiSelect
 										size="xs"
-										label={t("review.dependsOn")}
+										label={
+											<Group gap="xs" justify="space-between" wrap="nowrap">
+												<Text size="xs" fw={500}>
+													{t("review.dependsOn")}
+												</Text>
+												{isOverridden(id) ? (
+													<Anchor size="xs" onClick={() => resetToInferred(id)}>
+														{t("review.resetToAuto")}
+													</Anchor>
+												) : (
+													<Text size="xs" c="dimmed">
+														{t("review.autoFromBase")}
+													</Text>
+												)}
+											</Group>
+										}
 										placeholder={t("review.dependsOnPlaceholder")}
 										data={dependencyOptions(id)}
-										value={dependenciesById[id] ?? []}
+										value={effectiveDependencies[id] ?? []}
 										onChange={(value) => setDependencies(id, value)}
 										searchable
 										clearable

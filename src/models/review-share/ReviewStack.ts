@@ -90,6 +90,40 @@ function assignDepths(
 	});
 }
 
+/** The minimal PR shape needed to infer stack dependencies from branches. */
+export type BranchedPullRequest = {
+	id: string;
+	headBranch: string;
+	baseBranch: string;
+};
+
+/**
+ * Infer stack dependencies from branch relationships. In a PR stack, a PR is
+ * opened with its base branch set to the head branch of the PR beneath it, so
+ * PR X depends on PR Y when `X.baseBranch === Y.headBranch`. A PR whose base is
+ * not the head of any other included PR is a stack root (it targets the trunk).
+ *
+ * Returns a map of PR id to the ids it depends on. Multiple PRs sharing a head
+ * branch is unexpected, but if it happens every match is recorded.
+ */
+export function inferDependencies(pullRequests: BranchedPullRequest[]): Record<string, string[]> {
+	const idsByHeadBranch = new Map<string, string[]>();
+	for (const pullRequest of pullRequests) {
+		const existing = idsByHeadBranch.get(pullRequest.headBranch) ?? [];
+		existing.push(pullRequest.id);
+		idsByHeadBranch.set(pullRequest.headBranch, existing);
+	}
+
+	const dependencies: Record<string, string[]> = {};
+	for (const pullRequest of pullRequests) {
+		const parents = idsByHeadBranch.get(pullRequest.baseBranch) ?? [];
+		// A PR never depends on itself, even if base and head somehow match.
+		dependencies[pullRequest.id] = parents.filter((parentId) => parentId !== pullRequest.id);
+	}
+
+	return dependencies;
+}
+
 /**
  * Move the item at `fromIndex` to `toIndex`, returning a new array. Out-of-range
  * indices are clamped; the original array is never mutated.

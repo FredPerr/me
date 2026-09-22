@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { moveItem, orderReviewItems, type ReviewItem } from "./ReviewStack";
+import {
+	type BranchedPullRequest,
+	inferDependencies,
+	moveItem,
+	orderReviewItems,
+	type ReviewItem,
+} from "./ReviewStack";
 
 function buildItem(overrides: Partial<ReviewItem> & { id: string }): ReviewItem {
 	return {
@@ -89,6 +95,52 @@ describe("orderReviewItems", () => {
 		if (result.ok) return;
 		expect(result.error).toBe("cycle");
 		expect(result.cycleIds.sort()).toEqual(["1", "2"]);
+	});
+});
+
+describe("inferDependencies", () => {
+	function buildBranched(id: string, headBranch: string, baseBranch: string): BranchedPullRequest {
+		return { id, headBranch, baseBranch };
+	}
+
+	const MAIN = "main";
+
+	it("gives a PR no dependencies when its base is the trunk", () => {
+		const pullRequests = [buildBranched("1", "feature-a", MAIN)];
+
+		const result = inferDependencies(pullRequests);
+
+		expect(result["1"]).toEqual([]);
+	});
+
+	it("depends a PR on the one whose head branch is its base", () => {
+		const bottom = buildBranched("1", "feature-a", MAIN);
+		const top = buildBranched("2", "feature-b", "feature-a");
+
+		const result = inferDependencies([bottom, top]);
+
+		expect(result["2"]).toEqual(["1"]);
+		expect(result["1"]).toEqual([]);
+	});
+
+	it("reconstructs a three-PR stack from branches", () => {
+		const pullRequests = [
+			buildBranched("1", "feature-a", MAIN),
+			buildBranched("2", "feature-b", "feature-a"),
+			buildBranched("3", "feature-c", "feature-b"),
+		];
+
+		const result = inferDependencies(pullRequests);
+
+		expect(result).toEqual({ "1": [], "2": ["1"], "3": ["2"] });
+	});
+
+	it("never makes a PR depend on itself", () => {
+		const selfReferencing = buildBranched("1", "feature-a", "feature-a");
+
+		const result = inferDependencies([selfReferencing]);
+
+		expect(result["1"]).toEqual([]);
 	});
 });
 

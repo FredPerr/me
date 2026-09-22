@@ -155,6 +155,8 @@ export const en = {
 			noPullRequests: "No open pull requests for this project.",
 			dependsOn: "Depends on",
 			dependsOnPlaceholder: "Pick prerequisite PRs",
+			autoFromBase: "Auto from base branch",
+			resetToAuto: "Reset to auto",
 			moveUp: "Move up",
 			moveDown: "Move down",
 			preview: "Slack message preview",
