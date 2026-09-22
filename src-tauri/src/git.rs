@@ -940,6 +940,79 @@ fn resolve_upstream(repo: &Repository) -> Option<Upstream> {
     })
 }
 
+/// Build the `git -c http.<host>.extraheader=...` arguments that authenticate a
+/// network operation against the given remote using a stored provider token.
+/// Returns an empty vec when the remote is unknown, uses SSH, or no token is
+/// stored — in which case git falls back to its ambient credentials.
+fn remote_auth_args(repo: &Repository, remote_name: &str) -> Vec<String> {
+    let Ok(remote) = repo.find_remote(remote_name) else {
+        return Vec::new();
+    };
+    let Some(remote_url) = remote.url() else {
+        return Vec::new();
+    };
+    crate::git_provider::git_auth::auth_args_for_remote(remote_url)
+}
+
+#[derive(Serialize)]
+pub struct PushResult {
+    pub path: String,
+    pub pushed: bool,
+    pub message: Option<String>,
+}
+
+/// Push the current branch of the worktree at `path` to its upstream, injecting
+/// the stored provider access token for authentication when the remote is a
+/// supported HTTPS provider. Requires the branch to already track an upstream.
+#[tauri::command]
+pub async fn push_worktree(path: String) -> Result<PushResult, String> {
+    let repo = Repository::open(&path)
+        .map_err(|e| format!("Failed to open repository at '{}': {}", path, e))?;
+
+    if repo.find_remote("origin").is_err() {
+        return Ok(PushResult {
+            path: normalize_path(&path),
+            pushed: false,
+            message: Some("No remote configured".to_string()),
+        });
+    }
+
+    let Some(upstream) = resolve_upstream(&repo) else {
+        return Ok(PushResult {
+            path: normalize_path(&path),
+            pushed: false,
+            message: Some("No upstream branch (not pushed yet)".to_string()),
+        });
+    };
+
+    let Some(local_branch) = get_head_branch(&repo) else {
+        return Err("Cannot push a detached HEAD".to_string());
+    };
+
+    let auth_args = remote_auth_args(&repo, &upstream.remote);
+    let refspec = format!("{}:{}", local_branch, upstream.remote_branch);
+
+    let push = std::process::Command::new("git")
+        .args(&auth_args)
+        .args(["push", &upstream.remote, &refspec])
+        .current_dir(&path)
+        .output()
+        .map_err(|e| format!("Failed to run git push: {}", e))?;
+
+    if !push.status.success() {
+        let stderr = String::from_utf8_lossy(&push.stderr);
+        return Err(format!("git push failed: {}", stderr.trim()));
+    }
+
+    // git writes push progress/status to stderr even on success.
+    let stderr = String::from_utf8_lossy(&push.stderr);
+    Ok(PushResult {
+        path: normalize_path(&path),
+        pushed: true,
+        message: Some(stderr.trim().to_string()),
+    })
+}
+
 /// Worktrees that belong to the same repository share a single `$GIT_DIR`
 /// (and therefore a single `FETCH_HEAD`). Running `git fetch` for two of them
 /// at once interleaves writes to that file and corrupts it, which surfaces as
@@ -1006,11 +1079,14 @@ pub async fn pull_worktree(path: String) -> Result<PullResult, String> {
     let lock = repo_lock(&common_git_dir(&path));
     let _guard = lock.lock().expect("repo lock poisoned");
 
+    let auth_args = remote_auth_args(&repo, &upstream.remote);
+
     // Fetch only the tracked upstream branch so FETCH_HEAD holds exactly one
     // "for-merge" entry, then fast-forward the worktree to it. This avoids the
     // multi-branch fast-forward error that a bare `git pull` hits when the
     // shared FETCH_HEAD has been written by a concurrent fetch.
     let fetch = std::process::Command::new("git")
+        .args(&auth_args)
         .args(["fetch", &upstream.remote, &upstream.remote_branch])
         .current_dir(&path)
         .output()
