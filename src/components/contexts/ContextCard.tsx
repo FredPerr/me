@@ -9,7 +9,6 @@ import {
 	NetworkIcon,
 	TrashIcon,
 } from "@phosphor-icons/react";
-import { invoke } from "@tauri-apps/api/core";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
@@ -37,7 +36,7 @@ export function ContextCard({
 }: ContextCardProps) {
 	const { t } = useTranslation();
 	const navigate = useNavigate();
-	const { open, isAvailable } = useOpenInIde();
+	const { openFirstExisting, isAvailable } = useOpenInIde();
 	const { isActive } = useActiveWorkspaces();
 	const { statsByRepository, hasBaseContext } = useContextDiffStats(context, project, allContexts);
 	const [opened, { open: openModal, close: closeModal }] = useDisclosure(false);
@@ -45,13 +44,11 @@ export function ContextCard({
 	const [deleting, setDeleting] = useState(false);
 
 	const branchName = context.branches[0]?.branch ?? context.name;
-	const projectBase = project.path.endsWith("/") ? project.path.slice(0, -1) : project.path;
-	const worktreePath = `${projectBase}/.worktrees/${context.name}`;
-	const isContextActive = isActive(worktreePath);
+	const contextFolderPath = context.getContextFolderPath(project.path);
+	const isContextActive = isActive(contextFolderPath);
 
 	async function handleOpenInIDE() {
-		const worktreeExists = await invoke<boolean>("check_path_exists", { path: worktreePath });
-		await open(worktreeExists ? worktreePath : project.path);
+		await openFirstExisting(project.resolveContextIdePathCandidates(context));
 	}
 
 	function handleDraftPullRequests() {

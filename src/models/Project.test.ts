@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { Project, Repository } from "./Project";
+import { Context, ContextBranch, Project, Repository } from "./Project";
 
 const PROJECT_NAME = "My Project";
 const PROJECT_TAG = "my-project";
@@ -11,6 +11,14 @@ function buildProject(repositories: Repository[]): Project {
 
 function buildRepository(id: string, name: string, relPath: string): Repository {
 	return new Repository(id, name, relPath);
+}
+function buildContext(name: string, repositoryIds: string[], isDefault = false): Context {
+	return new Context(
+		`context-${name}`,
+		name,
+		repositoryIds.map((repositoryId) => new ContextBranch(repositoryId, "feature")),
+		isDefault,
+	);
 }
 
 describe("Project", () => {
@@ -59,6 +67,136 @@ describe("Project", () => {
 			const result = project.findEffectiveRepository("missing");
 
 			expect(result).toBeUndefined();
+		});
+	});
+
+	describe("Context.getWorktreePath", () => {
+		it("returns the project path for the root repository of the default context", () => {
+			const project = buildProject([]);
+			const context = buildContext("main", [PROJECT_TAG], true);
+			const [rootRepository] = project.effectiveRepositories();
+
+			const result = context.getWorktreePath(PROJECT_PATH, rootRepository);
+
+			expect(result).toBe(PROJECT_PATH);
+		});
+	});
+
+	describe("resolveContextIdePathCandidates", () => {
+		const contextFolderPath = `${PROJECT_PATH}/.worktrees/feature-x`;
+
+		it("starts with the repository worktree when the context has a single repository", () => {
+			const project = buildProject([buildRepository("repo-1", "api", "./api")]);
+			const context = buildContext("feature-x", ["repo-1"]);
+
+			const result = project.resolveContextIdePathCandidates(context);
+
+			expect(result).toEqual([`${contextFolderPath}/api`, contextFolderPath, PROJECT_PATH]);
+		});
+
+		it("starts with the context folder when the context has multiple repositories", () => {
+			const project = buildProject([
+				buildRepository("repo-1", "api", "./api"),
+				buildRepository("repo-2", "web", "./web"),
+			]);
+			const context = buildContext("feature-x", ["repo-1", "repo-2"]);
+
+			const result = project.resolveContextIdePathCandidates(context);
+
+			expect(result).toEqual([contextFolderPath, PROJECT_PATH]);
+		});
+
+		it("starts with the context folder when the context has no repositories", () => {
+			const project = buildProject([buildRepository("repo-1", "api", "./api")]);
+			const context = buildContext("feature-x", []);
+
+			const result = project.resolveContextIdePathCandidates(context);
+
+			expect(result).toEqual([contextFolderPath, PROJECT_PATH]);
+		});
+
+		it("ignores branches pointing to unknown repositories", () => {
+			const project = buildProject([buildRepository("repo-1", "api", "./api")]);
+			const context = buildContext("feature-x", ["missing"]);
+
+			const result = project.resolveContextIdePathCandidates(context);
+
+			expect(result).toEqual([contextFolderPath, PROJECT_PATH]);
+		});
+
+		it("uses the project name for the worktree of a project without configured repositories", () => {
+			const project = buildProject([]);
+			const context = buildContext("feature-x", [PROJECT_TAG]);
+
+			const result = project.resolveContextIdePathCandidates(context);
+
+			expect(result).toEqual([
+				`${contextFolderPath}/${PROJECT_NAME}`,
+				contextFolderPath,
+				PROJECT_PATH,
+			]);
+		});
+
+		it("uses the repository folder in the project for the default context", () => {
+			const project = buildProject([buildRepository("repo-1", "api", "./api")]);
+			const context = buildContext("main", ["repo-1"], true);
+
+			const result = project.resolveContextIdePathCandidates(context);
+
+			expect(result[0]).toBe(`${PROJECT_PATH}/api`);
+		});
+
+		it("starts with the project path for the default context of a root repository", () => {
+			const project = buildProject([]);
+			const context = buildContext("main", [PROJECT_TAG], true);
+
+			const result = project.resolveContextIdePathCandidates(context);
+
+			expect(result).toEqual([PROJECT_PATH, `${PROJECT_PATH}/.worktrees/main`]);
+		});
+
+		it("normalizes a trailing slash in the project path", () => {
+			const project = new Project(
+				PROJECT_NAME,
+				PROJECT_TAG,
+				`${PROJECT_PATH}/`,
+				[buildRepository("repo-1", "api", "./api")],
+				[],
+			);
+			const context = buildContext("feature-x", ["repo-1"]);
+
+			const result = project.resolveContextIdePathCandidates(context);
+
+			expect(result).toEqual([`${contextFolderPath}/api`, contextFolderPath, PROJECT_PATH]);
+		});
+	});
+
+	describe("resolveRootIdePathCandidates", () => {
+		it("starts with the repository folder when the project has a single repository", async () => {
+			const project = buildProject([buildRepository("repo-1", "api", "./api")]);
+
+			const result = await project.resolveRootIdePathCandidates();
+
+			expect(result).toEqual([`${PROJECT_PATH}/api`, PROJECT_PATH]);
+		});
+
+		it("returns the project path when the project has multiple repositories", async () => {
+			const project = buildProject([
+				buildRepository("repo-1", "api", "./api"),
+				buildRepository("repo-2", "web", "./web"),
+			]);
+
+			const result = await project.resolveRootIdePathCandidates();
+
+			expect(result).toEqual([PROJECT_PATH]);
+		});
+
+		it("returns the project path when the project has no configured repositories", async () => {
+			const project = buildProject([]);
+
+			const result = await project.resolveRootIdePathCandidates();
+
+			expect(result).toEqual([PROJECT_PATH]);
 		});
 	});
 });

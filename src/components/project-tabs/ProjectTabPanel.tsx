@@ -19,13 +19,17 @@ type ProjectTabPanelProps = {
 
 export function ProjectTabPanel({ project }: ProjectTabPanelProps) {
 	const { t } = useTranslation();
-	const { open, isAvailable } = useOpenInIde();
+	const { openFirstExisting, isAvailable } = useOpenInIde();
 	const { contexts, createContext, createContextFromBranches, deleteContext } =
 		useContexts(project);
 	const [searchFilter, setSearchFilter] = useState("");
 	const [fromBranchesOpened, { open: openFromBranches, close: closeFromBranches }] =
 		useDisclosure(false);
 	const [shareOpened, { open: openShare, close: closeShare }] = useDisclosure(false);
+
+	async function handleOpenRootInIde() {
+		await openFirstExisting(await project.resolveRootIdePathCandidates());
+	}
 
 	return (
 		<TabsPanel value={project.tag}>
@@ -54,7 +58,7 @@ export function ProjectTabPanel({ project }: ProjectTabPanelProps) {
 						<Button
 							leftSection={<AppWindowIcon size={16} />}
 							size="xs"
-							onClick={() => open(project.path)}
+							onClick={handleOpenRootInIde}
 							disabled={!project.path || !isAvailable}
 						>
 							{t("project.openInIde")}

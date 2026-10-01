@@ -1,5 +1,9 @@
 import { homeDir } from "@tauri-apps/api/path";
 
+export function normalizeFolderPath(path: string): string {
+	return path.length > 1 && path.endsWith("/") ? path.slice(0, -1) : path;
+}
+
 type ResolvePathOptions = {
 	basePath?: string;
 	isFolder?: boolean;
