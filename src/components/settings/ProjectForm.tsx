@@ -118,6 +118,7 @@ export function ProjectForm({ initialProject, onSubmit, onCancel }: ProjectFormP
 			repositories,
 			contexts,
 			symlinks: symlinks.filter((s) => s.trim()),
+			remoteProjectLinks: initialProject?.remoteProjectLinks.toJSON() ?? [],
 		};
 
 		onSubmit(Project.fromJSON(projectData));

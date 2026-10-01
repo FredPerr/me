@@ -41,6 +41,12 @@ export const ProjectDirectory = {
 		return projects;
 	},
 
+	async loadProject(projectTag: string): Promise<Project | null> {
+		const store = await openProjectStore(projectTag);
+		const data = await store.get<ProjectData>(PROJECT_KEY);
+		return data ? Project.fromJSON(data) : null;
+	},
+
 	async saveProject(project: Project): Promise<void> {
 		const store = await openProjectStore(project.tag);
 		await store.set(PROJECT_KEY, project.toJSON());

@@ -163,6 +163,7 @@ export function useContexts(project: Project) {
 				project.contexts.map((c) => (c.id === contextId ? updatedContext : c)),
 				project.icon,
 				project.symlinks,
+				project.remoteProjectLinks,
 			);
 
 			try {

@@ -1,3 +1,5 @@
+import type { RemoteProjectLinkData } from "@/domain/work-tracking/RemoteProjectLink";
+import { RemoteProjectLinks } from "@/domain/work-tracking/RemoteProjectLinks";
 import { normalizeFolderPath, resolvePath } from "@/utils/resolvePath";
 
 export class Repository {
@@ -141,6 +143,7 @@ export class Project {
 		public readonly contexts: Context[],
 		public readonly icon?: string,
 		public readonly symlinks: string[] = [],
+		public readonly remoteProjectLinks: RemoteProjectLinks = RemoteProjectLinks.empty(),
 	) {}
 
 	findRepository(repositoryId: string): Repository | undefined {
@@ -191,6 +194,7 @@ export class Project {
 			[...this.contexts, context],
 			this.icon,
 			this.symlinks,
+			this.remoteProjectLinks,
 		);
 	}
 
@@ -203,6 +207,20 @@ export class Project {
 			this.contexts.filter((c) => c.id !== contextId),
 			this.icon,
 			this.symlinks,
+			this.remoteProjectLinks,
+		);
+	}
+
+	withRemoteProjectLinks(remoteProjectLinks: RemoteProjectLinks): Project {
+		return new Project(
+			this.name,
+			this.tag,
+			this.path,
+			this.repositories,
+			this.contexts,
+			this.icon,
+			this.symlinks,
+			remoteProjectLinks,
 		);
 	}
 
@@ -215,6 +233,7 @@ export class Project {
 			(data.contexts ?? []).map(Context.fromJSON),
 			data.icon,
 			data.symlinks ?? [],
+			RemoteProjectLinks.fromJSON(data.remoteProjectLinks),
 		);
 	}
 
@@ -227,6 +246,7 @@ export class Project {
 			repositories: this.repositories.map((r) => r.toJSON()),
 			contexts: this.contexts.map((c) => c.toJSON()),
 			symlinks: this.symlinks,
+			remoteProjectLinks: this.remoteProjectLinks.toJSON(),
 		};
 	}
 }
@@ -266,4 +286,5 @@ export type ProjectData = {
 	repositories: RepositoryData[];
 	contexts: ContextData[];
 	symlinks?: string[];
+	remoteProjectLinks?: RemoteProjectLinkData[];
 };
