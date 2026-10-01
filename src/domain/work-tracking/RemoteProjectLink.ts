@@ -95,8 +95,20 @@ export class RemoteProjectLink {
 		);
 	}
 
+	static identityKeyOf(
+		providerKind: ProviderKind,
+		connectionId: ConnectionId,
+		remoteProjectId: WorkProjectId,
+	): string {
+		return `${providerKind}|${connectionId}|${remoteProjectId}`;
+	}
+
 	identityKey(): string {
-		return `${this.providerKind}|${this.connectionId}|${this.remoteProjectId}`;
+		return RemoteProjectLink.identityKeyOf(
+			this.providerKind,
+			this.connectionId,
+			this.remoteProjectId,
+		);
 	}
 
 	sameIdentityAs(other: RemoteProjectLink): boolean {

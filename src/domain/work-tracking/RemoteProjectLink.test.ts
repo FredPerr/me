@@ -124,6 +124,18 @@ describe("RemoteProjectLink", () => {
 			expect(link.identityKey()).toBe(`teamwork|${CONNECTION_ID}|42`);
 		});
 
+		it("can be computed before a link exists", () => {
+			const link = RemoteProjectLink.create(buildProps(), LINKED_AT);
+
+			expect(
+				RemoteProjectLink.identityKeyOf(
+					ProviderKind.Teamwork,
+					link.connectionId,
+					link.remoteProjectId,
+				),
+			).toBe(link.identityKey());
+		});
+
 		it("ignores the cached name and URL", () => {
 			const link = RemoteProjectLink.create(buildProps(), LINKED_AT);
 			const renamed = RemoteProjectLink.create(
