@@ -152,7 +152,7 @@ export function ContextCard({
 					</Flex>
 					<Stack gap={0}>
 						{context.branches.map((cb, index) => {
-							const repo = project.findRepository(cb.repositoryId);
+							const repo = project.findEffectiveRepository(cb.repositoryId);
 							const stats = statsByRepository[cb.repositoryId];
 							const isLast = index === context.branches.length - 1;
 							const hasChanges =

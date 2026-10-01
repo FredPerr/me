@@ -220,7 +220,7 @@ async function buildDefaultContext(project: Project): Promise<Context | null> {
 async function buildRepoInputs(project: Project, repoConfigs: RepositoryBranchConfig[]) {
 	const inputs = [];
 	for (const config of repoConfigs) {
-		const repo = project.findRepository(config.repositoryId);
+		const repo = project.findEffectiveRepository(config.repositoryId);
 		if (!repo) continue;
 		const resolvedPath = await repo.resolveAbsolutePath(project.path);
 		inputs.push({
@@ -279,7 +279,7 @@ async function buildRepoInputsFromExistingBranches(
 async function buildRepoInputsFromContext(project: Project, context: Context) {
 	const inputs = [];
 	for (const contextBranch of context.branches) {
-		const repo = project.findRepository(contextBranch.repositoryId);
+		const repo = project.findEffectiveRepository(contextBranch.repositoryId);
 		if (!repo) continue;
 		const resolvedPath = await repo.resolveAbsolutePath(project.path);
 		inputs.push({
