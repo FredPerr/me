@@ -71,7 +71,7 @@ export function ContextCard({
 			>
 				<Stack gap="xs">
 					<Flex justify="space-between">
-						<Flex gap="xs">
+						<Flex gap="xs" pl={context.isDefault ? undefined : 22}>
 							<NetworkIcon
 								size={16}
 								color={isContextActive ? "var(--mantine-color-green-6)" : undefined}

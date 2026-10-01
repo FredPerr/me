@@ -1,6 +1,7 @@
 import { notifications } from "@mantine/notifications";
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useState } from "react";
+import type { ContextStatus } from "@/models/ContextStatus";
 import {
 	Context,
 	ContextBranch,
@@ -182,6 +183,45 @@ export function useContexts(project: Project) {
 		[project, persistedContexts],
 	);
 
+	const setContextStatus = useCallback(
+		async (contextId: string, status: ContextStatus) => {
+			if (defaultContext && contextId === defaultContext.id) {
+				setDefaultContext(defaultContext.withStatus(status));
+				return;
+			}
+
+			const target = persistedContexts.find((c) => c.id === contextId);
+			if (!target || target.status === status) return;
+
+			const updatedContext = target.withStatus(status);
+			const previousContexts = persistedContexts;
+			setPersistedContexts((prev) => prev.map((c) => (c.id === contextId ? updatedContext : c)));
+
+			const updatedProject = new Project(
+				project.name,
+				project.tag,
+				project.path,
+				project.repositories,
+				project.contexts.map((c) => (c.id === contextId ? updatedContext : c)),
+				project.icon,
+				project.symlinks,
+				project.branchNaming,
+			);
+
+			try {
+				await ProjectDirectory.saveProject(updatedProject);
+			} catch (error) {
+				setPersistedContexts(previousContexts);
+				notifications.show({
+					title: "Failed to update context status",
+					message: String(error),
+					color: "red",
+				});
+			}
+		},
+		[project, persistedContexts, defaultContext],
+	);
+
 	return {
 		contexts,
 		defaultContext,
@@ -189,6 +229,7 @@ export function useContexts(project: Project) {
 		createContextFromBranches,
 		deleteContext,
 		savePullRequestDrafts,
+		setContextStatus,
 	};
 }
 

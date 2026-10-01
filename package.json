@@ -20,6 +20,9 @@
 		"analyze:enum-nudges": "tsx scripts/analysis/enum-nudge.ts"
 	},
 	"dependencies": {
+		"@dnd-kit/core": "^6.3.1",
+		"@dnd-kit/sortable": "^10.0.0",
+		"@dnd-kit/utilities": "^3.2.2",
 		"@mantine/core": "^9.5.1",
 		"@mantine/hooks": "^9.5.1",
 		"@mantine/notifications": "^9.5.1",

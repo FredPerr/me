@@ -1,4 +1,10 @@
 import { type BranchNamingData, BranchNamingPolicy } from "@/models/BranchNaming";
+import {
+	type ContextStatus,
+	DEFAULT_CONTEXT_STATUS,
+	IDLE_CONTEXT_STATUS,
+	isContextStatus,
+} from "@/models/ContextStatus";
 import { normalizeFolderPath, resolvePath } from "@/utils/resolvePath";
 
 export class Repository {
@@ -59,6 +65,9 @@ export class Context {
 		public readonly isDefault: boolean = false,
 		public readonly baseContextName?: string,
 		public readonly pullRequestDrafts: Record<string, PullRequestDraft> = {},
+		public readonly status: ContextStatus = isDefault
+			? IDLE_CONTEXT_STATUS
+			: DEFAULT_CONTEXT_STATUS,
 	) {}
 
 	getBranchForRepository(repositoryId: string): string | undefined {
@@ -77,6 +86,19 @@ export class Context {
 			this.isDefault,
 			this.baseContextName,
 			drafts,
+			this.status,
+		);
+	}
+
+	withStatus(status: ContextStatus): Context {
+		return new Context(
+			this.id,
+			this.name,
+			this.branches,
+			this.isDefault,
+			this.baseContextName,
+			this.pullRequestDrafts,
+			status,
 		);
 	}
 
@@ -111,13 +133,20 @@ export class Context {
 	}
 
 	static fromJSON(data: ContextData): Context {
+		const isDefault = data.isDefault ?? false;
+		const status = isContextStatus(data.status)
+			? data.status
+			: isDefault
+				? IDLE_CONTEXT_STATUS
+				: DEFAULT_CONTEXT_STATUS;
 		return new Context(
 			data.id,
 			data.name,
 			(data.branches ?? []).map(ContextBranch.fromJSON),
-			data.isDefault ?? false,
+			isDefault,
 			data.baseContextName,
 			data.pullRequestDrafts ?? {},
+			status,
 		);
 	}
 
@@ -129,6 +158,7 @@ export class Context {
 			isDefault: this.isDefault,
 			baseContextName: this.baseContextName,
 			pullRequestDrafts: this.pullRequestDrafts,
+			status: this.status,
 		};
 	}
 }
@@ -262,6 +292,7 @@ export type ContextData = {
 	isDefault?: boolean;
 	baseContextName?: string;
 	pullRequestDrafts?: Record<string, PullRequestDraft>;
+	status?: ContextStatus;
 };
 
 export type ProjectData = {

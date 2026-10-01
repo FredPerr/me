@@ -162,6 +162,18 @@ export const en = {
 			deleted: "Context deleted",
 			deleteFailed: "Failed to delete context",
 			noBaseBranch: "No base branch available",
+			kanban: {
+				columnEmpty: "Nothing here yet",
+				dragHandle: "Drag to move",
+				status: {
+					idle: "Idle",
+					ready: "Ready",
+					inProgress: "In progress",
+					needsHuman: "Needs human",
+					review: "Review",
+					done: "Done",
+				},
+			},
 		},
 		review: {
 			shareButton: "Share for review",
@@ -187,7 +199,38 @@ export const en = {
 		navigation: {
 			projects: "Projects",
 			pullRequests: "Pull requests",
+			sessions: "AI sessions",
 			settings: "Settings",
+		},
+		aiSessions: {
+			title: "AI sessions",
+			activeSessions: "Sessions",
+			noSessions: "No sessions yet. Start one above.",
+			noOutputYet: "Waiting for output…",
+			killSession: "Kill session",
+			clearSession: "Clear",
+			pidLabel: "PID {{pid}}",
+			noAdaptersTitle: "No AI CLIs available",
+			noAdaptersDescription:
+				"No AI CLI adapters are registered in this build. Install a supported CLI to get started.",
+			status: {
+				running: "Running",
+				completed: "Completed",
+				failed: "Failed",
+				killed: "Killed",
+			},
+			form: {
+				adapter: "AI CLI",
+				adapterPlaceholder: "Select a CLI",
+				agent: "Agent (optional)",
+				agentPlaceholder: "e.g. reviewer",
+				workingDirectory: "Working directory",
+				workingDirectoryPlaceholder: "Path the CLI runs in",
+				pickFolder: "Choose folder",
+				prompt: "Prompt",
+				promptPlaceholder: "Describe what the agent should do…",
+				start: "Start session",
+			},
 		},
 		updater: {
 			available: "Update available",

@@ -391,10 +391,7 @@ pub async fn list_local_branches(path: String) -> Result<Vec<LocalBranch>, Strin
     let checked_out = checked_out_branches(&repo);
     let current = get_head_branch(&repo);
 
-    let head_commit = repo
-        .head()
-        .ok()
-        .and_then(|head| head.peel_to_commit().ok());
+    let head_commit = repo.head().ok().and_then(|head| head.peel_to_commit().ok());
 
     let branches = repo
         .branches(Some(git2::BranchType::Local))
@@ -414,10 +411,11 @@ pub async fn list_local_branches(path: String) -> Result<Vec<LocalBranch>, Strin
             && branch_has_upstream_config(&repo, &name);
 
         let is_merged = match (&head_commit, branch.get().peel_to_commit().ok()) {
-            (Some(head), Some(branch_commit)) => repo
-                .graph_descendant_of(head.id(), branch_commit.id())
-                .unwrap_or(false)
-                || head.id() == branch_commit.id(),
+            (Some(head), Some(branch_commit)) => {
+                repo.graph_descendant_of(head.id(), branch_commit.id())
+                    .unwrap_or(false)
+                    || head.id() == branch_commit.id()
+            }
             _ => false,
         };
 
@@ -442,11 +440,7 @@ fn branch_has_upstream_config(repo: &Repository, branch: &str) -> bool {
 }
 
 #[tauri::command]
-pub async fn delete_local_branch(
-    path: String,
-    branch: String,
-    force: bool,
-) -> Result<(), String> {
+pub async fn delete_local_branch(path: String, branch: String, force: bool) -> Result<(), String> {
     let delete_flag = if force { "-D" } else { "-d" };
 
     let output = std::process::Command::new("git")
@@ -457,7 +451,11 @@ pub async fn delete_local_branch(
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("Failed to delete branch '{}': {}", branch, stderr.trim()));
+        return Err(format!(
+            "Failed to delete branch '{}': {}",
+            branch,
+            stderr.trim()
+        ));
     }
 
     Ok(())
@@ -639,7 +637,10 @@ pub async fn create_context(
             // Remove any leftover entry (e.g. a stale symlink from a previous
             // attempt) so re-creating the context is idempotent.
             remove_existing_path(&worktree_dir).map_err(|e| {
-                format!("Failed to clear existing path for '{}': {}", repo_input.name, e)
+                format!(
+                    "Failed to clear existing path for '{}': {}",
+                    repo_input.name, e
+                )
             })?;
 
             #[cfg(unix)]
@@ -701,8 +702,7 @@ pub async fn create_context(
             // A branch can be checked out in only one worktree. If it is already
             // checked out somewhere, reuse that worktree (point the context at
             // its existing location) instead of failing on `git worktree add`.
-            let existing_worktree =
-                worktree_path_for_branch(&repo_path_str, &repo_input.branch);
+            let existing_worktree = worktree_path_for_branch(&repo_path_str, &repo_input.branch);
 
             let effective_worktree_path = match existing_worktree {
                 Some(existing) => normalize_path(&existing),

@@ -14,8 +14,7 @@ const GITHUB_HOST: &str = "github.com";
 /// Standard, dependency-free base64 (RFC 4648) encoder. Used only to build the
 /// HTTP Basic credential; kept local to avoid pulling in a base64 crate.
 fn base64_encode(input: &[u8]) -> String {
-    const ALPHABET: &[u8; 64] =
-        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut encoded = String::with_capacity(input.len().div_ceil(3) * 4);
 
     for chunk in input.chunks(3) {
@@ -73,7 +72,10 @@ pub fn auth_args_for_remote(remote_url: &str) -> Vec<String> {
 
     vec![
         "-c".to_string(),
-        format!("http.{}.extraheader=Authorization: Basic {}", host_config, credential),
+        format!(
+            "http.{}.extraheader=Authorization: Basic {}",
+            host_config, credential
+        ),
     ]
 }
 
@@ -98,7 +100,10 @@ mod tests {
 
     #[test]
     fn base64_encodes_the_basic_credential_form() {
-        assert_eq!(base64_encode(b"x-access-token:t"), "eC1hY2Nlc3MtdG9rZW46dA==");
+        assert_eq!(
+            base64_encode(b"x-access-token:t"),
+            "eC1hY2Nlc3MtdG9rZW46dA=="
+        );
     }
 
     #[test]

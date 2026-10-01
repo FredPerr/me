@@ -3,8 +3,8 @@ import { useDisclosure } from "@mantine/hooks";
 import { AppWindowIcon, GitBranchIcon, ShareNetworkIcon } from "@phosphor-icons/react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ContextsGrid } from "@/components/contexts/ContextsGrid";
 import { CreateFromBranchesModal } from "@/components/contexts/CreateFromBranchesModal";
+import { KanbanBoard } from "@/components/contexts/KanbanBoard";
 import { SearchContextInput } from "@/components/contexts/SearchContextInput";
 import { ShareForReviewModal } from "@/components/project-tabs/ShareForReviewModal";
 import { GitRemoteLink } from "@/components/shared/GitRemoteLink";
@@ -20,7 +20,7 @@ type ProjectTabPanelProps = {
 export function ProjectTabPanel({ project }: ProjectTabPanelProps) {
 	const { t } = useTranslation();
 	const { openFirstExisting, isAvailable } = useOpenInIde();
-	const { contexts, createContext, createContextFromBranches, deleteContext } =
+	const { contexts, createContext, createContextFromBranches, deleteContext, setContextStatus } =
 		useContexts(project);
 	const [searchFilter, setSearchFilter] = useState("");
 	const [fromBranchesOpened, { open: openFromBranches, close: closeFromBranches }] =
@@ -66,11 +66,12 @@ export function ProjectTabPanel({ project }: ProjectTabPanelProps) {
 					</Group>
 				</Group>
 				<Divider />
-				<ContextsGrid
+				<KanbanBoard
 					contexts={contexts}
 					project={project}
 					onDelete={deleteContext}
 					onCreate={createContext}
+					onStatusChange={setContextStatus}
 					searchFilter={searchFilter}
 				/>
 			</Stack>
