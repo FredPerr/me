@@ -21,6 +21,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { IconPicker } from "@/components/shared/IconPicker";
 import { pickFolder } from "@/hooks/useFolderPicker";
+import { BranchNamingPolicy, DEFAULT_BRANCH_PREFIXES } from "@/models/BranchNaming";
 import {
 	Context,
 	ContextBranch,
@@ -30,6 +31,7 @@ import {
 } from "@/models/Project";
 import { ProjectDirectory } from "@/models/ProjectDirectory";
 import { resolvePath } from "@/utils/resolvePath";
+import { BranchPrefixFormList } from "./BranchPrefixFormList";
 import { RepositoryFormList } from "./RepositoryFormList";
 
 type ProjectFormProps = {
@@ -51,11 +53,18 @@ export function ProjectForm({ initialProject, onSubmit, onCancel }: ProjectFormP
 	const [isGitRoot, setIsGitRoot] = useState<boolean | null>(null);
 	const [repositoriesValid, setRepositoriesValid] = useState(true);
 	const [symlinks, setSymlinks] = useState<string[]>(initialProject?.symlinks ?? []);
+	const [branchPrefixes, setBranchPrefixes] = useState<string[]>(
+		initialProject?.branchNaming.prefixes ?? [...DEFAULT_BRANCH_PREFIXES],
+	);
+	const [allowNoBranchPrefix, setAllowNoBranchPrefix] = useState(
+		initialProject?.branchNaming.toJSON().allowNoPrefix ?? true,
+	);
+	const [branchPrefixesValid, setBranchPrefixesValid] = useState(true);
 
 	const isMultiRepo =
 		repositories.length > 1 || (repositories.length === 1 && repositories[0].relPath !== ".");
 	const isEditing = !!initialProject;
-	const canSubmit = isMultiRepo ? repositoriesValid : isGitRoot !== false;
+	const canSubmit = (isMultiRepo ? repositoriesValid : isGitRoot !== false) && branchPrefixesValid;
 
 	useEffect(() => {
 		if (initialProject) {
@@ -118,6 +127,7 @@ export function ProjectForm({ initialProject, onSubmit, onCancel }: ProjectFormP
 			repositories,
 			contexts,
 			symlinks: symlinks.filter((s) => s.trim()),
+			branchNaming: BranchNamingPolicy.create(branchPrefixes, allowNoBranchPrefix).toJSON(),
 		};
 
 		onSubmit(Project.fromJSON(projectData));
@@ -232,6 +242,13 @@ export function ProjectForm({ initialProject, onSubmit, onCancel }: ProjectFormP
 						</Button>
 					</Group>
 				</Stack>
+				<BranchPrefixFormList
+					prefixes={branchPrefixes}
+					allowNoPrefix={allowNoBranchPrefix}
+					onPrefixesChange={setBranchPrefixes}
+					onAllowNoPrefixChange={setAllowNoBranchPrefix}
+					onValidityChange={setBranchPrefixesValid}
+				/>
 				{isEditing && configPath && (
 					<TextInput
 						label={t("settings.projectForm.configPath")}

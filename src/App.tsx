@@ -9,6 +9,7 @@ function App() {
 	const { checkForUpdates } = useAppUpdater();
 
 	useEffect(() => {
+		if (import.meta.env.DEV) return;
 		checkForUpdates();
 	}, [checkForUpdates]);
 

@@ -83,6 +83,12 @@ describe("slugify", () => {
 		expect(result).toBe(expected);
 	});
 
+	it("turns a bracketed task name into a branch slug", () => {
+		expect(slugify("[WAFR] Do something here")).toBe("wafr-do-something-here");
+	});
+	it("strips diacritics and apostrophes from task names", () => {
+		expect(slugify("Réparer l'été")).toBe("reparer-l-ete");
+	});
 	it("returns an empty string when input is empty", () => {
 		const input = "";
 		const expected = "";
