@@ -1,0 +1,23 @@
+{
+  "tasklists": [
+    {
+      "id": 201,
+      "name": "Sprint backlog",
+      "description": "Next up",
+      "displayOrder": 2,
+      "projectId": 100
+    },
+    {
+      "id": 202,
+      "name": "Bugs"
+    }
+  ],
+  "meta": {
+    "page": {
+      "pageOffset": 100,
+      "pageSize": 50,
+      "count": 102,
+      "hasMore": false
+    }
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "projects": [
+    {
+      "id": 101,
+      "name": "Website",
+      "description": "Marketing site",
+      "status": "active",
+      "subStatus": "current",
+      "companyId": 9
+    },
+    {
+      "id": 102,
+      "name": "Old app",
+      "description": "",
+      "status": "inactive",
+      "subStatus": "completed"
+    },
+    {
+      "id": 103,
+      "name": "Removed",
+      "description": null,
+      "status": "deleted"
+    },
+    {
+      "id": 104,
+      "name": "No status"
+    }
+  ],
+  "meta": {
+    "page": {
+      "pageOffset": 0,
+      "pageSize": 50,
+      "count": 120,
+      "hasMore": true
+    }
+  }
+}

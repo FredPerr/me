@@ -6,6 +6,7 @@ mod git_provider;
 mod ide_launcher;
 mod secret_store;
 mod shortcuts;
+mod work_tracking;
 mod workspace_detector;
 
 #[tauri::command]
@@ -71,9 +72,16 @@ pub fn run() {
             git_provider::github::github_list_pull_requests,
             git_provider::github::github_is_connected,
             git_provider::github::github_disconnect,
+            work_tracking::commands::work_tracking_list_connections,
+            work_tracking::commands::work_tracking_save_connection,
+            work_tracking::commands::work_tracking_remove_connection,
+            work_tracking::commands::work_tracking_list_projects,
+            work_tracking::commands::work_tracking_list_groups,
+            work_tracking::commands::work_tracking_list_items,
             workspace_detector::get_active_workspaces
         ])
         .setup(|app| {
+            tauri::Manager::manage(app, work_tracking::build_service(app.handle().clone()));
             shortcuts::register(app.handle())?;
             Ok(())
         })
