@@ -1,4 +1,4 @@
-import { resolvePath } from "@/utils/resolvePath";
+import { normalizeFolderPath, resolvePath } from "@/utils/resolvePath";
 
 export class Repository {
 	constructor(
@@ -80,14 +80,19 @@ export class Context {
 	}
 
 	getWorktreePath(projectPath: string, repository: Repository): string {
-		const normalizedProject = projectPath.endsWith("/") ? projectPath.slice(0, -1) : projectPath;
+		const normalizedProject = normalizeFolderPath(projectPath);
 		if (this.isDefault) {
 			const normalizedRel = repository.relPath.startsWith("./")
 				? repository.relPath.slice(2)
 				: repository.relPath;
+			if (normalizedRel === "." || normalizedRel === "") return normalizedProject;
 			return `${normalizedProject}/${normalizedRel}`;
 		}
 		return `${normalizedProject}/.worktrees/${this.name}/${repository.name}`;
+	}
+
+	getContextFolderPath(projectPath: string): string {
+		return `${normalizeFolderPath(projectPath)}/.worktrees/${this.name}`;
 	}
 
 	static create(
@@ -149,6 +154,28 @@ export class Project {
 
 	findEffectiveRepository(repositoryId: string): Repository | undefined {
 		return this.effectiveRepositories().find((r) => r.id === repositoryId);
+	}
+
+	resolveContextIdePathCandidates(context: Context): string[] {
+		const contextRepositories = context.branches
+			.map((branch) => this.findEffectiveRepository(branch.repositoryId))
+			.filter((repository): repository is Repository => repository !== undefined);
+		const candidatePaths: string[] = [];
+		if (contextRepositories.length === 1) {
+			candidatePaths.push(context.getWorktreePath(this.path, contextRepositories[0]));
+		}
+		candidatePaths.push(context.getContextFolderPath(this.path), normalizeFolderPath(this.path));
+		return [...new Set(candidatePaths)];
+	}
+
+	async resolveRootIdePathCandidates(): Promise<string[]> {
+		const projectFolderPath = normalizeFolderPath(this.path);
+		const repositories = this.effectiveRepositories();
+		if (repositories.length !== 1) return [projectFolderPath];
+		const repositoryPath = normalizeFolderPath(
+			await repositories[0].resolveAbsolutePath(this.path),
+		);
+		return [...new Set([repositoryPath, projectFolderPath])];
 	}
 
 	get defaultContext(): Context | undefined {

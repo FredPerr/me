@@ -18,7 +18,22 @@ export function useOpenInIde() {
 		[settings],
 	);
 
+	const openFirstExisting = useCallback(
+		async (candidatePaths: string[]) => {
+			if (candidatePaths.length === 0 || !settings?.ideCommand) return;
+			for (const candidatePath of candidatePaths) {
+				const pathExists = await invoke<boolean>("check_path_exists", { path: candidatePath });
+				if (pathExists) {
+					await open(candidatePath);
+					return;
+				}
+			}
+			await open(candidatePaths[candidatePaths.length - 1]);
+		},
+		[open, settings],
+	);
+
 	const isAvailable = !!settings?.ideCommand;
 
-	return { open, isAvailable };
+	return { open, openFirstExisting, isAvailable };
 }
