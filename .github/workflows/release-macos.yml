@@ -2,6 +2,11 @@ name: Release (macOS)
 
 # Publishes a macOS ARM (.dmg) release on every push to main.
 # Can also be run manually from the Actions tab.
+#
+# The patch version is bumped automatically and committed back to main. The
+# push is authenticated as a GitHub App (not any individual), so it works no
+# matter who merged the PR. The app must be allowed to bypass the "require a
+# pull request" branch-protection rule (the default GITHUB_TOKEN cannot).
 on:
   push:
     branches:
@@ -16,8 +21,20 @@ jobs:
     runs-on: macos-latest
 
     steps:
+      - name: Generate app token
+        id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # Check out with the app token so the version-bump push is
+          # authenticated as the GitHub App (a bypass-allowed actor). This is
+          # independent of whoever merged the PR.
+          token: ${{ steps.app-token.outputs.token }}
 
       - name: Bump patch version
         id: version
@@ -28,12 +45,17 @@ jobs:
           echo "version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Commit version bump
+        env:
+          # The app's bot identity, so the commit is attributed to the app.
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
         run: |
-          git config user.name  "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name  "${APP_SLUG}[bot]"
+          git config user.email "${APP_SLUG}[bot]@users.noreply.github.com"
           git add package.json src-tauri/tauri.conf.json
           # [skip ci] prevents this commit from re-triggering the workflow.
           git commit -m "chore: release v${{ steps.version.outputs.version }} [skip ci]"
+          # Pushed via the app token from checkout. The app must be allowed to
+          # bypass the "require a pull request" branch-protection rule on main.
           git push
 
       - name: Install toolchain (mise)
