@@ -296,7 +296,11 @@ pub async fn github_list_pull_requests(
         .get(&url)
         .bearer_auth(&token)
         .header(reqwest::header::ACCEPT, "application/vnd.github+json")
-        .query(&[("state", "open"), ("sort", "updated"), ("direction", "desc")])
+        .query(&[
+            ("state", "open"),
+            ("sort", "updated"),
+            ("direction", "desc"),
+        ])
         .send()
         .await
         .map_err(|error| error.to_string())?;

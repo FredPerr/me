@@ -1,6 +1,7 @@
-#[cfg(desktop)]
 use tauri::Manager;
 
+mod ai_session;
+mod binary_resolver;
 mod git;
 mod git_provider;
 mod ide_launcher;
@@ -70,9 +71,14 @@ pub fn run() {
             git_provider::github::github_list_pull_requests,
             git_provider::github::github_is_connected,
             git_provider::github::github_disconnect,
-            workspace_detector::get_active_workspaces
+            workspace_detector::get_active_workspaces,
+            ai_session::spawn_ai_session,
+            ai_session::kill_ai_session,
+            ai_session::list_ai_sessions,
+            ai_session::list_ai_adapters
         ])
         .setup(|app| {
+            app.manage(ai_session::registry::SessionRegistry::new());
             shortcuts::register(app.handle())?;
             Ok(())
         })
