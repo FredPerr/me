@@ -142,21 +142,11 @@ export class Project {
 		return this.repositories.find((r) => r.id === repositoryId);
 	}
 
-	/**
-	 * The repositories to operate on. A single-repo project stores no explicit
-	 * repository entries — the project root itself is the repository — so this
-	 * returns a synthetic root repository (relPath ".") in that case. Use this
-	 * anywhere that needs to iterate the project's repositories uniformly.
-	 */
 	effectiveRepositories(): Repository[] {
 		if (this.repositories.length > 0) return this.repositories;
 		return [new Repository(this.tag, this.name, ".")];
 	}
 
-	/**
-	 * Like {@link findRepository}, but also resolves the synthetic root
-	 * repository of a single-repo project.
-	 */
 	findEffectiveRepository(repositoryId: string): Repository | undefined {
 		return this.effectiveRepositories().find((r) => r.id === repositoryId);
 	}
