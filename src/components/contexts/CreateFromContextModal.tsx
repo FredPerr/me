@@ -13,7 +13,7 @@ import {
 } from "@mantine/core";
 import { PaintBrushHouseholdIcon } from "@phosphor-icons/react";
 import { invoke } from "@tauri-apps/api/core";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { CreateContextParams, RepositoryBranchConfig } from "@/hooks/useContexts";
 import type { Context, Project } from "@/models/Project";
@@ -41,9 +41,10 @@ export function CreateFromContextModal({
 }: CreateFromContextModalProps) {
 	const { t } = useTranslation();
 	const [contextName, setContextName] = useState("");
+	const repositories = useMemo(() => project.effectiveRepositories(), [project]);
 	const [repoStates, setRepoStates] = useState<Record<string, RepositoryFormState>>(() =>
 		Object.fromEntries(
-			project.repositories.map((repo) => {
+			repositories.map((repo) => {
 				const sourceBranch = sourceContext.getBranchForRepository(repo.id) ?? "main";
 				return [repo.id, { createBranch: true, branchName: "", baseBranch: sourceBranch }];
 			}),
@@ -57,7 +58,7 @@ export function CreateFromContextModal({
 	useEffect(() => {
 		async function fetchBranches() {
 			const options: Record<string, string[]> = {};
-			for (const repo of project.repositories) {
+			for (const repo of repositories) {
 				try {
 					const resolvedPath = await repo.resolveAbsolutePath(project.path);
 					const branches = await invoke<string[]>("list_branches", { path: resolvedPath });
@@ -71,7 +72,7 @@ export function CreateFromContextModal({
 		if (opened) {
 			fetchBranches();
 		}
-	}, [opened, project]);
+	}, [opened, project, repositories]);
 
 	function updateRepoState(repositoryId: string, patch: Partial<RepositoryFormState>) {
 		setRepoStates((prev) => ({
@@ -124,7 +125,7 @@ export function CreateFromContextModal({
 	async function validateBranches(): Promise<boolean> {
 		const errors: Record<string, string> = {};
 
-		for (const repo of project.repositories) {
+		for (const repo of repositories) {
 			const state = repoStates[repo.id];
 			if (!state.createBranch || !state.branchName.trim()) continue;
 
@@ -158,7 +159,7 @@ export function CreateFromContextModal({
 			const isValid = await validateBranches();
 			if (!isValid) return;
 
-			const repositories: RepositoryBranchConfig[] = project.repositories.map((repo) => {
+			const repositoryConfigs: RepositoryBranchConfig[] = repositories.map((repo) => {
 				const state = repoStates[repo.id];
 				return {
 					repositoryId: repo.id,
@@ -170,7 +171,7 @@ export function CreateFromContextModal({
 
 			await onCreate({
 				name: contextName.trim(),
-				repositories,
+				repositories: repositoryConfigs,
 				baseContextName: sourceContext.name,
 			});
 			setContextName("");
@@ -208,7 +209,7 @@ export function CreateFromContextModal({
 						</Tooltip>
 					}
 				/>
-				{project.repositories.map((repo) => {
+				{repositories.map((repo) => {
 					const state = repoStates[repo.id];
 					return (
 						<Box
