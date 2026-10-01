@@ -4,6 +4,7 @@ use tauri::Manager;
 mod git;
 mod git_provider;
 mod ide_launcher;
+mod secret_store;
 mod shortcuts;
 mod workspace_detector;
 
