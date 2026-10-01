@@ -1,3 +1,4 @@
+import { type BranchNamingData, BranchNamingPolicy } from "@/models/BranchNaming";
 import { normalizeFolderPath, resolvePath } from "@/utils/resolvePath";
 
 export class Repository {
@@ -141,6 +142,7 @@ export class Project {
 		public readonly contexts: Context[],
 		public readonly icon?: string,
 		public readonly symlinks: string[] = [],
+		public readonly branchNaming: BranchNamingPolicy = BranchNamingPolicy.default(),
 	) {}
 
 	findRepository(repositoryId: string): Repository | undefined {
@@ -191,6 +193,7 @@ export class Project {
 			[...this.contexts, context],
 			this.icon,
 			this.symlinks,
+			this.branchNaming,
 		);
 	}
 
@@ -203,6 +206,7 @@ export class Project {
 			this.contexts.filter((c) => c.id !== contextId),
 			this.icon,
 			this.symlinks,
+			this.branchNaming,
 		);
 	}
 
@@ -215,6 +219,7 @@ export class Project {
 			(data.contexts ?? []).map(Context.fromJSON),
 			data.icon,
 			data.symlinks ?? [],
+			BranchNamingPolicy.fromJSON(data.branchNaming),
 		);
 	}
 
@@ -227,6 +232,7 @@ export class Project {
 			repositories: this.repositories.map((r) => r.toJSON()),
 			contexts: this.contexts.map((c) => c.toJSON()),
 			symlinks: this.symlinks,
+			branchNaming: this.branchNaming.toJSON(),
 		};
 	}
 }
@@ -266,4 +272,5 @@ export type ProjectData = {
 	repositories: RepositoryData[];
 	contexts: ContextData[];
 	symlinks?: string[];
+	branchNaming?: BranchNamingData;
 };

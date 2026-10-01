@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { Context, ContextBranch, Project, Repository } from "./Project";
+import { BranchNamingPolicy, DEFAULT_BRANCH_PREFIXES } from "./BranchNaming";
+import { Context, ContextBranch, Project, type ProjectData, Repository } from "./Project";
 
 const PROJECT_NAME = "My Project";
 const PROJECT_TAG = "my-project";
@@ -197,6 +198,43 @@ describe("Project", () => {
 			const result = await project.resolveRootIdePathCandidates();
 
 			expect(result).toEqual([PROJECT_PATH]);
+		});
+	});
+	describe("branchNaming", () => {
+		const legacyProjectData: ProjectData = {
+			name: PROJECT_NAME,
+			tag: PROJECT_TAG,
+			path: PROJECT_PATH,
+			repositories: [],
+			contexts: [],
+		};
+		function buildProjectWithCustomBranchNaming(): Project {
+			return Project.fromJSON({
+				...legacyProjectData,
+				branchNaming: { prefixes: ["ops"], allowNoPrefix: false },
+			});
+		}
+		it("uses the default prefixes and allows no prefix for projects saved without the setting", () => {
+			const project = Project.fromJSON(legacyProjectData);
+			expect(project.branchNaming.prefixes).toEqual(DEFAULT_BRANCH_PREFIXES);
+			expect(project.branchNaming.allowsNoPrefix).toBe(true);
+		});
+		it("preserves a custom setting and round-trips it through toJSON", () => {
+			const project = buildProjectWithCustomBranchNaming();
+			expect(project.branchNaming.prefixes).toEqual(["ops"]);
+			expect(project.branchNaming.allowsNoPrefix).toBe(false);
+			expect(project.toJSON().branchNaming).toEqual({ prefixes: ["ops"], allowNoPrefix: false });
+		});
+		it("preserves the setting when adding and removing contexts", () => {
+			const project = buildProjectWithCustomBranchNaming();
+			const context = buildContext("feature-x", [PROJECT_TAG]);
+			const withContext = project.addContext(context);
+			const withoutContext = withContext.removeContext(context.id);
+			expect(withContext.branchNaming).toBe(project.branchNaming);
+			expect(withoutContext.branchNaming).toBe(project.branchNaming);
+		});
+		it("uses the default policy when constructed without a setting", () => {
+			expect(buildProject([]).branchNaming.toJSON()).toEqual(BranchNamingPolicy.default().toJSON());
 		});
 	});
 });
