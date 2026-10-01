@@ -90,7 +90,7 @@ fn extract_workspace_paths(storage: StorageJson) -> Vec<String> {
 }
 
 fn uri_to_path(uri: &str) -> Option<String> {
-    uri.strip_prefix("file://").map(|p| percent_decode(p))
+    uri.strip_prefix("file://").map(percent_decode)
 }
 
 fn percent_decode(input: &str) -> String {

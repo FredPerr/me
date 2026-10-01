@@ -30,7 +30,7 @@ pub async fn get_git_remote_url(path: String) -> Result<Option<String>, String> 
         Err(_) => return Ok(None),
     };
 
-    let url = remote.url().map(|u| normalize_remote_url(u));
+    let url = remote.url().map(normalize_remote_url);
     Ok(url)
 }
 
@@ -112,14 +112,14 @@ fn get_head_branch(repo: &Repository) -> Option<String> {
         .and_then(|head| head.shorthand().map(|s| s.to_string()))
 }
 
-fn get_worktree_branch(repo: &Repository, worktree_path: &str) -> Option<String> {
+fn get_worktree_branch(_repo: &Repository, worktree_path: &str) -> Option<String> {
     let wt_repo = Repository::open(worktree_path).ok()?;
     get_head_branch(&wt_repo)
 }
 
 fn normalize_path(path: &str) -> String {
-    if path.ends_with('/') {
-        path[..path.len() - 1].to_string()
+    if let Some(stripped) = path.strip_suffix('/') {
+        stripped.to_string()
     } else {
         path.to_string()
     }
