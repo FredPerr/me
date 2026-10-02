@@ -1,0 +1,12 @@
+{
+  "tasks": [
+    {
+      "id": 20,
+      "name": "No sideloads",
+      "status": "new",
+      "tasklistId": 200,
+      "assigneeUserIds": [301],
+      "tagIds": [401]
+    }
+  ]
+}

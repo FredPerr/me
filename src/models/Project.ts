@@ -1,3 +1,5 @@
+import type { RemoteProjectLinkData } from "@/domain/work-tracking/RemoteProjectLink";
+import { RemoteProjectLinks } from "@/domain/work-tracking/RemoteProjectLinks";
 import { type BranchNamingData, BranchNamingPolicy } from "@/models/BranchNaming";
 import {
 	type ContextStatus,
@@ -196,6 +198,7 @@ export class Project {
 		public readonly contexts: Context[],
 		public readonly icon?: string,
 		public readonly symlinks: string[] = [],
+		public readonly remoteProjectLinks: RemoteProjectLinks = RemoteProjectLinks.empty(),
 		public readonly branchNaming: BranchNamingPolicy = BranchNamingPolicy.default(),
 	) {}
 
@@ -247,6 +250,7 @@ export class Project {
 			[...this.contexts, context],
 			this.icon,
 			this.symlinks,
+			this.remoteProjectLinks,
 			this.branchNaming,
 		);
 	}
@@ -260,6 +264,21 @@ export class Project {
 			this.contexts.filter((c) => c.id !== contextId),
 			this.icon,
 			this.symlinks,
+			this.remoteProjectLinks,
+			this.branchNaming,
+		);
+	}
+
+	withRemoteProjectLinks(remoteProjectLinks: RemoteProjectLinks): Project {
+		return new Project(
+			this.name,
+			this.tag,
+			this.path,
+			this.repositories,
+			this.contexts,
+			this.icon,
+			this.symlinks,
+			remoteProjectLinks,
 			this.branchNaming,
 		);
 	}
@@ -273,6 +292,7 @@ export class Project {
 			(data.contexts ?? []).map(Context.fromJSON),
 			data.icon,
 			data.symlinks ?? [],
+			RemoteProjectLinks.fromJSON(data.remoteProjectLinks),
 			BranchNamingPolicy.fromJSON(data.branchNaming),
 		);
 	}
@@ -286,6 +306,7 @@ export class Project {
 			repositories: this.repositories.map((r) => r.toJSON()),
 			contexts: this.contexts.map((c) => c.toJSON()),
 			symlinks: this.symlinks,
+			remoteProjectLinks: this.remoteProjectLinks.toJSON(),
 			branchNaming: this.branchNaming.toJSON(),
 		};
 	}
@@ -329,5 +350,6 @@ export type ProjectData = {
 	repositories: RepositoryData[];
 	contexts: ContextData[];
 	symlinks?: string[];
+	remoteProjectLinks?: RemoteProjectLinkData[];
 	branchNaming?: BranchNamingData;
 };

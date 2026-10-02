@@ -1,4 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { ProviderKind } from "@/domain/work-tracking/ProviderKind";
+import { RemoteProjectLink } from "@/domain/work-tracking/RemoteProjectLink";
+import { RemoteProjectLinks } from "@/domain/work-tracking/RemoteProjectLinks";
 import { BranchNamingPolicy, DEFAULT_BRANCH_PREFIXES } from "./BranchNaming";
 import { Context, ContextBranch, Project, type ProjectData, Repository } from "./Project";
 
@@ -203,6 +206,84 @@ describe("Project", () => {
 			const result = project.resolveContextIdePathCandidates(context);
 
 			expect(result).toEqual([`${contextFolderPath}/api`, contextFolderPath, PROJECT_PATH]);
+		});
+	});
+
+	describe("remoteProjectLinks", () => {
+		function buildLinks(): RemoteProjectLinks {
+			return RemoteProjectLinks.empty().add(
+				RemoteProjectLink.create(
+					{
+						providerKind: ProviderKind.Teamwork,
+						connectionId: "teamwork:acme.teamwork.com",
+						remoteProjectId: "42",
+						remoteProjectName: "Website",
+						remoteProjectUrl: "https://acme.teamwork.com/app/projects/42",
+					},
+					new Date("2024-01-15T10:00:00.000Z"),
+				),
+			);
+		}
+
+		function buildLinkedProject(): Project {
+			return new Project(
+				PROJECT_NAME,
+				PROJECT_TAG,
+				PROJECT_PATH,
+				[buildRepository("repo-1", "api", "./api")],
+				[buildContext("main", ["repo-1"], true)],
+				"rocket",
+				["node_modules"],
+				buildLinks(),
+			);
+		}
+
+		it("loads a project file without links as having no links (AC18)", () => {
+			const data: ProjectData = {
+				name: PROJECT_NAME,
+				tag: PROJECT_TAG,
+				path: PROJECT_PATH,
+				repositories: [],
+				contexts: [],
+			};
+
+			const project = Project.fromJSON(data);
+
+			expect(project.remoteProjectLinks.toArray()).toEqual([]);
+			expect(project.toJSON().remoteProjectLinks).toEqual([]);
+		});
+
+		it("round-trips the links through toJSON and fromJSON", () => {
+			const project = buildLinkedProject();
+
+			const restored = Project.fromJSON(project.toJSON());
+
+			expect(restored.toJSON()).toEqual(project.toJSON());
+			expect(restored.remoteProjectLinks.toJSON()).toEqual(buildLinks().toJSON());
+		});
+
+		it("keeps the links when adding or removing a context", () => {
+			const project = buildLinkedProject();
+			const added = project.addContext(buildContext("feature-x", ["repo-1"]));
+
+			const removed = added.removeContext("context-feature-x");
+
+			expect(added.remoteProjectLinks).toBe(project.remoteProjectLinks);
+			expect(added.contexts).toHaveLength(2);
+			expect(removed.remoteProjectLinks).toBe(project.remoteProjectLinks);
+			expect(removed.toJSON()).toEqual(project.toJSON());
+		});
+
+		it("replaces only the links with withRemoteProjectLinks", () => {
+			const project = buildLinkedProject();
+
+			const unlinked = project.withRemoteProjectLinks(RemoteProjectLinks.empty());
+
+			expect(unlinked.remoteProjectLinks.toArray()).toEqual([]);
+			expect({ ...unlinked.toJSON(), remoteProjectLinks: undefined }).toEqual({
+				...project.toJSON(),
+				remoteProjectLinks: undefined,
+			});
 		});
 	});
 

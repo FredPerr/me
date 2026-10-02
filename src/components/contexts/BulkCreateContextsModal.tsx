@@ -6,6 +6,7 @@ import {
 	Checkbox,
 	Group,
 	Modal,
+	Select,
 	Stack,
 	Text,
 	Textarea,
@@ -19,13 +20,13 @@ import { useTranslation } from "react-i18next";
 import { type BulkDraftError, useBulkContextDraft } from "@/hooks/useBulkContextDraft";
 import type { BulkContextSpec } from "@/hooks/useContexts";
 import type { BulkContextDraft } from "@/models/bulk/BulkContextDraft";
-import type { Project } from "@/models/Project";
+import type { Context, Project } from "@/models/Project";
 
 type BulkCreateContextsModalProps = {
 	opened: boolean;
 	onClose: () => void;
 	project: Project;
-	onCreate: (specs: BulkContextSpec[]) => Promise<void>;
+	onCreate: (specs: BulkContextSpec[], baseContext?: Context) => Promise<void>;
 };
 
 type RowOrigin = "generated" | "manual";
@@ -79,7 +80,14 @@ export function BulkCreateContextsModal({
 	const { status, drafts, error, generate, reset } = useBulkContextDraft(project);
 	const [instruction, setInstruction] = useState("");
 	const [rows, setRows] = useState<ReviewRow[]>([]);
+	const [baseContextName, setBaseContextName] = useState<string | null>(null);
 	const [creating, setCreating] = useState(false);
+
+	// Existing non-default contexts a new batch can branch off of.
+	const baseContextOptions = useMemo(
+		() => project.contexts.filter((context) => !context.isDefault),
+		[project.contexts],
+	);
 
 	// Identity of the last drafts batch merged into rows, so a given generation
 	// is applied once (not re-merged on unrelated re-renders).
@@ -104,6 +112,7 @@ export function BulkCreateContextsModal({
 		mergedDraftsRef.current = null;
 		setInstruction("");
 		setRows([]);
+		setBaseContextName(null);
 		onClose();
 	}
 
@@ -145,9 +154,11 @@ export function BulkCreateContextsModal({
 			}));
 		if (specs.length === 0) return;
 
+		const baseContext = baseContextOptions.find((context) => context.name === baseContextName);
+
 		setCreating(true);
 		try {
-			await onCreate(specs);
+			await onCreate(specs, baseContext);
 			notifications.show({
 				title: t("contexts.bulk.createdTitle"),
 				message: t("contexts.bulk.createdMessage", { count: specs.length }),
@@ -190,6 +201,22 @@ export function BulkCreateContextsModal({
 						maxRows={isReview ? 8 : 16}
 						disabled={isGenerating || creating}
 					/>
+					{baseContextOptions.length > 0 && (
+						<Select
+							label={t("contexts.bulk.baseContextLabel")}
+							description={t("contexts.bulk.baseContextHint")}
+							placeholder={t("contexts.bulk.baseContextDefault")}
+							data={baseContextOptions.map((context) => ({
+								value: context.name,
+								label: context.name,
+							}))}
+							value={baseContextName}
+							onChange={setBaseContextName}
+							disabled={isGenerating || creating}
+							clearable
+							searchable
+						/>
+					)}
 					{error && (
 						<Text size="xs" c="red.4">
 							{t(errorMessageKey(error), {

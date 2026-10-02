@@ -1,0 +1,93 @@
+{
+  "tasks": [
+    {
+      "id": 1,
+      "name": "Design homepage",
+      "description": "Hero section",
+      "status": "new",
+      "progress": 0,
+      "priority": "high",
+      "tasklistId": 201,
+      "parentTaskId": 0,
+      "dueDate": "2024-01-15T00:00:00Z",
+      "updatedAt": "2024-01-10T12:00:00Z",
+      "assigneeUserIds": [301, 302, 399],
+      "assignees": [{ "id": 301, "type": "users" }],
+      "tagIds": [401, 402, 499]
+    },
+    {
+      "id": 2,
+      "name": "Hero copy",
+      "status": "new",
+      "progress": 50,
+      "priority": "Medium",
+      "tasklistId": 201,
+      "parentTaskId": 1,
+      "dueDate": "2024-02-01",
+      "assigneeUserIds": [303]
+    },
+    {
+      "id": 3,
+      "name": "Footer",
+      "status": "completed",
+      "priority": "low",
+      "parentTaskId": null,
+      "dueDate": null
+    },
+    {
+      "id": 4,
+      "name": "Old idea",
+      "status": "deleted",
+      "priority": null,
+      "dueDate": "2024-1-5"
+    },
+    {
+      "id": 5,
+      "name": "Reopened bug",
+      "status": "reopened",
+      "progress": 10,
+      "priority": "",
+      "dueDate": "15/01/2024"
+    },
+    {
+      "id": 6,
+      "name": "Reopened, not started",
+      "status": "reopened",
+      "progress": 0,
+      "priority": "HIGH"
+    }
+  ],
+  "included": {
+    "users": {
+      "301": {
+        "id": 301,
+        "firstName": "Ada",
+        "lastName": "Lovelace",
+        "avatarUrl": "https://cdn.teamwork.com/ada.png"
+      },
+      "302": {
+        "id": 302,
+        "firstName": "Grace",
+        "lastName": null,
+        "avatarUrl": "http://insecure.example.com/grace.png"
+      },
+      "303": {
+        "id": 303,
+        "firstName": "",
+        "lastName": " "
+      }
+    },
+    "tags": {
+      "401": { "id": 401, "name": "bug", "color": "#d84640" },
+      "402": { "id": 402, "name": "ui", "color": "red" }
+    }
+  },
+  "meta": {
+    "page": {
+      "pageOffset": 0,
+      "pageSize": 50,
+      "count": 300,
+      "hasMore": true
+    }
+  }
+}

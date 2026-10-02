@@ -1,0 +1,39 @@
+[
+  {
+    "tasks": [
+      {
+        "id": 30,
+        "name": "Null collections",
+        "status": "new",
+        "assigneeUserIds": null,
+        "tagIds": null
+      }
+    ],
+    "included": {
+      "users": null,
+      "tags": null
+    },
+    "meta": {
+      "page": {
+        "hasMore": false
+      }
+    }
+  },
+  {
+    "tasks": [
+      {
+        "id": 31,
+        "name": "Null included",
+        "status": "new",
+        "assigneeUserIds": null,
+        "tagIds": null
+      }
+    ],
+    "included": null,
+    "meta": {
+      "page": {
+        "hasMore": null
+      }
+    }
+  }
+]
