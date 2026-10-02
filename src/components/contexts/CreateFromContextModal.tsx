@@ -208,7 +208,6 @@ export function CreateFromContextModal({
 			onClose={onClose}
 			closeOnEscape={!isBranchPopoverOpened}
 			title={t("contexts.createFromContext")}
-			size="lg"
 		>
 			<Stack gap="md">
 				<Text size="sm" c="dimmed">

@@ -254,7 +254,7 @@ export function RepositoryBranchesModal({
 	}
 
 	return (
-		<Modal opened={opened} onClose={onClose} title={t("branches.title")} size="lg">
+		<Modal opened={opened} onClose={onClose} title={t("branches.title")}>
 			<Stack gap="md">
 				<Group justify="space-between" align="flex-start" wrap="nowrap">
 					<Box>
