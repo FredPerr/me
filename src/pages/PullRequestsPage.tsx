@@ -203,7 +203,12 @@ function ActiveSection({ projects }: { projects: Project[] }) {
 	if (error) {
 		return (
 			<Alert color="red" title={t("common.error")}>
-				{t("pullRequests.loadError")}
+				<Stack gap={4}>
+					<Text size="sm">{t("pullRequests.loadError")}</Text>
+					<Text size="xs" c="dimmed" style={{ wordBreak: "break-word" }}>
+						{error}
+					</Text>
+				</Stack>
 			</Alert>
 		);
 	}

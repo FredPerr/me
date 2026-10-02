@@ -17,6 +17,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { CreateContextParams, RepositoryBranchConfig } from "@/hooks/useContexts";
 import type { Context, Project } from "@/models/Project";
+import { BranchNameFromTaskPopover } from "./BranchNameFromTaskPopover";
 
 type CreateFromContextModalProps = {
 	opened: boolean;
@@ -52,6 +53,7 @@ export function CreateFromContextModal({
 	);
 	const [loading, setLoading] = useState(false);
 	const [syncBranchNames, setSyncBranchNames] = useState(true);
+	const [isBranchPopoverOpened, setIsBranchPopoverOpened] = useState(false);
 	const [branchErrors, setBranchErrors] = useState<Record<string, string>>({});
 	const [branchOptions, setBranchOptions] = useState<Record<string, string[]>>({});
 
@@ -73,6 +75,10 @@ export function CreateFromContextModal({
 			fetchBranches();
 		}
 	}, [opened, project, repositories]);
+
+	useEffect(() => {
+		if (!opened) setIsBranchPopoverOpened(false);
+	}, [opened]);
 
 	function updateRepoState(repositoryId: string, patch: Partial<RepositoryFormState>) {
 		setRepoStates((prev) => ({
@@ -111,6 +117,21 @@ export function CreateFromContextModal({
 		setContextName(name);
 		if (syncBranchNames) {
 			syncBranchesToName(name);
+		}
+	}
+
+	function applyGeneratedBranchName(branchName: string) {
+		if (syncBranchNames) {
+			handleContextNameChange(branchName);
+			return;
+		}
+		for (const repositoryId of Object.keys(repoStates)) {
+			if (repoStates[repositoryId].createBranch) {
+				updateRepoState(repositoryId, { branchName });
+			}
+		}
+		if (!contextName.trim()) {
+			setContextName(branchName);
 		}
 	}
 
@@ -182,7 +203,12 @@ export function CreateFromContextModal({
 	}
 
 	return (
-		<Modal opened={opened} onClose={onClose} title={t("contexts.createFromContext")} size="lg">
+		<Modal
+			opened={opened}
+			onClose={onClose}
+			closeOnEscape={!isBranchPopoverOpened}
+			title={t("contexts.createFromContext")}
+		>
 			<Stack gap="md">
 				<Text size="sm" c="dimmed">
 					{t("contexts.createFromContextDescription", { name: sourceContext.name })}
@@ -193,20 +219,31 @@ export function CreateFromContextModal({
 					value={contextName}
 					onChange={(e) => handleContextNameChange(e.currentTarget.value)}
 					required
+					rightSectionWidth={60}
 					rightSection={
-						<Tooltip
-							label={syncBranchNames ? t("contexts.syncBranchesOn") : t("contexts.syncBranchesOff")}
-						>
-							<ActionIcon
-								variant={syncBranchNames ? "filled" : "subtle"}
-								size="sm"
-								onClick={toggleSync}
-								aria-label={t("contexts.syncBranchNames")}
-								aria-pressed={syncBranchNames}
+						<Group gap={4} wrap="nowrap">
+							<BranchNameFromTaskPopover
+								branchNaming={project.branchNaming}
+								opened={isBranchPopoverOpened}
+								onOpenedChange={setIsBranchPopoverOpened}
+								onApply={applyGeneratedBranchName}
+							/>
+							<Tooltip
+								label={
+									syncBranchNames ? t("contexts.syncBranchesOn") : t("contexts.syncBranchesOff")
+								}
 							>
-								<PaintBrushHouseholdIcon size={16} />
-							</ActionIcon>
-						</Tooltip>
+								<ActionIcon
+									variant={syncBranchNames ? "filled" : "subtle"}
+									size="sm"
+									onClick={toggleSync}
+									aria-label={t("contexts.syncBranchNames")}
+									aria-pressed={syncBranchNames}
+								>
+									<PaintBrushHouseholdIcon size={16} />
+								</ActionIcon>
+							</Tooltip>
+						</Group>
 					}
 				/>
 				{repositories.map((repo) => {

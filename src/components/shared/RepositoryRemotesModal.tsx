@@ -14,7 +14,7 @@ export function RepositoryRemotesModal({ opened, onClose, remotes }: RepositoryR
 	const { t } = useTranslation();
 
 	return (
-		<Modal opened={opened} onClose={onClose} title={t("project.openRepository")} size="md">
+		<Modal opened={opened} onClose={onClose} title={t("project.openRepository")}>
 			<Stack gap="xs">
 				{remotes.map(({ repository, remoteUrl }) => (
 					<Group

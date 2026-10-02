@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { ProviderKind } from "@/domain/work-tracking/ProviderKind";
 import { RemoteProjectLink } from "@/domain/work-tracking/RemoteProjectLink";
 import { RemoteProjectLinks } from "@/domain/work-tracking/RemoteProjectLinks";
+import { BranchNamingPolicy, DEFAULT_BRANCH_PREFIXES } from "./BranchNaming";
 import { Context, ContextBranch, Project, type ProjectData, Repository } from "./Project";
 
 const PROJECT_NAME = "My Project";
@@ -70,6 +71,40 @@ describe("Project", () => {
 			const result = project.findEffectiveRepository("missing");
 
 			expect(result).toBeUndefined();
+		});
+	});
+
+	describe("Context.withExpanded", () => {
+		it("defaults to collapsed when constructed without the flag", () => {
+			const context = buildContext("feature-x", [PROJECT_TAG]);
+
+			expect(context.expanded).toBe(false);
+		});
+
+		it("returns a new context with the expanded flag set", () => {
+			const context = buildContext("feature-x", [PROJECT_TAG]);
+
+			const result = context.withExpanded(true);
+
+			expect(result.expanded).toBe(true);
+			expect(context.expanded).toBe(false);
+		});
+
+		it("round-trips the expanded flag through toJSON and fromJSON", () => {
+			const context = buildContext("feature-x", [PROJECT_TAG]).withExpanded(true);
+
+			const restored = Context.fromJSON(context.toJSON());
+
+			expect(restored.expanded).toBe(true);
+		});
+
+		it("defaults to collapsed when deserializing data saved without the flag", () => {
+			const context = buildContext("feature-x", [PROJECT_TAG]);
+			const { expanded: _omitted, ...dataWithoutExpanded } = context.toJSON();
+
+			const restored = Context.fromJSON(dataWithoutExpanded);
+
+			expect(restored.expanded).toBe(false);
 		});
 	});
 
@@ -278,6 +313,43 @@ describe("Project", () => {
 			const result = await project.resolveRootIdePathCandidates();
 
 			expect(result).toEqual([PROJECT_PATH]);
+		});
+	});
+	describe("branchNaming", () => {
+		const legacyProjectData: ProjectData = {
+			name: PROJECT_NAME,
+			tag: PROJECT_TAG,
+			path: PROJECT_PATH,
+			repositories: [],
+			contexts: [],
+		};
+		function buildProjectWithCustomBranchNaming(): Project {
+			return Project.fromJSON({
+				...legacyProjectData,
+				branchNaming: { prefixes: ["ops"], allowNoPrefix: false },
+			});
+		}
+		it("uses the default prefixes and allows no prefix for projects saved without the setting", () => {
+			const project = Project.fromJSON(legacyProjectData);
+			expect(project.branchNaming.prefixes).toEqual(DEFAULT_BRANCH_PREFIXES);
+			expect(project.branchNaming.allowsNoPrefix).toBe(true);
+		});
+		it("preserves a custom setting and round-trips it through toJSON", () => {
+			const project = buildProjectWithCustomBranchNaming();
+			expect(project.branchNaming.prefixes).toEqual(["ops"]);
+			expect(project.branchNaming.allowsNoPrefix).toBe(false);
+			expect(project.toJSON().branchNaming).toEqual({ prefixes: ["ops"], allowNoPrefix: false });
+		});
+		it("preserves the setting when adding and removing contexts", () => {
+			const project = buildProjectWithCustomBranchNaming();
+			const context = buildContext("feature-x", [PROJECT_TAG]);
+			const withContext = project.addContext(context);
+			const withoutContext = withContext.removeContext(context.id);
+			expect(withContext.branchNaming).toBe(project.branchNaming);
+			expect(withoutContext.branchNaming).toBe(project.branchNaming);
+		});
+		it("uses the default policy when constructed without a setting", () => {
+			expect(buildProject([]).branchNaming.toJSON()).toEqual(BranchNamingPolicy.default().toJSON());
 		});
 	});
 });

@@ -23,7 +23,7 @@ export function ErrorModal({ opened, onClose, content }: ErrorModalProps) {
 	}
 
 	return (
-		<Modal opened={opened} onClose={onClose} title={content.title} size="lg" centered>
+		<Modal opened={opened} onClose={onClose} title={content.title} centered>
 			<Stack gap="md">
 				{content.description && <Text size="sm">{content.description}</Text>}
 				<ScrollArea.Autosize mah={320}>

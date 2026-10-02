@@ -1,5 +1,12 @@
 import type { RemoteProjectLinkData } from "@/domain/work-tracking/RemoteProjectLink";
 import { RemoteProjectLinks } from "@/domain/work-tracking/RemoteProjectLinks";
+import { type BranchNamingData, BranchNamingPolicy } from "@/models/BranchNaming";
+import {
+	type ContextStatus,
+	DEFAULT_CONTEXT_STATUS,
+	IDLE_CONTEXT_STATUS,
+	isContextStatus,
+} from "@/models/ContextStatus";
 import { normalizeFolderPath, resolvePath } from "@/utils/resolvePath";
 
 export class Repository {
@@ -60,6 +67,11 @@ export class Context {
 		public readonly isDefault: boolean = false,
 		public readonly baseContextName?: string,
 		public readonly pullRequestDrafts: Record<string, PullRequestDraft> = {},
+		public readonly status: ContextStatus = isDefault
+			? IDLE_CONTEXT_STATUS
+			: DEFAULT_CONTEXT_STATUS,
+		public readonly preprompt?: string,
+		public readonly expanded: boolean = false,
 	) {}
 
 	getBranchForRepository(repositoryId: string): string | undefined {
@@ -78,6 +90,37 @@ export class Context {
 			this.isDefault,
 			this.baseContextName,
 			drafts,
+			this.status,
+			this.preprompt,
+			this.expanded,
+		);
+	}
+
+	withStatus(status: ContextStatus): Context {
+		return new Context(
+			this.id,
+			this.name,
+			this.branches,
+			this.isDefault,
+			this.baseContextName,
+			this.pullRequestDrafts,
+			status,
+			this.preprompt,
+			this.expanded,
+		);
+	}
+
+	withExpanded(expanded: boolean): Context {
+		return new Context(
+			this.id,
+			this.name,
+			this.branches,
+			this.isDefault,
+			this.baseContextName,
+			this.pullRequestDrafts,
+			this.status,
+			this.preprompt,
+			expanded,
 		);
 	}
 
@@ -112,13 +155,22 @@ export class Context {
 	}
 
 	static fromJSON(data: ContextData): Context {
+		const isDefault = data.isDefault ?? false;
+		const status = isContextStatus(data.status)
+			? data.status
+			: isDefault
+				? IDLE_CONTEXT_STATUS
+				: DEFAULT_CONTEXT_STATUS;
 		return new Context(
 			data.id,
 			data.name,
 			(data.branches ?? []).map(ContextBranch.fromJSON),
-			data.isDefault ?? false,
+			isDefault,
 			data.baseContextName,
 			data.pullRequestDrafts ?? {},
+			status,
+			data.preprompt,
+			data.expanded ?? false,
 		);
 	}
 
@@ -130,6 +182,9 @@ export class Context {
 			isDefault: this.isDefault,
 			baseContextName: this.baseContextName,
 			pullRequestDrafts: this.pullRequestDrafts,
+			status: this.status,
+			preprompt: this.preprompt,
+			expanded: this.expanded,
 		};
 	}
 }
@@ -144,6 +199,7 @@ export class Project {
 		public readonly icon?: string,
 		public readonly symlinks: string[] = [],
 		public readonly remoteProjectLinks: RemoteProjectLinks = RemoteProjectLinks.empty(),
+		public readonly branchNaming: BranchNamingPolicy = BranchNamingPolicy.default(),
 	) {}
 
 	findRepository(repositoryId: string): Repository | undefined {
@@ -195,6 +251,7 @@ export class Project {
 			this.icon,
 			this.symlinks,
 			this.remoteProjectLinks,
+			this.branchNaming,
 		);
 	}
 
@@ -208,6 +265,7 @@ export class Project {
 			this.icon,
 			this.symlinks,
 			this.remoteProjectLinks,
+			this.branchNaming,
 		);
 	}
 
@@ -221,6 +279,7 @@ export class Project {
 			this.icon,
 			this.symlinks,
 			remoteProjectLinks,
+			this.branchNaming,
 		);
 	}
 
@@ -234,6 +293,7 @@ export class Project {
 			data.icon,
 			data.symlinks ?? [],
 			RemoteProjectLinks.fromJSON(data.remoteProjectLinks),
+			BranchNamingPolicy.fromJSON(data.branchNaming),
 		);
 	}
 
@@ -247,6 +307,7 @@ export class Project {
 			contexts: this.contexts.map((c) => c.toJSON()),
 			symlinks: this.symlinks,
 			remoteProjectLinks: this.remoteProjectLinks.toJSON(),
+			branchNaming: this.branchNaming.toJSON(),
 		};
 	}
 }
@@ -276,6 +337,9 @@ export type ContextData = {
 	isDefault?: boolean;
 	baseContextName?: string;
 	pullRequestDrafts?: Record<string, PullRequestDraft>;
+	status?: ContextStatus;
+	preprompt?: string;
+	expanded?: boolean;
 };
 
 export type ProjectData = {
@@ -287,4 +351,5 @@ export type ProjectData = {
 	contexts: ContextData[];
 	symlinks?: string[];
 	remoteProjectLinks?: RemoteProjectLinkData[];
+	branchNaming?: BranchNamingData;
 };

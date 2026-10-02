@@ -24,8 +24,18 @@ type UseProjectPullRequestsResult = {
 async function resolveRemoteUrl(project: Project, repository: Repository): Promise<string | null> {
 	try {
 		const resolvedPath = await repository.resolveAbsolutePath(project.path);
-		return await invoke<string | null>("get_git_remote_url", { path: resolvedPath });
-	} catch {
+		const remoteUrl = await invoke<string | null>("get_git_remote_url", { path: resolvedPath });
+		if (!remoteUrl) {
+			console.warn(
+				`[pull-requests] no git remote URL for ${project.name}/${repository.name} at ${resolvedPath}`,
+			);
+		}
+		return remoteUrl;
+	} catch (error) {
+		console.error(
+			`[pull-requests] failed to resolve remote URL for ${project.name}/${repository.name}:`,
+			error,
+		);
 		return null;
 	}
 }
@@ -46,10 +56,23 @@ async function loadRepositoryPullRequests(
 	if (!remoteUrl) return null;
 
 	const ref = github.parseRepositoryRef(remoteUrl);
-	if (!ref) return null;
+	if (!ref) {
+		console.warn(
+			`[pull-requests] remote URL "${remoteUrl}" for ${project.name}/${repository.name} is not a recognized GitHub URL; skipping`,
+		);
+		return null;
+	}
 
-	const pullRequests = await github.listPullRequests(ref);
-	return { project, repository, pullRequests };
+	try {
+		const pullRequests = await github.listPullRequests(ref);
+		console.debug(
+			`[pull-requests] ${ref.owner}/${ref.repo} returned ${pullRequests.length} open PR(s)`,
+		);
+		return { project, repository, pullRequests };
+	} catch (error) {
+		console.error(`[pull-requests] listPullRequests failed for ${ref.owner}/${ref.repo}:`, error);
+		throw error;
+	}
 }
 
 /**
@@ -68,6 +91,7 @@ export function useProjectPullRequests(projects: Project[]): UseProjectPullReque
 		setError(null);
 		try {
 			const isConnected = await github.isConnected();
+			console.debug(`[pull-requests] github.isConnected() -> ${isConnected}`);
 			setConnected(isConnected);
 			if (!isConnected) {
 				setGroups([]);
@@ -82,6 +106,7 @@ export function useProjectPullRequests(projects: Project[]): UseProjectPullReque
 			const results = await Promise.all(tasks);
 			setGroups(results.filter((group): group is RepositoryPullRequests => group !== null));
 		} catch (loadError) {
+			console.error("[pull-requests] failed to load pull requests:", loadError);
 			setError(String(loadError));
 			setGroups([]);
 		} finally {

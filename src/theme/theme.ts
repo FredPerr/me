@@ -34,6 +34,11 @@ export const theme = createTheme({
 	primaryColor: "primary",
 	defaultGradient: { from: "secondary", to: "primary", deg: 70 },
 	components: {
+		Modal: {
+			defaultProps: {
+				size: "xl",
+			},
+		},
 		Button: {
 			defaultProps: {
 				variant: "gradient",
@@ -53,6 +58,11 @@ export const theme = createTheme({
 		Title: {
 			defaultProps: {
 				c: "primary.3",
+			},
+		},
+		Tooltip: {
+			defaultProps: {
+				color: "gray",
 			},
 		},
 	},

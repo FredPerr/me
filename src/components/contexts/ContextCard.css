@@ -1,0 +1,5 @@
+.context-card-delete:hover {
+	--ai-color: var(--mantine-color-red-5);
+	--ai-hover: var(--mantine-color-red-light-hover);
+	color: var(--mantine-color-red-5);
+}
