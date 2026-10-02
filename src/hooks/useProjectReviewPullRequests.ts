@@ -1,11 +1,13 @@
 import { useMemo } from "react";
 import { useProjectPullRequests } from "@/hooks/useProjectPullRequests";
-import type { ProviderPullRequest } from "@/models/git-provider/GitProvider";
+import type { GitProviderId, ProviderPullRequest } from "@/models/git-provider/GitProvider";
 import type { Project } from "@/models/Project";
 
 /** A project PR flattened for the review-share modal, tagged with its repo. */
 export type ReviewPullRequest = ProviderPullRequest & {
 	repositoryName: string;
+	/** The provider the PR's repository belongs to. */
+	providerId: GitProviderId;
 };
 
 type UseProjectReviewPullRequestsResult = {
@@ -30,6 +32,7 @@ export function useProjectReviewPullRequests(project: Project): UseProjectReview
 				group.pullRequests.map((pullRequest) => ({
 					...pullRequest,
 					repositoryName: group.repository.name,
+					providerId: group.providerId,
 				})),
 			),
 		[groups],
