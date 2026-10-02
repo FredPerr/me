@@ -65,12 +65,27 @@ export function KiroConversationModal({
 			size="xl"
 			closeOnClickOutside={false}
 			closeOnEscape={false}
+			styles={{
+				content: {
+					height: "100vh",
+					maxHeight: "100vh",
+					display: "flex",
+					flexDirection: "column",
+				},
+				body: {
+					flex: 1,
+					minHeight: 0,
+					display: "flex",
+					flexDirection: "column",
+				},
+			}}
 		>
 			<AgentChat
 				session={session}
 				slashProviders={slashProviders}
 				prompt={prompt}
 				onPromptChange={onPromptChange}
+				fill
 			/>
 		</Modal>
 	);

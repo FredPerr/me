@@ -5,13 +5,14 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
 import { CreatePullRequestModal } from "@/components/contexts/CreatePullRequestModal";
+import { ProviderBadge } from "@/components/shared/ProviderBadge";
 import { useContexts } from "@/hooks/useContexts";
 import {
 	type RepositoryPullRequests,
 	useProjectPullRequests,
 } from "@/hooks/useProjectPullRequests";
 import { useProjects } from "@/hooks/useProjects";
-import type { ProviderPullRequest } from "@/models/git-provider/GitProvider";
+import type { GitProviderId, ProviderPullRequest } from "@/models/git-provider/GitProvider";
 import type { Context, Project, PullRequestDraft } from "@/models/Project";
 
 type DraftEntry = {
@@ -121,7 +122,13 @@ function NotConnected() {
 	);
 }
 
-function PullRequestCard({ pullRequest }: { pullRequest: ProviderPullRequest }) {
+function PullRequestCard({
+	pullRequest,
+	providerId,
+}: {
+	pullRequest: ProviderPullRequest;
+	providerId: GitProviderId;
+}) {
 	const { t } = useTranslation();
 
 	return (
@@ -137,6 +144,7 @@ function PullRequestCard({ pullRequest }: { pullRequest: ProviderPullRequest }) 
 						<Text fw={600} size="sm" truncate>
 							{pullRequest.title}
 						</Text>
+						<ProviderBadge providerId={providerId} />
 						{pullRequest.draft && (
 							<Badge variant="light" color="gray" size="sm">
 								{t("pullRequests.draftBadge")}
@@ -176,7 +184,11 @@ function RepositoryGroup({ group }: { group: RepositoryPullRequests }) {
 				</Text>
 			) : (
 				group.pullRequests.map((pullRequest) => (
-					<PullRequestCard key={pullRequest.number} pullRequest={pullRequest} />
+					<PullRequestCard
+						key={pullRequest.number}
+						pullRequest={pullRequest}
+						providerId={group.providerId}
+					/>
 				))
 			)}
 		</Stack>
@@ -199,31 +211,37 @@ function ActiveSection({ projects }: { projects: Project[] }) {
 		return <NotConnected />;
 	}
 
-	if (error) {
-		return (
-			<Alert color="red" title={t("common.error")}>
-				<Stack gap={4}>
-					<Text size="sm">{t("pullRequests.loadError")}</Text>
-					<Text size="xs" c="dimmed" style={{ wordBreak: "break-word" }}>
-						{error}
-					</Text>
-				</Stack>
-			</Alert>
-		);
-	}
-
 	const groupsWithPullRequests = groups.filter((group) => group.pullRequests.length > 0);
+
+	// A load error is non-blocking: show it above whatever did load, so a
+	// failure for one provider/repository never hides the others' PRs.
+	const errorAlert = error ? (
+		<Alert color="red" title={t("common.error")}>
+			<Stack gap={4}>
+				<Text size="sm">{t("pullRequests.loadError")}</Text>
+				<Text size="xs" c="dimmed" style={{ wordBreak: "break-word" }}>
+					{error}
+				</Text>
+			</Stack>
+		</Alert>
+	) : null;
 
 	if (groupsWithPullRequests.length === 0) {
 		return (
-			<Text size="sm" c="dimmed" ta="center" py="xl">
-				{t("pullRequests.noOpen")}
-			</Text>
+			<Stack gap="lg">
+				{errorAlert}
+				{!error && (
+					<Text size="sm" c="dimmed" ta="center" py="xl">
+						{t("pullRequests.noOpen")}
+					</Text>
+				)}
+			</Stack>
 		);
 	}
 
 	return (
 		<Stack gap="lg">
+			{errorAlert}
 			{groupsWithPullRequests.map((group) => (
 				<RepositoryGroup key={`${group.project.tag}-${group.repository.id}`} group={group} />
 			))}

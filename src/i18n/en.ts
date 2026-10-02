@@ -59,13 +59,14 @@ export const en = {
 				title: "Connected accounts",
 				description: "Connect a git provider to perform operations on your repositories from Me.",
 				github: "GitHub",
+				bitbucket: "Bitbucket",
 				notConnected: "Not connected",
 				connect: "Connect",
-				connectError: "Could not connect to GitHub. Please try again.",
+				connectError: "Could not connect to the provider. Please try again.",
 				connectedAs: "Connected as {{login}}",
 				disconnect: "Disconnect",
 				disconnectedTitle: "Account disconnected",
-				disconnectedMessage: "Your GitHub account has been disconnected.",
+				disconnectedMessage: "Your {{provider}} account has been disconnected.",
 				disconnectError: "Failed to disconnect the account.",
 				deviceInstructions:
 					"Enter this code on GitHub to authorize Me, then keep this window open.",
@@ -74,6 +75,15 @@ export const en = {
 				waitingForAuthorization: "Waiting for you to authorize on GitHub…",
 				expired: "The code expired before authorization. Please start again.",
 				denied: "Authorization was denied. Please try again to connect.",
+				tokenInstructions:
+					"Enter your Bitbucket username and an API token with repository and pull request scopes.",
+				createAppPassword: "Create an API token",
+				usernameLabel: "Username",
+				usernamePlaceholder: "your-bitbucket-username",
+				tokenLabel: "API token",
+				tokenPlaceholder: "API token",
+				tokenConnectError:
+					"Could not connect to Bitbucket. Check your username and API token, then try again.",
 			},
 			projects: {
 				title: "Projects",
@@ -230,8 +240,8 @@ export const en = {
 				createDraft: "Create draft pull request",
 				createAsDraft: "Create as draft",
 				viewPr: "View PR #{{number}}",
-				notGitHub:
-					"This repository has no GitHub remote, so a pull request cannot be created here.",
+				unsupportedRemote:
+					"This repository has no GitHub or Bitbucket remote, so a pull request cannot be created here.",
 				noBaseBranch:
 					"No base branch found in the base context, so there is nothing to open the pull request against.",
 				missingTitle: "Title required",
@@ -335,7 +345,7 @@ export const en = {
 			noProjects: "No projects configured. Add some in Settings.",
 			openRepository: "Open repository",
 			createPullRequest: "Create pull request",
-			prNotAvailable: "PR creation only available for GitHub",
+			prNotAvailable: "No pull request open for this branch yet",
 			noRemoteConfigured: "No remote configured",
 			pullContexts: "Pull all branches",
 			pullDoneTitle: "Branches updated",

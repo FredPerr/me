@@ -1,15 +1,17 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useState } from "react";
-import type { ProviderPullRequest } from "@/models/git-provider/GitProvider";
-import { getGitProvider } from "@/models/git-provider/GitProviderRegistry";
+import type { GitProviderId, ProviderPullRequest } from "@/models/git-provider/GitProvider";
+import {
+	listGitProviders,
+	resolveProviderForRemote,
+} from "@/models/git-provider/GitProviderRegistry";
 import { type Project, Repository } from "@/models/Project";
-
-const github = getGitProvider("github");
 
 /** Open pull requests for one repository within a project. */
 export type RepositoryPullRequests = {
 	project: Project;
 	repository: Repository;
+	providerId: GitProviderId;
 	pullRequests: ProviderPullRequest[];
 };
 
@@ -53,25 +55,58 @@ async function loadRepositoryPullRequests(
 	repository: Repository,
 ): Promise<RepositoryPullRequests | null> {
 	const remoteUrl = await resolveRemoteUrl(project, repository);
+	console.debug(
+		`[pull-requests] considering ${project.name}/${repository.name} (relPath "${repository.relPath}") -> remote ${remoteUrl ?? "<none>"}`,
+	);
 	if (!remoteUrl) return null;
 
-	const ref = github.parseRepositoryRef(remoteUrl);
-	if (!ref) {
+	const resolved = resolveProviderForRemote(remoteUrl);
+	if (!resolved) {
 		console.warn(
-			`[pull-requests] remote URL "${remoteUrl}" for ${project.name}/${repository.name} is not a recognized GitHub URL; skipping`,
+			`[pull-requests] remote URL "${remoteUrl}" for ${project.name}/${repository.name} is not a recognized provider URL; skipping`,
 		);
 		return null;
 	}
 
-	try {
-		const pullRequests = await github.listPullRequests(ref);
+	const { provider, ref } = resolved;
+
+	// Only query providers the user has actually connected.
+	if (!(await provider.isConnected())) {
 		console.debug(
-			`[pull-requests] ${ref.owner}/${ref.repo} returned ${pullRequests.length} open PR(s)`,
+			`[pull-requests] ${provider.id} not connected; skipping ${project.name}/${repository.name}`,
 		);
-		return { project, repository, pullRequests };
+		return null;
+	}
+
+	const pullRequests = await provider.listPullRequests(ref);
+	console.debug(
+		`[pull-requests] ${provider.id} ${ref.owner}/${ref.repo} returned ${pullRequests.length} open PR(s)`,
+	);
+	return { project, repository, providerId: provider.id, pullRequests };
+}
+
+/** The result of attempting to load one repository's pull requests. */
+type RepositoryLoadResult =
+	| { ok: true; group: RepositoryPullRequests | null }
+	| { ok: false; error: string };
+
+/**
+ * Load one repository's pull requests, capturing any failure as a value so a
+ * single failing repository never discards the results of the others.
+ */
+async function loadRepositorySafely(
+	project: Project,
+	repository: Repository,
+): Promise<RepositoryLoadResult> {
+	try {
+		const group = await loadRepositoryPullRequests(project, repository);
+		return { ok: true, group };
 	} catch (error) {
-		console.error(`[pull-requests] listPullRequests failed for ${ref.owner}/${ref.repo}:`, error);
-		throw error;
+		console.error(
+			`[pull-requests] listPullRequests failed for ${project.name}/${repository.name}:`,
+			error,
+		);
+		return { ok: false, error: String(error) };
 	}
 }
 
@@ -90,21 +125,31 @@ export function useProjectPullRequests(projects: Project[]): UseProjectPullReque
 		setLoading(true);
 		setError(null);
 		try {
-			const isConnected = await github.isConnected();
-			console.debug(`[pull-requests] github.isConnected() -> ${isConnected}`);
-			setConnected(isConnected);
-			if (!isConnected) {
+			const connectedFlags = await Promise.all(
+				listGitProviders().map((provider) => provider.isConnected()),
+			);
+			const anyConnected = connectedFlags.some(Boolean);
+			console.debug(`[pull-requests] any provider connected -> ${anyConnected}`);
+			setConnected(anyConnected);
+			if (!anyConnected) {
 				setGroups([]);
 				return;
 			}
 
 			const tasks = projects.flatMap((project) =>
-				projectRepositories(project).map((repository) =>
-					loadRepositoryPullRequests(project, repository),
-				),
+				projectRepositories(project).map((repository) => loadRepositorySafely(project, repository)),
 			);
 			const results = await Promise.all(tasks);
-			setGroups(results.filter((group): group is RepositoryPullRequests => group !== null));
+
+			const loadedGroups = results.flatMap((result) =>
+				result.ok && result.group ? [result.group] : [],
+			);
+			setGroups(loadedGroups);
+
+			// Surface the first failure, if any, without hiding the repositories
+			// that did load successfully.
+			const firstFailure = results.find((result) => !result.ok);
+			setError(firstFailure && !firstFailure.ok ? firstFailure.error : null);
 		} catch (loadError) {
 			console.error("[pull-requests] failed to load pull requests:", loadError);
 			setError(String(loadError));

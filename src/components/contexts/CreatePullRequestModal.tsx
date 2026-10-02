@@ -21,11 +21,19 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { usePullRequestDescriptionDraft } from "@/hooks/usePullRequestDescriptionDraft";
 import { usePushWorktree } from "@/hooks/usePushWorktree";
-import type { CreatedPullRequest, RepositoryRef } from "@/models/git-provider/GitProvider";
-import { getGitProvider } from "@/models/git-provider/GitProviderRegistry";
+import type {
+	CreatedPullRequest,
+	GitProvider,
+	RepositoryRef,
+} from "@/models/git-provider/GitProvider";
+import { resolveProviderForRemote } from "@/models/git-provider/GitProviderRegistry";
 import type { Context, Project, PullRequestDraft, Repository } from "@/models/Project";
 
-const github = getGitProvider("github");
+/** The provider that owns a repository's remote, with its parsed ref. */
+type ResolvedProvider = {
+	provider: GitProvider;
+	ref: RepositoryRef;
+};
 
 /** Everything needed to open a pull request for one subrepository. */
 type RepositoryTarget = {
@@ -34,8 +42,8 @@ type RepositoryTarget = {
 	headBranch: string;
 	/** Branch the PR merges into, taken from the base context. */
 	baseBranch: string | null;
-	/** owner/repo parsed from the remote, or null if not a GitHub remote. */
-	ref: RepositoryRef | null;
+	/** Provider + ref resolved from the remote, or null if unsupported. */
+	resolved: ResolvedProvider | null;
 };
 
 type CreatePullRequestModalProps = {
@@ -53,11 +61,14 @@ type CreatePullRequestModalProps = {
 
 const EMPTY_DRAFT: PullRequestDraft = { title: "", description: "" };
 
-async function resolveRef(project: Project, repository: Repository): Promise<RepositoryRef | null> {
+async function resolveProvider(
+	project: Project,
+	repository: Repository,
+): Promise<ResolvedProvider | null> {
 	try {
 		const resolvedPath = await repository.resolveAbsolutePath(project.path);
 		const remoteUrl = await invoke<string | null>("get_git_remote_url", { path: resolvedPath });
-		return remoteUrl ? github.parseRepositoryRef(remoteUrl) : null;
+		return remoteUrl ? resolveProviderForRemote(remoteUrl) : null;
 	} catch {
 		return null;
 	}
@@ -98,12 +109,12 @@ export function CreatePullRequestModal({
 				context.branches.map(async (branch) => {
 					const repository = project.findRepository(branch.repositoryId);
 					if (!repository) return null;
-					const ref = await resolveRef(project, repository);
+					const resolved = await resolveProvider(project, repository);
 					return {
 						repository,
 						headBranch: branch.branch,
 						baseBranch: baseContext?.getBranchForRepository(branch.repositoryId) ?? null,
-						ref,
+						resolved,
 					} satisfies RepositoryTarget;
 				}),
 			);
@@ -150,7 +161,7 @@ export function CreatePullRequestModal({
 	}
 
 	async function handleCreate(target: RepositoryTarget) {
-		if (!target.ref || !target.baseBranch) return;
+		if (!target.resolved || !target.baseBranch) return;
 		const draft = draftFor(target.repository.id);
 		if (!draft.title.trim()) {
 			notifications.show({
@@ -174,7 +185,7 @@ export function CreatePullRequestModal({
 				return;
 			}
 
-			const created = await github.createPullRequest(target.ref, {
+			const created = await target.resolved.provider.createPullRequest(target.resolved.ref, {
 				title: draft.title.trim(),
 				body: draft.description,
 				head: target.headBranch,
@@ -205,17 +216,17 @@ export function CreatePullRequestModal({
 		const draft = draftFor(repositoryId);
 		const generation = stateFor(repositoryId);
 		const created = createdByRepository[repositoryId];
-		const canCreate = Boolean(target.ref) && Boolean(target.baseBranch);
+		const canCreate = Boolean(target.resolved) && Boolean(target.baseBranch);
 
 		return (
 			<Tabs.Panel key={repositoryId} value={repositoryId} pt="md">
 				<Stack gap="sm">
-					{!target.ref && (
+					{!target.resolved && (
 						<Alert color="orange" icon={<WarningIcon size={16} />}>
-							{t("contexts.createPr.notGitHub")}
+							{t("contexts.createPr.unsupportedRemote")}
 						</Alert>
 					)}
-					{target.ref && !target.baseBranch && (
+					{target.resolved && !target.baseBranch && (
 						<Alert color="orange" icon={<WarningIcon size={16} />}>
 							{t("contexts.createPr.noBaseBranch")}
 						</Alert>

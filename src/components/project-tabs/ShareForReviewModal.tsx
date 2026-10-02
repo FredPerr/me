@@ -24,6 +24,7 @@ import {
 } from "@phosphor-icons/react";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { ProviderBadge } from "@/components/shared/ProviderBadge";
 import {
 	type ReviewPullRequest,
 	useProjectReviewPullRequests,
@@ -229,6 +230,7 @@ export function ShareForReviewModal({ opened, onClose, project }: ShareForReview
 												<Badge size="sm" variant="light">
 													{pullRequest.repositoryName}
 												</Badge>
+												<ProviderBadge providerId={pullRequest.providerId} />
 											</Group>
 										}
 									/>
