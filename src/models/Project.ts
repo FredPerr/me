@@ -69,6 +69,7 @@ export class Context {
 			? IDLE_CONTEXT_STATUS
 			: DEFAULT_CONTEXT_STATUS,
 		public readonly preprompt?: string,
+		public readonly expanded: boolean = false,
 	) {}
 
 	getBranchForRepository(repositoryId: string): string | undefined {
@@ -89,6 +90,7 @@ export class Context {
 			drafts,
 			this.status,
 			this.preprompt,
+			this.expanded,
 		);
 	}
 
@@ -102,6 +104,21 @@ export class Context {
 			this.pullRequestDrafts,
 			status,
 			this.preprompt,
+			this.expanded,
+		);
+	}
+
+	withExpanded(expanded: boolean): Context {
+		return new Context(
+			this.id,
+			this.name,
+			this.branches,
+			this.isDefault,
+			this.baseContextName,
+			this.pullRequestDrafts,
+			this.status,
+			this.preprompt,
+			expanded,
 		);
 	}
 
@@ -151,6 +168,7 @@ export class Context {
 			data.pullRequestDrafts ?? {},
 			status,
 			data.preprompt,
+			data.expanded ?? false,
 		);
 	}
 
@@ -164,6 +182,7 @@ export class Context {
 			pullRequestDrafts: this.pullRequestDrafts,
 			status: this.status,
 			preprompt: this.preprompt,
+			expanded: this.expanded,
 		};
 	}
 }
@@ -299,6 +318,7 @@ export type ContextData = {
 	pullRequestDrafts?: Record<string, PullRequestDraft>;
 	status?: ContextStatus;
 	preprompt?: string;
+	expanded?: boolean;
 };
 
 export type ProjectData = {

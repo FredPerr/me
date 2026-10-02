@@ -45,6 +45,10 @@ pub struct SpawnRequest {
     /// Additional environment variables supplied by the caller (e.g. an API
     /// key for headless auth). Merged after the adapter's own defaults.
     pub environment: Vec<(String, String)>,
+    /// When true, ask the CLI to run tools without per-action confirmation.
+    /// Headless runs cannot answer interactive prompts, so this is normally on;
+    /// a workspace permission policy still provides the safety floor.
+    pub trust_all_tools: bool,
 }
 
 /// How an adapter prefers to deliver the prompt to its CLI.
@@ -85,6 +89,13 @@ pub trait CliAdapter: Send + Sync {
         Vec::new()
     }
 
+    /// Flags that grant the model permission to run tools without per-action
+    /// confirmation. Returned only when the caller requests trust; empty by
+    /// default so a CLI without such a flag simply ignores the request.
+    fn trust_all_arguments(&self) -> Vec<String> {
+        Vec::new()
+    }
+
     /// Resolves a concrete [`SpawnSpec`] for the request, locating the binary.
     ///
     /// `command_override` lets the caller point at a specific binary/path
@@ -112,6 +123,9 @@ pub trait CliAdapter: Send + Sync {
         let mut arguments = self.headless_arguments();
         if let Some(agent) = request.agent.as_deref().filter(|value| !value.is_empty()) {
             arguments.extend(self.agent_arguments(agent));
+        }
+        if request.trust_all_tools {
+            arguments.extend(self.trust_all_arguments());
         }
 
         let stdin_payload = match self.prompt_delivery() {

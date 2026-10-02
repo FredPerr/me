@@ -30,18 +30,6 @@ pub enum SessionStatus {
     Killed,
 }
 
-impl SessionStatus {
-    /// Stable lowercase label used when syncing to the MCP server.
-    pub fn as_label(self) -> &'static str {
-        match self {
-            SessionStatus::Running => "running",
-            SessionStatus::Completed => "completed",
-            SessionStatus::Failed => "failed",
-            SessionStatus::Killed => "killed",
-        }
-    }
-}
-
 /// Bookkeeping for a live process tracked by the registry.
 ///
 /// The `Child` handle itself is owned by the exit-watcher task, not the
@@ -123,14 +111,6 @@ impl Default for SessionRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn status_labels_are_stable() {
-        assert_eq!(SessionStatus::Running.as_label(), "running");
-        assert_eq!(SessionStatus::Completed.as_label(), "completed");
-        assert_eq!(SessionStatus::Failed.as_label(), "failed");
-        assert_eq!(SessionStatus::Killed.as_label(), "killed");
-    }
 
     #[test]
     fn new_registry_has_no_running_sessions() {

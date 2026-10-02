@@ -29,6 +29,7 @@ export function ProjectTabPanel({ project }: ProjectTabPanelProps) {
 		createContextsBulk,
 		deleteContext,
 		setContextStatus,
+		setContextExpanded,
 	} = useContexts(project);
 	const { runKiro, killKiro, isRunning, getConversation } = useContextKiroSessions(
 		project,
@@ -100,6 +101,7 @@ export function ProjectTabPanel({ project }: ProjectTabPanelProps) {
 					onDelete={deleteContext}
 					onCreate={createContext}
 					onStatusChange={setContextStatus}
+					onExpandedChange={setContextExpanded}
 					onRunKiro={handleRunKiro}
 					onKillKiro={killKiro}
 					isKiroRunning={isRunning}

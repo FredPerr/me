@@ -2,7 +2,6 @@
 //! for exit, and kill by process group. Platform-specific concerns (process
 //! groups, signalling) are isolated here behind small helpers.
 
-use crate::ai_session::mcp_sync::{self, McpSync};
 use crate::ai_session::registry::{RunningSession, SessionRegistry, SessionStatus};
 use crate::ai_session::{
     adapter::SpawnSpec, OutputEvent, OutputStream, SpawnedSession, StatusEvent, EVENT_OUTPUT,
@@ -60,8 +59,6 @@ pub async fn spawn(
 
     stream_output(&app, &session_id, &mut child);
 
-    let mcp = McpSync::from_environment();
-
     // Register the session before announcing it is running so a kill issued the
     // instant the frontend sees the status always finds a tracked pid.
     registry.insert(RunningSession {
@@ -81,25 +78,8 @@ pub async fn spawn(
             error: None,
         },
     );
-    report_to_mcp(
-        &mcp,
-        &session_id,
-        &adapter_id,
-        SessionStatus::Running,
-        &spec.working_directory,
-        pid,
-        None,
-    );
 
-    watch_for_exit(
-        app,
-        child,
-        session_id.clone(),
-        adapter_id.clone(),
-        spec.working_directory.clone(),
-        pid,
-        mcp,
-    );
+    watch_for_exit(app, child, session_id.clone(), adapter_id.clone(), pid);
 
     Ok(SpawnedSession {
         session_id,
@@ -156,17 +136,15 @@ where
 }
 
 /// Spawns a task that owns the child, waits for it to exit, then removes it
-/// from the registry, emits the terminal status, and reports it to the MCP
-/// server. The registry keeps the pid for the whole lifetime so `kill` works
-/// right up until the process actually exits.
+/// from the registry and emits the terminal status. The registry keeps the pid
+/// for the whole lifetime so `kill` works right up until the process actually
+/// exits.
 fn watch_for_exit(
     app: AppHandle,
     mut child: Child,
     session_id: String,
     adapter_id: String,
-    working_directory: String,
     pid: Option<u32>,
-    mcp: Option<McpSync>,
 ) {
     tokio::spawn(async move {
         let wait_result = child.wait().await;
@@ -212,44 +190,11 @@ fn watch_for_exit(
                 error,
             },
         );
-        report_to_mcp(
-            &mcp,
-            &session_id,
-            &adapter_id,
-            status,
-            &working_directory,
-            None,
-            exit_code,
-        );
     });
 }
 
 fn emit_status(app: &AppHandle, event: StatusEvent) {
     let _ = app.emit(EVENT_STATUS, event);
-}
-
-fn report_to_mcp(
-    mcp: &Option<McpSync>,
-    session_id: &str,
-    adapter_id: &str,
-    status: SessionStatus,
-    working_directory: &str,
-    pid: Option<u32>,
-    exit_code: Option<i32>,
-) {
-    if let Some(client) = mcp.clone() {
-        let update = mcp_sync::build_update(
-            session_id,
-            adapter_id,
-            status,
-            working_directory,
-            pid,
-            exit_code,
-        );
-        tokio::spawn(async move {
-            client.report(update).await;
-        });
-    }
 }
 
 // --- Platform-specific process group handling ------------------------------

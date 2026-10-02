@@ -12,6 +12,7 @@ type DraggableContextCardProps = {
 	allContexts: Context[];
 	onDelete: (contextId: string) => Promise<void> | void;
 	onCreate: (params: CreateContextParams) => Promise<void>;
+	onExpandedChange?: (contextId: string, expanded: boolean) => void;
 	onOpenKiro?: (context: Context) => void;
 	isKiroRunning?: boolean;
 	hasKiroHistory?: boolean;
@@ -23,6 +24,7 @@ export function DraggableContextCard({
 	allContexts,
 	onDelete,
 	onCreate,
+	onExpandedChange,
 	onOpenKiro,
 	isKiroRunning,
 	hasKiroHistory,
@@ -49,6 +51,7 @@ export function DraggableContextCard({
 				allContexts={allContexts}
 				onDelete={onDelete}
 				onCreate={onCreate}
+				onExpandedChange={onExpandedChange}
 				onOpenKiro={onOpenKiro}
 				isKiroRunning={isKiroRunning}
 				hasKiroHistory={hasKiroHistory}

@@ -71,6 +71,40 @@ describe("Project", () => {
 		});
 	});
 
+	describe("Context.withExpanded", () => {
+		it("defaults to collapsed when constructed without the flag", () => {
+			const context = buildContext("feature-x", [PROJECT_TAG]);
+
+			expect(context.expanded).toBe(false);
+		});
+
+		it("returns a new context with the expanded flag set", () => {
+			const context = buildContext("feature-x", [PROJECT_TAG]);
+
+			const result = context.withExpanded(true);
+
+			expect(result.expanded).toBe(true);
+			expect(context.expanded).toBe(false);
+		});
+
+		it("round-trips the expanded flag through toJSON and fromJSON", () => {
+			const context = buildContext("feature-x", [PROJECT_TAG]).withExpanded(true);
+
+			const restored = Context.fromJSON(context.toJSON());
+
+			expect(restored.expanded).toBe(true);
+		});
+
+		it("defaults to collapsed when deserializing data saved without the flag", () => {
+			const context = buildContext("feature-x", [PROJECT_TAG]);
+			const { expanded: _omitted, ...dataWithoutExpanded } = context.toJSON();
+
+			const restored = Context.fromJSON(dataWithoutExpanded);
+
+			expect(restored.expanded).toBe(false);
+		});
+	});
+
 	describe("Context.getWorktreePath", () => {
 		it("returns the project path for the root repository of the default context", () => {
 			const project = buildProject([]);

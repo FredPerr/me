@@ -3,15 +3,13 @@
 //! Spawns AI CLI tools (Kiro today, others via [`adapter`]) as child processes
 //! with piped stdout/stderr, tracks them in an in-memory [`registry`], streams
 //! their output to the frontend over Tauri events line-by-line, and terminates
-//! them by process group on request. Every lifecycle transition is also pushed
-//! to the shared local MCP server via [`mcp_sync`] so the IDE stays in sync.
+//! them by process group on request.
 //!
 //! The three Tauri commands exposed are [`spawn_ai_session`], [`kill_ai_session`]
 //! and [`list_ai_adapters`]; [`list_ai_sessions`] reports currently tracked ids.
 
 pub mod adapter;
 pub mod kiro;
-pub mod mcp_sync;
 pub mod registry;
 
 mod process;
@@ -75,6 +73,11 @@ pub struct SpawnOptions {
     /// Extra environment variables (e.g. the headless API key).
     #[serde(default)]
     pub environment: Vec<EnvVar>,
+    /// Run tools without per-action confirmation. Defaults to false when
+    /// absent; the frontend sends true for headless runs, which rely on a
+    /// workspace permission policy for their safety floor.
+    #[serde(default)]
+    pub trust_all_tools: bool,
 }
 
 /// A single environment variable pair from the frontend.
@@ -126,6 +129,7 @@ pub async fn spawn_ai_session(
             .into_iter()
             .map(|pair| (pair.key, pair.value))
             .collect(),
+        trust_all_tools: options.trust_all_tools,
     };
 
     let spec = adapter.build_spec(&request, options.command.as_deref())?;

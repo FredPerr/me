@@ -26,6 +26,7 @@ type KanbanBoardProps = {
 	onDelete: (contextId: string) => void;
 	onCreate: (params: CreateContextParams) => Promise<void>;
 	onStatusChange: (contextId: string, status: ContextStatus) => void;
+	onExpandedChange: (contextId: string, expanded: boolean) => void;
 	onRunKiro: (context: Context, prompt: string) => Promise<void>;
 	onKillKiro: (contextId: string) => Promise<void>;
 	isKiroRunning: (contextId: string) => boolean;
@@ -39,6 +40,7 @@ export function KanbanBoard({
 	onDelete,
 	onCreate,
 	onStatusChange,
+	onExpandedChange,
 	onRunKiro,
 	onKillKiro,
 	isKiroRunning,
@@ -115,6 +117,7 @@ export function KanbanBoard({
 									allContexts={contexts}
 									onDelete={onDelete}
 									onCreate={onCreate}
+									onExpandedChange={onExpandedChange}
 									onOpenKiro={(target) => setOpenKiroContextId(target.id)}
 									isKiroRunning={isKiroRunning(context.id)}
 									hasKiroHistory={(getKiroConversation(context.id)?.turns.length ?? 0) > 0}
@@ -141,6 +144,7 @@ export function KanbanBoard({
 				<KiroConversationModal
 					opened
 					onClose={() => setOpenKiroContextId(null)}
+					contextId={openKiroContext.id}
 					contextName={openKiroContext.name}
 					conversation={getKiroConversation(openKiroContext.id)}
 					isRunning={isKiroRunning(openKiroContext.id)}
@@ -150,6 +154,7 @@ export function KanbanBoard({
 					}
 					onSend={(prompt) => onRunKiro(openKiroContext, prompt)}
 					onKill={() => onKillKiro(openKiroContext.id)}
+					slashBasePath={project.resolveContextIdePathCandidates(openKiroContext)[0]}
 				/>
 			)}
 		</DndContext>

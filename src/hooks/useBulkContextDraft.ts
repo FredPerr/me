@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAppSettings } from "@/hooks/useAppSettings";
 import { isTerminalStatus } from "@/models/ai-session/AiSession";
+import { extractAgentText } from "@/models/ai-session/acp/acpEvents";
+import { looksLikeAcpStream } from "@/models/ai-session/acp/acpStreamToParts";
+import { ensurePermissionFloor } from "@/models/ai-session/ensurePermissionFloor";
 import {
 	type BulkContextDraft,
 	type BulkDraftParseError,
@@ -86,8 +89,11 @@ export function useBulkContextDraft(project: Project): UseBulkContextDraftResult
 					return;
 				}
 
-				const raw = outputBuffer.current.join("\n");
-				const result = parseBulkContextDrafts(raw, branchNamingRef.current);
+				// Kiro streams ACP JSON lines; reconstruct the agent's answer text
+				// (falling back to the raw buffer if the output was plain text).
+				const lines = outputBuffer.current;
+				const agentText = looksLikeAcpStream(lines) ? extractAgentText(lines) : lines.join("\n");
+				const result = parseBulkContextDrafts(agentText, branchNamingRef.current);
 				if (!result.ok) {
 					setStatus("error");
 					setError({ kind: "parse", reason: result.error });
@@ -116,11 +122,13 @@ export function useBulkContextDraft(project: Project): UseBulkContextDraftResult
 			const workingDirectory = candidates[candidates.length - 1];
 
 			try {
+				await ensurePermissionFloor(workingDirectory);
 				const spawned = await aiSessionService.spawn({
 					adapterId: KIRO_ADAPTER_ID,
 					prompt: buildBulkContextPrompt(instruction),
 					workingDirectory,
 					shell: settings?.shell || undefined,
+					trustAllTools: true,
 				});
 				activeSessionId.current = spawned.sessionId;
 			} catch (spawnError) {

@@ -278,6 +278,45 @@ export function useContexts(project: Project) {
 		[project, persistedContexts, defaultContext],
 	);
 
+	const setContextExpanded = useCallback(
+		async (contextId: string, expanded: boolean) => {
+			if (defaultContext && contextId === defaultContext.id) {
+				setDefaultContext(defaultContext.withExpanded(expanded));
+				return;
+			}
+
+			const target = persistedContexts.find((c) => c.id === contextId);
+			if (!target || target.expanded === expanded) return;
+
+			const updatedContext = target.withExpanded(expanded);
+			const previousContexts = persistedContexts;
+			setPersistedContexts((prev) => prev.map((c) => (c.id === contextId ? updatedContext : c)));
+
+			const updatedProject = new Project(
+				project.name,
+				project.tag,
+				project.path,
+				project.repositories,
+				project.contexts.map((c) => (c.id === contextId ? updatedContext : c)),
+				project.icon,
+				project.symlinks,
+				project.branchNaming,
+			);
+
+			try {
+				await ProjectDirectory.saveProject(updatedProject);
+			} catch (error) {
+				setPersistedContexts(previousContexts);
+				notifications.show({
+					title: "Failed to update context",
+					message: String(error),
+					color: "red",
+				});
+			}
+		},
+		[project, persistedContexts, defaultContext],
+	);
+
 	return {
 		contexts,
 		defaultContext,
@@ -287,6 +326,7 @@ export function useContexts(project: Project) {
 		deleteContext,
 		savePullRequestDrafts,
 		setContextStatus,
+		setContextExpanded,
 	};
 }
 

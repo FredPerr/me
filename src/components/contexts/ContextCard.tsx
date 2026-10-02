@@ -41,6 +41,8 @@ type ContextCardProps = {
 	allContexts: Context[];
 	onDelete: (contextId: string) => Promise<void> | void;
 	onCreate: (params: CreateContextParams) => Promise<void>;
+	/** Persists the expanded/collapsed state for this context. */
+	onExpandedChange?: (contextId: string, expanded: boolean) => void;
 	/** Opens the shared Kiro conversation modal for this context. */
 	onOpenKiro?: (context: Context) => void;
 	isKiroRunning?: boolean;
@@ -54,6 +56,7 @@ export function ContextCard({
 	allContexts,
 	onDelete,
 	onCreate,
+	onExpandedChange,
 	onOpenKiro,
 	isKiroRunning = false,
 	hasKiroHistory = false,
@@ -66,7 +69,12 @@ export function ContextCard({
 	const { statsByRepository, hasBaseContext } = useContextDiffStats(context, project, allContexts);
 	const [opened, { open: openModal, close: closeModal }] = useDisclosure(false);
 	const [createOpened, { open: openCreateModal, close: closeCreateModal }] = useDisclosure(false);
-	const [expanded, { toggle: toggleExpanded }] = useDisclosure(false);
+	const [expanded, { toggle }] = useDisclosure(context.expanded);
+
+	function toggleExpanded() {
+		toggle();
+		onExpandedChange?.(context.id, !expanded);
+	}
 	const [deleting, setDeleting] = useState(false);
 
 	const branchName = context.branches[0]?.branch ?? context.name;

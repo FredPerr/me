@@ -16,6 +16,30 @@ export const en = {
 			close: "Close",
 			copyDetails: "Copy details",
 		},
+		agentChat: {
+			empty: "No messages yet. Send a prompt to start.",
+			send: "Send",
+			stop: "Stop",
+			sendHint: "Press Cmd/Ctrl + Enter to send. Type / to reference files and steering.",
+			input: {
+				placeholder: "Ask the agent, or type / to reference a file or steering doc…",
+			},
+			slash: {
+				loading: "Searching…",
+			},
+			code: {
+				copy: "Copy code",
+				copied: "Copied",
+				plainText: "text",
+			},
+			permission: {
+				allowOnce: "Allow once",
+				allowAlways: "Always allow",
+				deny: "Deny",
+				unsupported:
+					"Kiro runs with tools trusted; dangerous commands are blocked by the workspace permissions.yaml safety floor.",
+			},
+		},
 		settings: {
 			title: "Settings",
 			general: {

@@ -6,6 +6,7 @@ import {
 	type OutputEvent,
 	type StatusEvent,
 } from "@/models/ai-session/AiSession";
+import { ensurePermissionFloor } from "@/models/ai-session/ensurePermissionFloor";
 import type { KiroConversation, KiroTurn } from "@/models/ai-session/KiroConversation";
 import type { ContextStatus } from "@/models/ContextStatus";
 import type { Context, Project } from "@/models/Project";
@@ -154,11 +155,14 @@ export function useContextKiroSessions(
 	const runKiro = useCallback(
 		async ({ context, prompt }: RunKiroParams) => {
 			const workingDirectory = await resolveWorkingDirectory(project, context);
+			// Seed the safety deny floor before a trusted run, if not already present.
+			await ensurePermissionFloor(workingDirectory);
 			const spawned = await aiSessionService.spawn({
 				adapterId: KIRO_ADAPTER_ID,
 				prompt,
 				workingDirectory,
 				shell: settings?.shell || undefined,
+				trustAllTools: true,
 			});
 
 			sessionToContext.current[spawned.sessionId] = context.id;

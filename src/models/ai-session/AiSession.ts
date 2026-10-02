@@ -52,6 +52,8 @@ export type SpawnOptions = {
 	agent?: string;
 	shell?: string;
 	environment?: EnvVar[];
+	/** Run tools without per-action confirmation (headless runs set this). */
+	trustAllTools?: boolean;
 };
 
 /** Terminal statuses for which no further output or kill action applies. */
