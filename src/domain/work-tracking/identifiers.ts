@@ -3,3 +3,11 @@ export type WorkProjectId = string & { readonly __brand: "WorkProjectId" };
 export type WorkItemGroupId = string & { readonly __brand: "WorkItemGroupId" };
 export type WorkItemId = string & { readonly __brand: "WorkItemId" };
 export type PersonId = string & { readonly __brand: "PersonId" };
+
+export function toWorkItemId(value: string): WorkItemId {
+	return value as WorkItemId;
+}
+
+export function toWorkProjectId(value: string): WorkProjectId {
+	return value as WorkProjectId;
+}

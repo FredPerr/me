@@ -1,4 +1,4 @@
-import { ActionIcon, Avatar, Badge, Group, Paper, Stack, Text } from "@mantine/core";
+import { ActionIcon, Avatar, Badge, Checkbox, Group, Paper, Stack, Text } from "@mantine/core";
 import { ArrowSquareOutIcon } from "@phosphor-icons/react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useTranslation } from "react-i18next";
@@ -56,9 +56,19 @@ type WorkItemRowProps = {
 	item: WorkItem;
 	connection: ProviderConnection;
 	isOrphanSubtask: boolean;
+	selectable?: boolean;
+	selected?: boolean;
+	onToggleSelected?: (item: WorkItem, selected: boolean) => void;
 };
 
-export function WorkItemRow({ item, connection, isOrphanSubtask }: WorkItemRowProps) {
+export function WorkItemRow({
+	item,
+	connection,
+	isOrphanSubtask,
+	selectable = false,
+	selected = false,
+	onToggleSelected,
+}: WorkItemRowProps) {
 	const { t, i18n } = useTranslation();
 	const dueDate = formatDueDate(item.dueDate, i18n.language);
 	const canOpen = isOpenableProviderUrl(item.url, connection.baseUrl);
@@ -66,7 +76,15 @@ export function WorkItemRow({ item, connection, isOrphanSubtask }: WorkItemRowPr
 	return (
 		<Paper withBorder p="xs" radius="sm" mb={4}>
 			<Group justify="space-between" wrap="nowrap" align="flex-start" gap="xs">
-				<Stack gap={4} style={{ minWidth: 0 }}>
+				{selectable && (
+					<Checkbox
+						checked={selected}
+						onChange={(event) => onToggleSelected?.(item, event.currentTarget.checked)}
+						aria-label={t("workTracking.bulkCreate.selectTask", { title: item.title })}
+						mt={2}
+					/>
+				)}
+				<Stack gap={4} style={{ minWidth: 0, flex: 1 }}>
 					<Text size="sm" fw={500}>
 						{item.title}
 					</Text>

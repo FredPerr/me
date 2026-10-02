@@ -133,11 +133,14 @@ export function useContexts(project: Project) {
 	);
 
 	const createContextsBulk = useCallback(
-		async (specs: BulkContextSpec[]) => {
+		async (specs: BulkContextSpec[], baseContext?: Context) => {
 			const createdContexts: Context[] = [];
+			const baseContextName = baseContext?.name;
 
 			for (const spec of specs) {
-				const repos = await buildRepoInputsForBranch(project, spec.branchName);
+				const repos = baseContext
+					? await buildRepoInputsFromBaseContext(project, baseContext, spec.branchName)
+					: await buildRepoInputsForBranch(project, spec.branchName);
 				if (repos.length === 0) continue;
 
 				await invoke("create_context", {
@@ -145,7 +148,7 @@ export function useContexts(project: Project) {
 					contextName: spec.contextName,
 					repos,
 					symlinks: project.symlinks,
-					baseContextName: null,
+					baseContextName: baseContextName ?? null,
 				});
 
 				const branches = repos.map((repo) => new ContextBranch(repo.repository_id, repo.branch));
@@ -155,7 +158,7 @@ export function useContexts(project: Project) {
 						spec.contextName,
 						branches,
 						false,
-						undefined,
+						baseContextName,
 						{},
 						undefined,
 						spec.preprompt,
@@ -343,6 +346,37 @@ async function buildRepoInputsForBranch(project: Project, branchName: string) {
 	for (const repo of project.effectiveRepositories()) {
 		const resolvedPath = await repo.resolveAbsolutePath(project.path);
 		const baseBranch = await resolveDefaultBranch(project, repo);
+		inputs.push({
+			repository_id: repo.id,
+			rel_path: resolvedPath,
+			name: repo.name,
+			branch: branchName,
+			base_branch: baseBranch,
+			linked: false,
+			post_checkout_command: repo.postCheckoutCommand ?? null,
+		});
+	}
+	return inputs;
+}
+
+/**
+ * Builds `create_context` repo inputs that create `branchName` as a new branch
+ * off the source context's branch for each effective repository. Used by the
+ * bulk creator when a base context is chosen, so every new context branches
+ * from that context's work instead of each repository's default branch. Falls
+ * back to the repository's default branch when the base context has no branch
+ * recorded for a repository.
+ */
+async function buildRepoInputsFromBaseContext(
+	project: Project,
+	baseContext: Context,
+	branchName: string,
+) {
+	const inputs = [];
+	for (const repo of project.effectiveRepositories()) {
+		const resolvedPath = await repo.resolveAbsolutePath(project.path);
+		const baseBranch =
+			baseContext.getBranchForRepository(repo.id) ?? (await resolveDefaultBranch(project, repo));
 		inputs.push({
 			repository_id: repo.id,
 			rel_path: resolvedPath,

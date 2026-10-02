@@ -174,6 +174,10 @@ export const en = {
 					"Create a context for each tasks:\n- One for the addition of user into my application\n- One to configure the CI in my project\n- ...",
 				instructionHint:
 					"Describe the task and list the items. Kiro expands this into one context per item.",
+				baseContextLabel: "Base context",
+				baseContextHint:
+					"Branch the new contexts off this context's branches instead of each repository's default branch.",
+				baseContextDefault: "Default branches",
 				generate: "Generate",
 				generating: "Generating contexts…",
 				regenerate: "Regenerate",
@@ -428,6 +432,27 @@ export const en = {
 				due: "Due {{date}}",
 				assignees: "Assigned to {{names}}",
 				openInProvider: "Open {{title}} in the provider",
+			},
+			bulkCreate: {
+				button: "Bulk create ({{count}})",
+				selectTask: "Select task {{title}}",
+				selectLocalProjectFirst: "Select a linked local project to create contexts in",
+				title: "Create contexts from tasks",
+				description:
+					"One context is created per selected task ({{count}} selected). Each task's title and description are added to the prompt below and stored as the context's prompt.",
+				preambleLabel: "Preamble",
+				preambleHint:
+					"Shared instructions prepended to every task. Each task's title and description are appended automatically.",
+				baseContextLabel: "Base context",
+				baseContextHint:
+					"Branch the new contexts off this context's branches instead of each repository's default branch.",
+				baseContextDefault: "Default branches",
+				previewTitle: "Contexts to create",
+				noValidTasks: "None of the selected tasks produce a valid branch name.",
+				createButton: "Create {{count}} contexts",
+				createdTitle: "Contexts created",
+				createdMessage: "Created {{count}} contexts from tasks.",
+				createFailed: "Failed to create contexts",
 			},
 			status: {
 				todo: "To do",
