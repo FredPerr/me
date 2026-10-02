@@ -1,10 +1,11 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useState } from "react";
 import type { ProviderPullRequest } from "@/models/git-provider/GitProvider";
-import { getGitProvider } from "@/models/git-provider/GitProviderRegistry";
+import {
+	listGitProviders,
+	resolveProviderForRemote,
+} from "@/models/git-provider/GitProviderRegistry";
 import { type Project, Repository } from "@/models/Project";
-
-const github = getGitProvider("github");
 
 /** Open pull requests for one repository within a project. */
 export type RepositoryPullRequests = {
@@ -55,22 +56,32 @@ async function loadRepositoryPullRequests(
 	const remoteUrl = await resolveRemoteUrl(project, repository);
 	if (!remoteUrl) return null;
 
-	const ref = github.parseRepositoryRef(remoteUrl);
-	if (!ref) {
+	const resolved = resolveProviderForRemote(remoteUrl);
+	if (!resolved) {
 		console.warn(
-			`[pull-requests] remote URL "${remoteUrl}" for ${project.name}/${repository.name} is not a recognized GitHub URL; skipping`,
+			`[pull-requests] remote URL "${remoteUrl}" for ${project.name}/${repository.name} is not a recognized provider URL; skipping`,
 		);
 		return null;
 	}
 
+	const { provider, ref } = resolved;
+
+	// Only query providers the user has actually connected.
+	if (!(await provider.isConnected())) {
+		return null;
+	}
+
 	try {
-		const pullRequests = await github.listPullRequests(ref);
+		const pullRequests = await provider.listPullRequests(ref);
 		console.debug(
-			`[pull-requests] ${ref.owner}/${ref.repo} returned ${pullRequests.length} open PR(s)`,
+			`[pull-requests] ${provider.id} ${ref.owner}/${ref.repo} returned ${pullRequests.length} open PR(s)`,
 		);
 		return { project, repository, pullRequests };
 	} catch (error) {
-		console.error(`[pull-requests] listPullRequests failed for ${ref.owner}/${ref.repo}:`, error);
+		console.error(
+			`[pull-requests] listPullRequests failed for ${provider.id} ${ref.owner}/${ref.repo}:`,
+			error,
+		);
 		throw error;
 	}
 }
@@ -90,10 +101,13 @@ export function useProjectPullRequests(projects: Project[]): UseProjectPullReque
 		setLoading(true);
 		setError(null);
 		try {
-			const isConnected = await github.isConnected();
-			console.debug(`[pull-requests] github.isConnected() -> ${isConnected}`);
-			setConnected(isConnected);
-			if (!isConnected) {
+			const connectedFlags = await Promise.all(
+				listGitProviders().map((provider) => provider.isConnected()),
+			);
+			const anyConnected = connectedFlags.some(Boolean);
+			console.debug(`[pull-requests] any provider connected -> ${anyConnected}`);
+			setConnected(anyConnected);
+			if (!anyConnected) {
 				setGroups([]);
 				return;
 			}

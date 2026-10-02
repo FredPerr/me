@@ -16,8 +16,14 @@ type AgentChatProps = {
 	/** Controlled prompt value (lets a host seed/prefill the input). */
 	prompt: string;
 	onPromptChange: (prompt: string) => void;
-	/** Max height of the scrollable transcript. */
+	/** Max height of the scrollable transcript. Ignored when {@link fill} is set. */
 	transcriptMaxHeight?: number;
+	/**
+	 * Stretch to fill the parent's height, letting the transcript grow to occupy
+	 * the available space with the input pinned at the bottom. Use when the host
+	 * (e.g. a full-height modal) controls the overall height.
+	 */
+	fill?: boolean;
 };
 
 /**
@@ -33,6 +39,7 @@ export function AgentChat({
 	prompt,
 	onPromptChange,
 	transcriptMaxHeight = 440,
+	fill = false,
 }: AgentChatProps) {
 	const { t } = useTranslation();
 
@@ -82,11 +89,19 @@ export function AgentChat({
 
 	return (
 		<AgentChatActionsProvider value={actions}>
-			<Stack gap="md">
+			<Stack gap="md" style={fill ? { flex: 1, minHeight: 0 } : undefined}>
 				{state.messages.length === 0 ? (
-					<Text size="sm" c="dimmed" py="md" ta="center">
+					<Text size="sm" c="dimmed" py="md" ta="center" style={fill ? { flex: 1 } : undefined}>
 						{t("agentChat.empty")}
 					</Text>
+				) : fill ? (
+					<ScrollArea type="auto" viewportRef={viewportRef} style={{ flex: 1, minHeight: 0 }}>
+						<Stack gap="lg" pr="sm">
+							{state.messages.map((message) => (
+								<AgentMessageView key={message.id} message={message} />
+							))}
+						</Stack>
+					</ScrollArea>
 				) : (
 					<ScrollArea.Autosize mah={transcriptMaxHeight} type="auto" viewportRef={viewportRef}>
 						<Stack gap="lg" pr="sm">

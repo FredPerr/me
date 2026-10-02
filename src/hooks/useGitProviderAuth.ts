@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { type GitAccount, GitAccountRepository } from "@/models/git-provider/GitAccount";
-import type { DeviceAuthorization, GitProviderId } from "@/models/git-provider/GitProvider";
+import type {
+	AuthKind,
+	DeviceAuthorization,
+	GitProviderId,
+	TokenCredentials,
+} from "@/models/git-provider/GitProvider";
+import { isDeviceFlowAuth, isTokenAuth } from "@/models/git-provider/GitProvider";
 import { getGitProvider } from "@/models/git-provider/GitProviderRegistry";
 
 export type AuthStatus = "idle" | "awaitingCode" | "polling" | "connected" | "error";
@@ -9,11 +15,16 @@ const SECONDS_TO_MS = 1000;
 
 type UseGitProviderAuthResult = {
 	status: AuthStatus;
+	/** How this provider authenticates, so the UI can render the right form. */
+	authKind: AuthKind;
 	account: GitAccount | null;
 	deviceAuthorization: DeviceAuthorization | null;
 	error: string | null;
 	loading: boolean;
+	/** Start the device flow. Only valid for `deviceFlow` providers. */
 	connect: () => Promise<void>;
+	/** Submit credentials directly. Only valid for `token` providers. */
+	connectWithToken: (credentials: TokenCredentials) => Promise<void>;
 	disconnect: () => Promise<void>;
 	cancel: () => void;
 };
@@ -74,8 +85,9 @@ export function useGitProviderAuth(providerId: GitProviderId): UseGitProviderAut
 	const poll = useCallback(
 		async (deviceCode: string, intervalSeconds: number) => {
 			if (cancelled.current) return;
+			if (!isDeviceFlowAuth(provider.auth)) return;
 			try {
-				const result = await provider.pollForAccessToken(deviceCode);
+				const result = await provider.auth.pollForAccessToken(deviceCode);
 				if (cancelled.current) return;
 
 				switch (result.status) {
@@ -116,12 +128,16 @@ export function useGitProviderAuth(providerId: GitProviderId): UseGitProviderAut
 	);
 
 	const connect = useCallback(async () => {
+		if (!isDeviceFlowAuth(provider.auth)) {
+			throw new Error(`Provider ${provider.id} does not use the device flow`);
+		}
+		const deviceFlow = provider.auth;
 		cancelled.current = false;
 		clearPollTimer();
 		setError(null);
 		setStatus("awaitingCode");
 		try {
-			const authorization = await provider.startDeviceAuthorization();
+			const authorization = await deviceFlow.startDeviceAuthorization();
 			setDeviceAuthorization(authorization);
 			setStatus("polling");
 			pollTimer.current = setTimeout(
@@ -134,6 +150,25 @@ export function useGitProviderAuth(providerId: GitProviderId): UseGitProviderAut
 			setDeviceAuthorization(null);
 		}
 	}, [provider, poll, clearPollTimer]);
+
+	const connectWithToken = useCallback(
+		async (credentials: TokenCredentials) => {
+			if (!isTokenAuth(provider.auth)) {
+				throw new Error(`Provider ${provider.id} does not use direct token entry`);
+			}
+			setError(null);
+			setStatus("polling");
+			try {
+				await provider.auth.connectWithToken(credentials);
+				await finishConnection();
+			} catch (connectError) {
+				setError(String(connectError));
+				setStatus("error");
+				throw connectError;
+			}
+		},
+		[provider, finishConnection],
+	);
 
 	const disconnect = useCallback(async () => {
 		clearPollTimer();
@@ -155,11 +190,13 @@ export function useGitProviderAuth(providerId: GitProviderId): UseGitProviderAut
 
 	return {
 		status,
+		authKind: provider.auth.authKind,
 		account,
 		deviceAuthorization,
 		error,
 		loading,
 		connect,
+		connectWithToken,
 		disconnect,
 		cancel,
 	};

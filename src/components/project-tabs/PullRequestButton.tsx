@@ -10,8 +10,8 @@ type PullRequestButtonProps = {
 
 export function PullRequestButton({ prUrl, remoteUrl }: PullRequestButtonProps) {
 	const { t } = useTranslation();
-	const isGitHub = !!prUrl;
-	const tooltipLabel = isGitHub
+	const hasPullRequest = !!prUrl;
+	const tooltipLabel = hasPullRequest
 		? t("project.createPullRequest")
 		: remoteUrl
 			? t("project.prNotAvailable")
@@ -29,7 +29,7 @@ export function PullRequestButton({ prUrl, remoteUrl }: PullRequestButtonProps) 
 				variant="subtle"
 				size="sm"
 				onClick={handleClick}
-				disabled={!isGitHub}
+				disabled={!hasPullRequest}
 				aria-label="Create pull request"
 			>
 				<GitPullRequestIcon size={16} />

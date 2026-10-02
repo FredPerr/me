@@ -1,4 +1,4 @@
-import { Button, Container, Grid, Group, Stack, Text, Title, Tooltip } from "@mantine/core";
+import { Button, Grid, Group, Stack, Text, Title, Tooltip } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import { SparkleIcon } from "@phosphor-icons/react";
 import { useCallback, useMemo, useState } from "react";
@@ -113,95 +113,93 @@ export function TasksPage() {
 	}
 
 	return (
-		<Container size="xl" py="lg">
-			<Stack gap="lg">
-				<Title order={2}>{t("workTracking.title")}</Title>
-				<ConnectionPanel
-					connection={connection}
-					status={status}
-					error={error}
-					save={save}
-					remove={handleRemove}
-					onReplaceKey={openReplaceKey}
-					onRetry={reload}
-				/>
-				<LocalProjectLinkPanel
-					projects={projects}
-					loading={loading}
-					selectedProject={selectedProject}
-					onSelectProject={setSelectedProjectTag}
-					connections={connections}
-					unlink={unlink}
-					isPending={isPending}
-				/>
-				{connection && (
-					<Grid gap="lg">
-						<Grid.Col span={{ base: 12, md: 4 }}>
-							<RemoteProjectList
-								list={projectList}
-								selectedRemoteProjectId={selectedRemoteProjectId}
-								onSelect={handleSelectRemoteProject}
-								selectedProject={selectedProject}
-								connection={connection}
-								link={link}
-								unlink={unlink}
-								isPending={isPending}
+		<Stack gap="lg" w="100%" p="lg">
+			<Title order={2}>{t("workTracking.title")}</Title>
+			<ConnectionPanel
+				connection={connection}
+				status={status}
+				error={error}
+				save={save}
+				remove={handleRemove}
+				onReplaceKey={openReplaceKey}
+				onRetry={reload}
+			/>
+			<LocalProjectLinkPanel
+				projects={projects}
+				loading={loading}
+				selectedProject={selectedProject}
+				onSelectProject={setSelectedProjectTag}
+				connections={connections}
+				unlink={unlink}
+				isPending={isPending}
+			/>
+			{connection && (
+				<Grid gap="lg">
+					<Grid.Col span={{ base: 12, md: 4 }}>
+						<RemoteProjectList
+							list={projectList}
+							selectedRemoteProjectId={selectedRemoteProjectId}
+							onSelect={handleSelectRemoteProject}
+							selectedProject={selectedProject}
+							connection={connection}
+							link={link}
+							unlink={unlink}
+							isPending={isPending}
+							onReplaceKey={openReplaceKey}
+						/>
+					</Grid.Col>
+					<Grid.Col span={{ base: 12, md: 4 }}>
+						{selectedRemoteProjectId ? (
+							<WorkItemGroupList
+								list={groupList}
+								selectedGroupId={selectedGroupId}
+								onSelect={handleSelectGroup}
 								onReplaceKey={openReplaceKey}
 							/>
-						</Grid.Col>
-						<Grid.Col span={{ base: 12, md: 4 }}>
-							{selectedRemoteProjectId ? (
-								<WorkItemGroupList
-									list={groupList}
-									selectedGroupId={selectedGroupId}
-									onSelect={handleSelectGroup}
-									onReplaceKey={openReplaceKey}
-								/>
-							) : (
-								<ColumnHint title={t("workTracking.groups.title")}>
-									{t("workTracking.groups.selectProject")}
-								</ColumnHint>
-							)}
-						</Grid.Col>
-						<Grid.Col span={{ base: 12, md: 4 }}>
-							{selectedGroupId ? (
-								<Stack gap="xs">
-									<Group justify="flex-end">
-										<Tooltip
-											label={t("workTracking.bulkCreate.selectLocalProjectFirst")}
-											disabled={canSelectTasks}
+						) : (
+							<ColumnHint title={t("workTracking.groups.title")}>
+								{t("workTracking.groups.selectProject")}
+							</ColumnHint>
+						)}
+					</Grid.Col>
+					<Grid.Col span={{ base: 12, md: 4 }}>
+						{selectedGroupId ? (
+							<Stack gap="xs">
+								<Group justify="flex-end">
+									<Tooltip
+										label={t("workTracking.bulkCreate.selectLocalProjectFirst")}
+										disabled={canSelectTasks}
+									>
+										<Button
+											variant="default"
+											size="xs"
+											leftSection={<SparkleIcon size={16} />}
+											onClick={openBulk}
+											disabled={!canSelectTasks || selectedTaskIds.size === 0}
 										>
-											<Button
-												variant="default"
-												size="xs"
-												leftSection={<SparkleIcon size={16} />}
-												onClick={openBulk}
-												disabled={!canSelectTasks || selectedTaskIds.size === 0}
-											>
-												{t("workTracking.bulkCreate.button", { count: selectedTaskIds.size })}
-											</Button>
-										</Tooltip>
-									</Group>
-									<WorkItemList
-										list={itemList}
-										connection={connection}
-										onReplaceKey={openReplaceKey}
-										selection={
-											canSelectTasks
-												? { selectedIds: selectedTaskIds, onToggle: toggleTaskSelected }
-												: undefined
-										}
-									/>
-								</Stack>
-							) : (
-								<ColumnHint title={t("workTracking.items.title")}>
-									{t("workTracking.items.selectGroup")}
-								</ColumnHint>
-							)}
-						</Grid.Col>
-					</Grid>
-				)}
-			</Stack>
+											{t("workTracking.bulkCreate.button", { count: selectedTaskIds.size })}
+										</Button>
+									</Tooltip>
+								</Group>
+								<WorkItemList
+									list={itemList}
+									connection={connection}
+									onReplaceKey={openReplaceKey}
+									selection={
+										canSelectTasks
+											? { selectedIds: selectedTaskIds, onToggle: toggleTaskSelected }
+											: undefined
+									}
+								/>
+							</Stack>
+						) : (
+							<ColumnHint title={t("workTracking.items.title")}>
+								{t("workTracking.items.selectGroup")}
+							</ColumnHint>
+						)}
+					</Grid.Col>
+				</Grid>
+			)}
 			<ReplaceKeyModal
 				opened={replaceKeyOpened}
 				onClose={() => setReplaceKeyOpened(false)}
@@ -217,7 +215,7 @@ export function TasksPage() {
 					onCreated={clearSelection}
 				/>
 			)}
-		</Container>
+		</Stack>
 	);
 }
 

@@ -3,6 +3,7 @@ import type {
 	CreatedPullRequest,
 	CreatePullRequestInput,
 	DeviceAuthorization,
+	DeviceFlowAuth,
 	DevicePollResult,
 	GitProvider,
 	ProviderPullRequest,
@@ -21,13 +22,17 @@ const GITHUB_HOST = "github.com";
 export class GitHubProvider implements GitProvider {
 	readonly id = "github" as const;
 
-	startDeviceAuthorization(): Promise<DeviceAuthorization> {
-		return invoke<DeviceAuthorization>("github_start_device_authorization");
-	}
+	readonly displayName = "GitHub";
 
-	pollForAccessToken(deviceCode: string): Promise<DevicePollResult> {
-		return invoke<DevicePollResult>("github_poll_for_access_token", { deviceCode });
-	}
+	readonly auth: DeviceFlowAuth = {
+		authKind: "deviceFlow",
+		startDeviceAuthorization() {
+			return invoke<DeviceAuthorization>("github_start_device_authorization");
+		},
+		pollForAccessToken(deviceCode: string) {
+			return invoke<DevicePollResult>("github_poll_for_access_token", { deviceCode });
+		},
+	};
 
 	isConnected(): Promise<boolean> {
 		return invoke<boolean>("github_is_connected");

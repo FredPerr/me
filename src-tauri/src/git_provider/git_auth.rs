@@ -7,9 +7,10 @@
 //! to an unrelated remote.
 
 use super::token_store;
-use super::PROVIDER_GITHUB;
+use super::{PROVIDER_BITBUCKET, PROVIDER_GITHUB};
 
 const GITHUB_HOST: &str = "github.com";
+const BITBUCKET_HOST: &str = "bitbucket.org";
 
 /// Standard, dependency-free base64 (RFC 4648) encoder. Used only to build the
 /// HTTP Basic credential; kept local to avoid pulling in a base64 crate.
@@ -40,35 +41,53 @@ fn base64_encode(input: &[u8]) -> String {
     encoded
 }
 
-/// Which provider, if any, owns the given remote URL. Only HTTPS remotes can
-/// carry an injected token; SSH remotes authenticate via the user's keys.
-fn provider_for_remote(remote_url: &str) -> Option<&'static str> {
+/// Which provider, if any, owns the given remote URL, and the host to scope the
+/// injected header to. Only HTTPS remotes can carry an injected token; SSH
+/// remotes authenticate via the user's keys.
+fn provider_for_remote(remote_url: &str) -> Option<(&'static str, &'static str)> {
     let is_https = remote_url.starts_with("https://") || remote_url.starts_with("http://");
-    if is_https && remote_url.contains(GITHUB_HOST) {
-        Some(PROVIDER_GITHUB)
+    if !is_https {
+        return None;
+    }
+    if remote_url.contains(GITHUB_HOST) {
+        Some((PROVIDER_GITHUB, GITHUB_HOST))
+    } else if remote_url.contains(BITBUCKET_HOST) {
+        Some((PROVIDER_BITBUCKET, BITBUCKET_HOST))
     } else {
         None
     }
 }
 
+/// Build the HTTP Basic credential (the `username:password` pair, pre-base64)
+/// for a stored provider token.
+///
+/// - GitHub stores a bare user access token; it is accepted as the Basic
+///   password with any username, so we use the conventional `x-access-token`.
+/// - Bitbucket stores the full `username:api_token` pair already, which is
+///   exactly the Basic credential form git over HTTPS expects.
+fn basic_credential(provider_id: &str, stored_token: &str) -> String {
+    if provider_id == PROVIDER_BITBUCKET {
+        stored_token.to_string()
+    } else {
+        format!("x-access-token:{}", stored_token)
+    }
+}
+
 /// Build the `-c http.<host>.extraheader=...` arguments that authenticate a
 /// `git` call against `remote_url`, or an empty vec when no token applies
-/// (non-GitHub remote, SSH remote, or not connected).
-///
-/// GitHub accepts a user access token as the HTTP Basic password with any
-/// username; we use the conventional `x-access-token`.
+/// (unrecognized remote, SSH remote, or not connected).
 pub fn auth_args_for_remote(remote_url: &str) -> Vec<String> {
-    let Some(provider_id) = provider_for_remote(remote_url) else {
+    let Some((provider_id, host)) = provider_for_remote(remote_url) else {
         return Vec::new();
     };
 
-    let token = match token_store::read_token(provider_id) {
+    let stored_token = match token_store::read_token(provider_id) {
         Ok(Some(token)) => token,
         _ => return Vec::new(),
     };
 
-    let credential = base64_encode(format!("x-access-token:{}", token).as_bytes());
-    let host_config = format!("https://{}/", GITHUB_HOST);
+    let credential = base64_encode(basic_credential(provider_id, &stored_token).as_bytes());
+    let host_config = format!("https://{}/", host);
 
     vec![
         "-c".to_string(),
@@ -109,10 +128,35 @@ mod tests {
     #[test]
     fn no_auth_args_for_ssh_remote() {
         assert!(auth_args_for_remote("git@github.com:user/repo.git").is_empty());
+        assert!(auth_args_for_remote("git@bitbucket.org:workspace/repo.git").is_empty());
     }
 
     #[test]
-    fn no_auth_args_for_non_github_https_remote() {
+    fn no_auth_args_for_unrecognized_https_remote() {
         assert!(auth_args_for_remote("https://gitlab.com/user/repo.git").is_empty());
+    }
+
+    #[test]
+    fn github_uses_x_access_token_as_the_basic_username() {
+        assert_eq!(
+            basic_credential(PROVIDER_GITHUB, "ghtoken"),
+            "x-access-token:ghtoken"
+        );
+    }
+
+    #[test]
+    fn bitbucket_uses_the_stored_username_token_pair_verbatim() {
+        assert_eq!(
+            basic_credential(PROVIDER_BITBUCKET, "alice:app-pw"),
+            "alice:app-pw"
+        );
+    }
+
+    #[test]
+    fn recognizes_bitbucket_https_remote() {
+        assert_eq!(
+            provider_for_remote("https://bitbucket.org/workspace/repo.git"),
+            Some((PROVIDER_BITBUCKET, BITBUCKET_HOST))
+        );
     }
 }

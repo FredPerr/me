@@ -8,7 +8,25 @@
  */
 
 /** Stable identifier for a supported provider. */
-export type GitProviderId = "github";
+export type GitProviderId = "github" | "bitbucket";
+
+/**
+ * How a provider authenticates the user.
+ *
+ * - `deviceFlow`: OAuth Device Flow — the user authorizes in the browser and we
+ *   poll for a token (GitHub).
+ * - `token`: the user supplies a credential directly, e.g. a Bitbucket App
+ *   Password entered as `username` + `token` (Bitbucket).
+ */
+export type AuthKind = "deviceFlow" | "token";
+
+/** Credentials entered by the user for a `token` auth provider. */
+export type TokenCredentials = {
+	/** Account username the token belongs to (used as the Basic-auth user). */
+	username: string;
+	/** The app password / API token acting as the Basic-auth password. */
+	token: string;
+};
 
 /**
  * Verification details returned when starting the OAuth device flow. The user
@@ -83,14 +101,56 @@ export type CreatedPullRequest = {
 	htmlUrl: string;
 };
 
-export interface GitProvider {
-	readonly id: GitProviderId;
+/**
+ * A provider that authenticates via OAuth Device Flow (GitHub). The user
+ * authorizes in the browser and we poll for the resulting access token.
+ */
+export interface DeviceFlowAuth {
+	readonly authKind: "deviceFlow";
 
 	/** Begin the device flow, returning the code to show the user. */
 	startDeviceAuthorization(): Promise<DeviceAuthorization>;
 
 	/** Poll once for the access token tied to a device code. */
 	pollForAccessToken(deviceCode: string): Promise<DevicePollResult>;
+}
+
+/**
+ * A provider that authenticates with a credential the user supplies directly
+ * (Bitbucket App Password). The credential is validated by fetching the
+ * authenticated user before it is stored.
+ */
+export interface TokenAuth {
+	readonly authKind: "token";
+
+	/**
+	 * Validate and store the supplied credentials. Rejects if the credentials
+	 * are invalid (the provider could not identify the user).
+	 */
+	connectWithToken(credentials: TokenCredentials): Promise<void>;
+}
+
+/** The auth capability of a provider, discriminated by {@link AuthKind}. */
+export type ProviderAuth = DeviceFlowAuth | TokenAuth;
+
+/** Narrow a provider's auth capability to the device flow. */
+export function isDeviceFlowAuth(auth: ProviderAuth): auth is DeviceFlowAuth {
+	return auth.authKind === "deviceFlow";
+}
+
+/** Narrow a provider's auth capability to direct token entry. */
+export function isTokenAuth(auth: ProviderAuth): auth is TokenAuth {
+	return auth.authKind === "token";
+}
+
+export interface GitProvider {
+	readonly id: GitProviderId;
+
+	/** Display name shown in the connected-accounts UI. */
+	readonly displayName: string;
+
+	/** How this provider authenticates (device flow vs. direct token). */
+	readonly auth: ProviderAuth;
 
 	/** Whether an access token is currently stored for this provider. */
 	isConnected(): Promise<boolean>;
