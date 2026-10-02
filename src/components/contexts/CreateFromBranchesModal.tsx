@@ -140,7 +140,7 @@ export function CreateFromBranchesModal({
 	}
 
 	return (
-		<Modal opened={opened} onClose={handleClose} title={t("contexts.createFromBranches")} size="lg">
+		<Modal opened={opened} onClose={handleClose} title={t("contexts.createFromBranches")}>
 			<Stack gap="md">
 				<Text size="sm" c="dimmed">
 					{t("contexts.createFromBranchesDescription")}

@@ -320,7 +320,7 @@ export function ShareForReviewModal({ opened, onClose, project }: ShareForReview
 	}
 
 	return (
-		<Modal opened={opened} onClose={onClose} title={t("review.title")} size="lg">
+		<Modal opened={opened} onClose={onClose} title={t("review.title")}>
 			{renderBody()}
 		</Modal>
 	);
