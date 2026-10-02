@@ -30,6 +30,24 @@ fn http_client() -> Result<reqwest::Client, String> {
         .map_err(|error| error.to_string())
 }
 
+/// Build an error string for a non-success GitHub response that includes the
+/// response body. GitHub returns a JSON payload (e.g. `{"message":"Bad
+/// credentials"}`, `{"message":"Not Found"}`, or a rate-limit notice) that is
+/// essential for diagnosing failures — the bare status code alone hides the
+/// actual reason. Consumes the response because the body can only be read once.
+async fn describe_error_response(context: &str, response: reqwest::Response) -> String {
+    let status = response.status();
+    let body = response
+        .text()
+        .await
+        .unwrap_or_else(|error| format!("<failed to read body: {}>", error));
+    eprintln!(
+        "[github] {} failed: status {} body {}",
+        context, status, body
+    );
+    format!("GitHub returned status {} for {}: {}", status, context, body)
+}
+
 // --- Device flow: step 1, request a device + user code ----------------------
 
 /// The verification details shown to the user to start authorization. Field
@@ -174,13 +192,19 @@ pub async fn github_get_authenticated_user() -> Result<GitHubUser, String> {
         .header(reqwest::header::ACCEPT, "application/vnd.github+json")
         .send()
         .await
-        .map_err(|error| error.to_string())?;
+        .map_err(|error| {
+            eprintln!("[github] get_authenticated_user request error: {}", error);
+            error.to_string()
+        })?;
 
     if !response.status().is_success() {
-        return Err(format!("GitHub returned status {}", response.status()));
+        return Err(describe_error_response("get_authenticated_user", response).await);
     }
 
-    let user: GitHubUserResponse = response.json().await.map_err(|error| error.to_string())?;
+    let user: GitHubUserResponse = response.json().await.map_err(|error| {
+        eprintln!("[github] get_authenticated_user decode error: {}", error);
+        error.to_string()
+    })?;
 
     Ok(GitHubUser {
         login: user.login,
@@ -222,14 +246,20 @@ pub async fn github_list_repositories() -> Result<Vec<GitHubRepository>, String>
         .query(&[("per_page", "100"), ("sort", "updated")])
         .send()
         .await
-        .map_err(|error| error.to_string())?;
+        .map_err(|error| {
+            eprintln!("[github] list_repositories request error: {}", error);
+            error.to_string()
+        })?;
 
     if !response.status().is_success() {
-        return Err(format!("GitHub returned status {}", response.status()));
+        return Err(describe_error_response("list_repositories", response).await);
     }
 
     let repositories: Vec<GitHubRepositoryResponse> =
-        response.json().await.map_err(|error| error.to_string())?;
+        response.json().await.map_err(|error| {
+            eprintln!("[github] list_repositories decode error: {}", error);
+            error.to_string()
+        })?;
 
     Ok(repositories
         .into_iter()
@@ -292,6 +322,7 @@ pub async fn github_list_pull_requests(
     let token = require_token().await?;
 
     let url = format!("https://api.github.com/repos/{}/{}/pulls", owner, repo);
+    eprintln!("[github] list_pull_requests {}/{} -> {}", owner, repo, url);
     let response = http_client()?
         .get(&url)
         .bearer_auth(&token)
@@ -303,14 +334,33 @@ pub async fn github_list_pull_requests(
         ])
         .send()
         .await
-        .map_err(|error| error.to_string())?;
+        .map_err(|error| {
+            eprintln!(
+                "[github] list_pull_requests {}/{} request error: {}",
+                owner, repo, error
+            );
+            error.to_string()
+        })?;
 
     if !response.status().is_success() {
-        return Err(format!("GitHub returned status {}", response.status()));
+        let context = format!("list_pull_requests {}/{}", owner, repo);
+        return Err(describe_error_response(&context, response).await);
     }
 
-    let pull_requests: Vec<PullRequestResponse> =
-        response.json().await.map_err(|error| error.to_string())?;
+    let pull_requests: Vec<PullRequestResponse> = response.json().await.map_err(|error| {
+        eprintln!(
+            "[github] list_pull_requests {}/{} decode error: {}",
+            owner, repo, error
+        );
+        error.to_string()
+    })?;
+
+    eprintln!(
+        "[github] list_pull_requests {}/{} returned {} open PR(s)",
+        owner,
+        repo,
+        pull_requests.len()
+    );
 
     Ok(pull_requests
         .into_iter()

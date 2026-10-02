@@ -2,13 +2,13 @@
  * Thin service wrapping the AI session Tauri commands and events.
  *
  * Centralizing the `invoke`/`listen` calls here keeps the command names and
- * event wiring in one place and lets the hook stay focused on React state.
+ * event wiring in one place. The context kanban drives Kiro runs through this
+ * service: spawn a session, listen for its terminal status, and kill it.
  */
 
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
-	AdapterInfo,
 	OutputEvent,
 	SpawnedSession,
 	SpawnOptions,
@@ -20,16 +20,6 @@ const EVENT_OUTPUT = "ai-session://output";
 const EVENT_STATUS = "ai-session://status";
 
 export const aiSessionService = {
-	/** Lists the AI CLI adapters supported by this build. */
-	listAdapters(): Promise<AdapterInfo[]> {
-		return invoke<AdapterInfo[]>("list_ai_adapters");
-	},
-
-	/** Lists the ids of sessions currently tracked as running. */
-	listRunningSessionIds(): Promise<string[]> {
-		return invoke<string[]>("list_ai_sessions");
-	},
-
 	/** Spawns a new session and begins streaming its output. */
 	spawn(options: SpawnOptions): Promise<SpawnedSession> {
 		return invoke<SpawnedSession>("spawn_ai_session", { options });

@@ -34,7 +34,19 @@ type CreateContextFromBranchesParams = {
 	repositories: ExistingBranchConfig[];
 };
 
+/**
+ * One context to create in a bulk operation. The same branch is used across
+ * all effective repositories (created off their default branch), and the
+ * optional preprompt is stored on the context for later prefill into Kiro.
+ */
+type BulkContextSpec = {
+	contextName: string;
+	branchName: string;
+	preprompt?: string;
+};
+
 export type {
+	BulkContextSpec,
 	CreateContextFromBranchesParams,
 	CreateContextParams,
 	ExistingBranchConfig,
@@ -116,6 +128,50 @@ export function useContexts(project: Project) {
 
 			await ProjectDirectory.saveProject(updatedProject);
 			setPersistedContexts((prev) => [...prev, newContext]);
+		},
+		[project],
+	);
+
+	const createContextsBulk = useCallback(
+		async (specs: BulkContextSpec[]) => {
+			const createdContexts: Context[] = [];
+
+			for (const spec of specs) {
+				const repos = await buildRepoInputsForBranch(project, spec.branchName);
+				if (repos.length === 0) continue;
+
+				await invoke("create_context", {
+					projectPath: project.path,
+					contextName: spec.contextName,
+					repos,
+					symlinks: project.symlinks,
+					baseContextName: null,
+				});
+
+				const branches = repos.map((repo) => new ContextBranch(repo.repository_id, repo.branch));
+				createdContexts.push(
+					new Context(
+						crypto.randomUUID(),
+						spec.contextName,
+						branches,
+						false,
+						undefined,
+						{},
+						undefined,
+						spec.preprompt,
+					),
+				);
+			}
+
+			if (createdContexts.length === 0) return;
+
+			let updatedProject = project;
+			for (const context of createdContexts) {
+				updatedProject = updatedProject.addContext(context);
+			}
+
+			await ProjectDirectory.saveProject(updatedProject);
+			setPersistedContexts((prev) => [...prev, ...createdContexts]);
 		},
 		[project],
 	);
@@ -227,10 +283,34 @@ export function useContexts(project: Project) {
 		defaultContext,
 		createContext,
 		createContextFromBranches,
+		createContextsBulk,
 		deleteContext,
 		savePullRequestDrafts,
 		setContextStatus,
 	};
+}
+
+/**
+ * Builds `create_context` repo inputs that create `branchName` as a new branch
+ * off each effective repository's default branch. Used by the bulk creator,
+ * where every context shares one branch name across all repositories.
+ */
+async function buildRepoInputsForBranch(project: Project, branchName: string) {
+	const inputs = [];
+	for (const repo of project.effectiveRepositories()) {
+		const resolvedPath = await repo.resolveAbsolutePath(project.path);
+		const baseBranch = await resolveDefaultBranch(project, repo);
+		inputs.push({
+			repository_id: repo.id,
+			rel_path: resolvedPath,
+			name: repo.name,
+			branch: branchName,
+			base_branch: baseBranch,
+			linked: false,
+			post_checkout_command: repo.postCheckoutCommand ?? null,
+		});
+	}
+	return inputs;
 }
 
 async function buildDefaultContext(project: Project): Promise<Context | null> {

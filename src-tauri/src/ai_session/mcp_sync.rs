@@ -7,8 +7,9 @@
 //!
 //! Design notes:
 //! - The endpoint is configurable (constructor arg), defaulting to a localhost
-//!   URL and overridable via the `ME_MCP_SYNC_URL` environment variable. This
-//!   keeps the integration flexible as the MCP surface evolves.
+//!   URL on port 7777 and overridable via the `ME_MCP_SYNC_URL` environment
+//!   variable. Port 7000 is avoided because macOS AirPlay Receiver binds it.
+//!   This keeps the integration flexible as the MCP surface evolves.
 //! - Sync is best-effort: the MCP server being down or slow must never break
 //!   session spawning or killing. Every failure is swallowed into a logged
 //!   warning rather than propagated, so the GUI keeps working standalone.
@@ -17,7 +18,7 @@ use crate::ai_session::registry::SessionStatus;
 use serde::Serialize;
 use std::time::Duration;
 
-const DEFAULT_SYNC_URL: &str = "http://127.0.0.1:7000/sessions";
+const DEFAULT_SYNC_URL: &str = "http://127.0.0.1:7777/sessions";
 const SYNC_URL_ENV: &str = "ME_MCP_SYNC_URL";
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(3);
 

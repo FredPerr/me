@@ -185,7 +185,12 @@ export function ShareForReviewModal({ opened, onClose, project }: ShareForReview
 		if (error) {
 			return (
 				<Alert color="red" title={t("common.error")}>
-					{t("review.loadError")}
+					<Stack gap={4}>
+						<Text size="sm">{t("review.loadError")}</Text>
+						<Text size="xs" c="dimmed" style={{ wordBreak: "break-word" }}>
+							{error}
+						</Text>
+					</Stack>
 				</Alert>
 			);
 		}

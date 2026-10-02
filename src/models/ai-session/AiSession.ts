@@ -29,13 +29,6 @@ export type StatusEvent = {
 	error: string | null;
 };
 
-/** A supported AI CLI adapter; mirrors Rust `AdapterInfo`. */
-export type AdapterInfo = {
-	id: string;
-	displayName: string;
-	defaultCommand: string;
-};
-
 /** The descriptor returned when a session starts; mirrors Rust `SpawnedSession`. */
 export type SpawnedSession = {
 	sessionId: string;
@@ -45,7 +38,7 @@ export type SpawnedSession = {
 };
 
 /** A single environment variable pair; mirrors Rust `EnvVar`. */
-export type EnvVar = {
+type EnvVar = {
 	key: string;
 	value: string;
 };
@@ -61,33 +54,6 @@ export type SpawnOptions = {
 	environment?: EnvVar[];
 };
 
-/** A single buffered output line held in the UI, with a stable id for keying. */
-export type LogLine = {
-	id: number;
-	stream: OutputStream;
-	text: string;
-};
-
-/**
- * A session as tracked in the UI: the backend descriptor plus the live status
- * and buffered output. Kept as a plain readonly-friendly shape (updated via
- * immutable copies in the hook's reducer) rather than a class, since it is
- * ephemeral UI state rather than a persisted domain aggregate.
- */
-export type AiSession = {
-	sessionId: string;
-	adapterId: string;
-	adapterName: string;
-	workingDirectory: string;
-	prompt: string;
-	pid: number | null;
-	status: SessionStatus;
-	exitCode: number | null;
-	error: string | null;
-	startedAt: number;
-	logs: LogLine[];
-};
-
 /** Terminal statuses for which no further output or kill action applies. */
 const TERMINAL_STATUSES: ReadonlySet<SessionStatus> = new Set<SessionStatus>([
 	"completed",
@@ -97,8 +63,4 @@ const TERMINAL_STATUSES: ReadonlySet<SessionStatus> = new Set<SessionStatus>([
 
 export function isTerminalStatus(status: SessionStatus): boolean {
 	return TERMINAL_STATUSES.has(status);
-}
-
-export function isSessionActive(session: AiSession): boolean {
-	return !isTerminalStatus(session.status);
 }

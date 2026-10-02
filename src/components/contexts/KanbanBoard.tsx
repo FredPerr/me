@@ -11,11 +11,14 @@ import {
 import { Group } from "@mantine/core";
 import { useMemo, useState } from "react";
 import type { CreateContextParams } from "@/hooks/useContexts";
+import type { KiroConversation } from "@/models/ai-session/KiroConversation";
 import { CONTEXT_STATUSES, type ContextStatus, isContextStatus } from "@/models/ContextStatus";
 import type { Context, Project } from "@/models/Project";
 import { ContextCard } from "./ContextCard";
+import { ContextCardDragHandle } from "./ContextCardDragHandle";
 import { DraggableContextCard } from "./DraggableContextCard";
 import { KanbanColumn } from "./KanbanColumn";
+import { KiroConversationModal } from "./KiroConversationModal";
 
 type KanbanBoardProps = {
 	contexts: Context[];
@@ -23,6 +26,10 @@ type KanbanBoardProps = {
 	onDelete: (contextId: string) => void;
 	onCreate: (params: CreateContextParams) => Promise<void>;
 	onStatusChange: (contextId: string, status: ContextStatus) => void;
+	onRunKiro: (context: Context, prompt: string) => Promise<void>;
+	onKillKiro: (contextId: string) => Promise<void>;
+	isKiroRunning: (contextId: string) => boolean;
+	getKiroConversation: (contextId: string) => KiroConversation | undefined;
 	searchFilter?: string;
 };
 
@@ -32,9 +39,15 @@ export function KanbanBoard({
 	onDelete,
 	onCreate,
 	onStatusChange,
+	onRunKiro,
+	onKillKiro,
+	isKiroRunning,
+	getKiroConversation,
 	searchFilter,
 }: KanbanBoardProps) {
 	const [activeId, setActiveId] = useState<string | null>(null);
+	const [openKiroContextId, setOpenKiroContextId] = useState<string | null>(null);
+	const [kiroPromptDrafts, setKiroPromptDrafts] = useState<Record<string, string>>({});
 	const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
 	const filtered = useMemo(() => {
@@ -54,6 +67,9 @@ export function KanbanBoard({
 	}, [filtered]);
 
 	const activeContext = activeId ? filtered.find((c) => c.id === activeId) : undefined;
+	const openKiroContext = openKiroContextId
+		? contexts.find((c) => c.id === openKiroContextId)
+		: undefined;
 
 	function handleDragStart(event: DragStartEvent) {
 		setActiveId(String(event.active.id));
@@ -81,7 +97,12 @@ export function KanbanBoard({
 			onDragEnd={handleDragEnd}
 			onDragCancel={() => setActiveId(null)}
 		>
-			<Group align="flex-start" gap="sm" wrap="nowrap" style={{ overflowX: "auto" }}>
+			<Group
+				align="stretch"
+				gap={4}
+				wrap="nowrap"
+				style={{ flex: 1, minHeight: 0, overflowX: "auto" }}
+			>
 				{CONTEXT_STATUSES.map((status) => {
 					const columnContexts = contextsByStatus.get(status) ?? [];
 					return (
@@ -94,6 +115,9 @@ export function KanbanBoard({
 									allContexts={contexts}
 									onDelete={onDelete}
 									onCreate={onCreate}
+									onOpenKiro={(target) => setOpenKiroContextId(target.id)}
+									isKiroRunning={isKiroRunning(context.id)}
+									hasKiroHistory={(getKiroConversation(context.id)?.turns.length ?? 0) > 0}
 								/>
 							))}
 						</KanbanColumn>
@@ -108,9 +132,26 @@ export function KanbanBoard({
 						allContexts={contexts}
 						onDelete={onDelete}
 						onCreate={onCreate}
+						dragHandle={<ContextCardDragHandle />}
 					/>
 				) : null}
 			</DragOverlay>
+
+			{openKiroContext && (
+				<KiroConversationModal
+					opened
+					onClose={() => setOpenKiroContextId(null)}
+					contextName={openKiroContext.name}
+					conversation={getKiroConversation(openKiroContext.id)}
+					isRunning={isKiroRunning(openKiroContext.id)}
+					prompt={kiroPromptDrafts[openKiroContext.id] ?? openKiroContext.preprompt ?? ""}
+					onPromptChange={(prompt) =>
+						setKiroPromptDrafts((current) => ({ ...current, [openKiroContext.id]: prompt }))
+					}
+					onSend={(prompt) => onRunKiro(openKiroContext, prompt)}
+					onKill={() => onKillKiro(openKiroContext.id)}
+				/>
+			)}
 		</DndContext>
 	);
 }

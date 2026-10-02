@@ -55,5 +55,10 @@ export const theme = createTheme({
 				c: "primary.3",
 			},
 		},
+		Tooltip: {
+			defaultProps: {
+				color: "gray",
+			},
+		},
 	},
 });
