@@ -1,20 +1,11 @@
-import {
-	Alert,
-	Anchor,
-	Badge,
-	Card,
-	Container,
-	Group,
-	Loader,
-	Stack,
-	Tabs,
-	Text,
-	Title,
-} from "@mantine/core";
+import { Alert, Anchor, Badge, Card, Group, Loader, Stack, Tabs, Text, Title } from "@mantine/core";
+import { useDisclosure } from "@mantine/hooks";
 import { ArrowSquareOutIcon, GitPullRequestIcon, PlugsIcon } from "@phosphor-icons/react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
+import { CreatePullRequestModal } from "@/components/contexts/CreatePullRequestModal";
+import { useContexts } from "@/hooks/useContexts";
 import {
 	type RepositoryPullRequests,
 	useProjectPullRequests,
@@ -58,28 +49,36 @@ function collectDraftEntries(projects: Project[]): DraftEntry[] {
 
 function DraftEntryCard({ entry }: { entry: DraftEntry }) {
 	const { t } = useTranslation();
-	const navigate = useNavigate();
-
-	function handleOpen() {
-		navigate(`/projects/${entry.project.tag}/contexts/${entry.context.id}/pull-requests`);
-	}
+	const [opened, { open, close }] = useDisclosure(false);
+	const { savePullRequestDrafts } = useContexts(entry.project);
 
 	return (
-		<Card withBorder padding="sm" onClick={handleOpen} style={{ cursor: "pointer" }}>
-			<Stack gap={4}>
-				<Group justify="space-between" gap="xs">
-					<Text fw={600} size="sm">
-						{entry.draft.title.trim() || t("pullRequests.untitledDraft")}
+		<>
+			<Card withBorder padding="sm" onClick={open} style={{ cursor: "pointer" }}>
+				<Stack gap={4}>
+					<Group justify="space-between" gap="xs">
+						<Text fw={600} size="sm">
+							{entry.draft.title.trim() || t("pullRequests.untitledDraft")}
+						</Text>
+						<Badge variant="light" size="sm">
+							{entry.repositoryName}
+						</Badge>
+					</Group>
+					<Text size="xs" c="dimmed">
+						{entry.project.name} — {entry.context.name}
 					</Text>
-					<Badge variant="light" size="sm">
-						{entry.repositoryName}
-					</Badge>
-				</Group>
-				<Text size="xs" c="dimmed">
-					{entry.project.name} — {entry.context.name}
-				</Text>
-			</Stack>
-		</Card>
+				</Stack>
+			</Card>
+
+			<CreatePullRequestModal
+				opened={opened}
+				onClose={close}
+				project={entry.project}
+				context={entry.context}
+				allContexts={entry.project.contexts}
+				onSaveDrafts={savePullRequestDrafts}
+			/>
+		</>
 	);
 }
 
@@ -241,26 +240,24 @@ export function PullRequestsPage() {
 	}
 
 	return (
-		<Container size="md" py="lg">
-			<Stack gap="lg">
-				<Title order={2}>{t("pullRequests.title")}</Title>
-				<Tabs defaultValue="active">
-					<Tabs.List>
-						<Tabs.Tab value="active" leftSection={<GitPullRequestIcon size={16} />}>
-							{t("pullRequests.activeTab")}
-						</Tabs.Tab>
-						<Tabs.Tab value="drafts" leftSection={<GitPullRequestIcon size={16} />}>
-							{t("pullRequests.draftsTab")}
-						</Tabs.Tab>
-					</Tabs.List>
-					<Tabs.Panel value="active" pt="md">
-						<ActiveSection projects={projects} />
-					</Tabs.Panel>
-					<Tabs.Panel value="drafts" pt="md">
-						<DraftsSection projects={projects} />
-					</Tabs.Panel>
-				</Tabs>
-			</Stack>
-		</Container>
+		<Stack gap="lg" w="100%" p="lg">
+			<Title order={2}>{t("pullRequests.title")}</Title>
+			<Tabs defaultValue="active">
+				<Tabs.List grow>
+					<Tabs.Tab value="active" leftSection={<GitPullRequestIcon size={16} />}>
+						{t("pullRequests.activeTab")}
+					</Tabs.Tab>
+					<Tabs.Tab value="drafts" leftSection={<GitPullRequestIcon size={16} />}>
+						{t("pullRequests.draftsTab")}
+					</Tabs.Tab>
+				</Tabs.List>
+				<Tabs.Panel value="active" pt="md">
+					<ActiveSection projects={projects} />
+				</Tabs.Panel>
+				<Tabs.Panel value="drafts" pt="md">
+					<DraftsSection projects={projects} />
+				</Tabs.Panel>
+			</Tabs>
+		</Stack>
 	);
 }

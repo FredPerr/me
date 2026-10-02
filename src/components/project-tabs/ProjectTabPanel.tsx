@@ -1,10 +1,17 @@
 import { Button, Divider, Group, Stack, TabsPanel } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
-import { AppWindowIcon, GitBranchIcon, ShareNetworkIcon, SparkleIcon } from "@phosphor-icons/react";
+import {
+	AppWindowIcon,
+	GitBranchIcon,
+	GitPullRequestIcon,
+	ShareNetworkIcon,
+	SparkleIcon,
+} from "@phosphor-icons/react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { BulkCreateContextsModal } from "@/components/contexts/BulkCreateContextsModal";
 import { CreateFromBranchesModal } from "@/components/contexts/CreateFromBranchesModal";
+import { CreateFromPullRequestsModal } from "@/components/contexts/CreateFromPullRequestsModal";
 import { KanbanBoard } from "@/components/contexts/KanbanBoard";
 import { SearchContextInput } from "@/components/contexts/SearchContextInput";
 import { ShareForReviewModal } from "@/components/project-tabs/ShareForReviewModal";
@@ -26,6 +33,7 @@ export function ProjectTabPanel({ project }: ProjectTabPanelProps) {
 		contexts,
 		createContext,
 		createContextFromBranches,
+		createContextFromPullRequests,
 		createContextsBulk,
 		deleteContext,
 		setContextStatus,
@@ -41,6 +49,8 @@ export function ProjectTabPanel({ project }: ProjectTabPanelProps) {
 		await runKiro({ context, prompt });
 	}
 	const [fromBranchesOpened, { open: openFromBranches, close: closeFromBranches }] =
+		useDisclosure(false);
+	const [fromPullRequestsOpened, { open: openFromPullRequests, close: closeFromPullRequests }] =
 		useDisclosure(false);
 	const [bulkOpened, { open: openBulk, close: closeBulk }] = useDisclosure(false);
 	const [shareOpened, { open: openShare, close: closeShare }] = useDisclosure(false);
@@ -75,6 +85,14 @@ export function ProjectTabPanel({ project }: ProjectTabPanelProps) {
 							onClick={openFromBranches}
 						>
 							{t("contexts.createFromBranches")}
+						</Button>
+						<Button
+							variant="default"
+							leftSection={<GitPullRequestIcon size={16} />}
+							size="xs"
+							onClick={openFromPullRequests}
+						>
+							{t("contexts.createFromPullRequests")}
 						</Button>
 						<Button
 							variant="default"
@@ -114,6 +132,12 @@ export function ProjectTabPanel({ project }: ProjectTabPanelProps) {
 				onClose={closeFromBranches}
 				project={project}
 				onCreate={createContextFromBranches}
+			/>
+			<CreateFromPullRequestsModal
+				opened={fromPullRequestsOpened}
+				onClose={closeFromPullRequests}
+				project={project}
+				onCreate={createContextFromPullRequests}
 			/>
 			<BulkCreateContextsModal
 				opened={bulkOpened}

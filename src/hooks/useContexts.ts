@@ -35,6 +35,23 @@ type CreateContextFromBranchesParams = {
 };
 
 /**
+ * One repository's selected pull request within a "create from PRs" operation.
+ * `headBranch` is the branch to check out; `baseBranch` is the PR base used as
+ * the branch's base. A `null` headBranch links the repository to its current
+ * checkout (no PR selected for it).
+ */
+type PullRequestBranchConfig = {
+	repositoryId: string;
+	headBranch: string | null;
+	baseBranch: string | null;
+};
+
+type CreateContextFromPullRequestsParams = {
+	name: string;
+	repositories: PullRequestBranchConfig[];
+};
+
+/**
  * One context to create in a bulk operation. The same branch is used across
  * all effective repositories (created off their default branch), and the
  * optional preprompt is stored on the context for later prefill into Kiro.
@@ -48,8 +65,10 @@ type BulkContextSpec = {
 export type {
 	BulkContextSpec,
 	CreateContextFromBranchesParams,
+	CreateContextFromPullRequestsParams,
 	CreateContextParams,
 	ExistingBranchConfig,
+	PullRequestBranchConfig,
 	RepositoryBranchConfig,
 };
 
@@ -124,6 +143,49 @@ export function useContexts(project: Project) {
 			);
 
 			const newContext = new Context(crypto.randomUUID(), name, branches, false);
+			const updatedProject = project.addContext(newContext);
+
+			await ProjectDirectory.saveProject(updatedProject);
+			setPersistedContexts((prev) => [...prev, newContext]);
+		},
+		[project],
+	);
+
+	const createContextFromPullRequests = useCallback(
+		async ({ name, repositories: prConfigs }: CreateContextFromPullRequestsParams) => {
+			// Fetch every selected PR head branch first. Open PRs usually live only
+			// on the remote, so this makes them resolvable locally. A fetch failure
+			// (branch gone, no access, offline) aborts creation so no partial
+			// context is left behind.
+			await fetchPullRequestBranches(project, prConfigs);
+
+			const repos = await buildRepoInputsFromPullRequests(project, prConfigs);
+
+			if (repos.length > 0) {
+				await invoke("create_context", {
+					projectPath: project.path,
+					contextName: name,
+					repos,
+					symlinks: project.symlinks,
+					baseContextName: null,
+				});
+			}
+
+			const branches = repos.map(
+				(repo) => new ContextBranch(repo.repository_id, repo.branch, repo.linked),
+			);
+
+			// A context created from open PRs exists to be reviewed, so it starts
+			// in the review column rather than the default ready state.
+			const newContext = new Context(
+				crypto.randomUUID(),
+				name,
+				branches,
+				false,
+				undefined,
+				{},
+				"review",
+			);
 			const updatedProject = project.addContext(newContext);
 
 			await ProjectDirectory.saveProject(updatedProject);
@@ -328,6 +390,7 @@ export function useContexts(project: Project) {
 		defaultContext,
 		createContext,
 		createContextFromBranches,
+		createContextFromPullRequests,
 		createContextsBulk,
 		deleteContext,
 		savePullRequestDrafts,
@@ -468,6 +531,60 @@ async function buildRepoInputsFromExistingBranches(
 			name: repo.name,
 			branch,
 			base_branch: branch,
+			linked: isLinked,
+			post_checkout_command: repo.postCheckoutCommand ?? null,
+		});
+	}
+	return inputs;
+}
+
+/**
+ * Fetches each selected PR head branch into its repository so a worktree can be
+ * checked out to it. Repositories with no selected PR are skipped. Rejects on
+ * the first fetch failure so the caller can surface the error and abort before
+ * any context is created.
+ */
+async function fetchPullRequestBranches(
+	project: Project,
+	prConfigs: PullRequestBranchConfig[],
+): Promise<void> {
+	for (const config of prConfigs) {
+		if (!config.headBranch) continue;
+
+		const repo = project.findEffectiveRepository(config.repositoryId);
+		if (!repo) continue;
+
+		const resolvedPath = await repo.resolveAbsolutePath(project.path);
+		await invoke("fetch_pr_branch", { path: resolvedPath, branch: config.headBranch });
+	}
+}
+
+/**
+ * Builds `create_context` repo inputs from selected pull requests. A repository
+ * with a selected PR checks out the PR head branch (based on the PR base
+ * branch); a repository without one is linked to its current checkout, matching
+ * the "create from branches" behavior.
+ */
+async function buildRepoInputsFromPullRequests(
+	project: Project,
+	prConfigs: PullRequestBranchConfig[],
+) {
+	const inputs = [];
+	for (const config of prConfigs) {
+		const repo = project.findEffectiveRepository(config.repositoryId);
+		if (!repo) continue;
+
+		const resolvedPath = await repo.resolveAbsolutePath(project.path);
+		const isLinked = !config.headBranch;
+		const branch = config.headBranch ?? (await resolveDefaultBranch(project, repo));
+		const baseBranch = config.baseBranch ?? branch;
+
+		inputs.push({
+			repository_id: repo.id,
+			rel_path: resolvedPath,
+			name: repo.name,
+			branch,
+			base_branch: baseBranch,
 			linked: isLinked,
 			post_checkout_command: repo.postCheckoutCommand ?? null,
 		});

@@ -166,6 +166,14 @@ export const en = {
 			createFromBranches: "Create from branches",
 			createFromBranchesDescription:
 				"Create a context from existing local branches. Pick a branch for each repository, or leave one empty to link it to the current checkout.",
+			createFromPullRequests: "Create from PRs",
+			createFromPullRequestsDescription:
+				"Create a context from open pull requests to review them in the IDE. Pick a PR for each repository, or leave one empty to link it to the current checkout.",
+			selectPullRequest: "Select an open pull request",
+			noOpenPullRequests: "No open pull requests",
+			pullRequestBaseBranch: "Base: {{base}}",
+			pullRequestsNotConnected: "Connect a GitHub account in Settings to load pull requests.",
+			pullRequestsLoadError: "Could not load pull requests from GitHub.",
 			bulk: {
 				button: "Bulk create",
 				title: "Bulk create contexts",
@@ -209,17 +217,31 @@ export const en = {
 				"No branch selected — this repository will be linked to the current checkout.",
 			loadingBranches: "Loading branches…",
 			noBranchesFound: "No branches found",
-			draftPullRequest: "Draft pull requests",
-			draftPullRequestTitle: "Draft pull requests",
-			draftPullRequestDescription:
-				'Write a pull request description for each repository in "{{name}}".',
+			draftPullRequest: "Create pull requests",
 			prTitle: "Title",
 			prTitlePlaceholder: "Add a title",
 			prDescription: "Description",
 			prDescriptionPlaceholder: "Describe your changes in Markdown",
-			copyMarkdown: "Copy Markdown",
+			createPr: {
+				title: "Create pull requests",
+				generate: "Generate",
+				generating: "Generating…",
+				create: "Create pull request",
+				createDraft: "Create draft pull request",
+				createAsDraft: "Create as draft",
+				viewPr: "View PR #{{number}}",
+				notGitHub:
+					"This repository has no GitHub remote, so a pull request cannot be created here.",
+				noBaseBranch:
+					"No base branch found in the base context, so there is nothing to open the pull request against.",
+				missingTitle: "Title required",
+				missingTitleMessage: "Add a title before creating the pull request.",
+				pushFailed: "Could not push the branch",
+				createdTitle: "Pull request created",
+				createdMessage: "Opened pull request #{{number}}.",
+				createFailed: "Could not create the pull request",
+			},
 			noRepositories: "This context has no repositories.",
-			draftContextNotFound: "Context not found.",
 			deleted: "Context deleted",
 			deleteFailed: "Failed to delete context",
 			noBaseBranch: "No base branch available",
@@ -275,8 +297,8 @@ export const en = {
 		},
 		navigation: {
 			projects: "Projects",
-			pullRequests: "Pull requests",
 			tasks: "Tasks",
+			pullRequests: "Review",
 			settings: "Settings",
 		},
 		updater: {
@@ -292,7 +314,7 @@ export const en = {
 			failedMessage: "Could not check for or install the update.",
 		},
 		pullRequests: {
-			title: "Pull requests",
+			title: "Review",
 			activeTab: "Active",
 			draftsTab: "Drafts",
 			noDrafts: "No draft pull requests yet.",

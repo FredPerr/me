@@ -26,14 +26,14 @@ import {
 import type { ReactNode } from "react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useNavigate } from "react-router";
 import { useActiveWorkspaces } from "@/hooks/useActiveWorkspaces";
 import { useContextDiffStats } from "@/hooks/useContextDiffStats";
-import type { CreateContextParams } from "@/hooks/useContexts";
+import { type CreateContextParams, useContexts } from "@/hooks/useContexts";
 import { useOpenInIde } from "@/hooks/useOpenInIde";
 import type { Context, Project } from "@/models/Project";
 import "./ContextCard.css";
 import { CreateFromContextModal } from "./CreateFromContextModal";
+import { CreatePullRequestModal } from "./CreatePullRequestModal";
 
 type ContextCardProps = {
 	context: Context;
@@ -63,12 +63,13 @@ export function ContextCard({
 	dragHandle,
 }: ContextCardProps) {
 	const { t } = useTranslation();
-	const navigate = useNavigate();
 	const { openFirstExisting, isAvailable } = useOpenInIde();
 	const { isActive } = useActiveWorkspaces();
+	const { savePullRequestDrafts } = useContexts(project);
 	const { statsByRepository, hasBaseContext } = useContextDiffStats(context, project, allContexts);
 	const [opened, { open: openModal, close: closeModal }] = useDisclosure(false);
 	const [createOpened, { open: openCreateModal, close: closeCreateModal }] = useDisclosure(false);
+	const [prOpened, { open: openPrModal, close: closePrModal }] = useDisclosure(false);
 	const [expanded, { toggle }] = useDisclosure(context.expanded);
 
 	function toggleExpanded() {
@@ -92,7 +93,7 @@ export function ContextCard({
 	}
 
 	function handleDraftPullRequests() {
-		navigate(`/projects/${project.tag}/contexts/${context.id}/pull-requests`);
+		openPrModal();
 	}
 
 	async function handleDelete() {
@@ -323,6 +324,15 @@ export function ContextCard({
 				sourceContext={context}
 				project={project}
 				onCreate={onCreate}
+			/>
+
+			<CreatePullRequestModal
+				opened={prOpened}
+				onClose={closePrModal}
+				project={project}
+				context={context}
+				allContexts={allContexts}
+				onSaveDrafts={savePullRequestDrafts}
 			/>
 		</>
 	);

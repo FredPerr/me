@@ -66,6 +66,23 @@ export type ProviderPullRequest = {
 	updatedAt: string;
 };
 
+/** The details needed to open a new pull request. */
+export type CreatePullRequestInput = {
+	title: string;
+	body: string;
+	/** Branch containing the changes. Must already be pushed to the remote. */
+	head: string;
+	/** Branch the changes are merged into. */
+	base: string;
+	draft: boolean;
+};
+
+/** A pull request that was just created, used to link to it in the UI. */
+export type CreatedPullRequest = {
+	number: number;
+	htmlUrl: string;
+};
+
 export interface GitProvider {
 	readonly id: GitProviderId;
 
@@ -86,6 +103,12 @@ export interface GitProvider {
 
 	/** List open pull requests for a repository. */
 	listPullRequests(repository: RepositoryRef): Promise<ProviderPullRequest[]>;
+
+	/** Open a new pull request. The head branch must already be pushed. */
+	createPullRequest(
+		repository: RepositoryRef,
+		input: CreatePullRequestInput,
+	): Promise<CreatedPullRequest>;
 
 	/**
 	 * Parse a normalized remote URL into an owner/repo ref, or null if the URL

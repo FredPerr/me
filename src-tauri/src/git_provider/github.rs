@@ -377,6 +377,98 @@ pub async fn github_list_pull_requests(
         .collect())
 }
 
+// --- Create pull request ----------------------------------------------------
+
+/// The newly created pull request, surfaced to the UI so it can link to it.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreatedPullRequest {
+    pub number: u64,
+    pub html_url: String,
+}
+
+#[derive(Deserialize)]
+struct CreatedPullRequestResponse {
+    number: u64,
+    html_url: String,
+}
+
+#[derive(Serialize)]
+struct CreatePullRequestBody<'a> {
+    title: &'a str,
+    body: &'a str,
+    head: &'a str,
+    base: &'a str,
+    draft: bool,
+}
+
+/// Open a pull request on `owner/repo` from `head` into `base`. The `head`
+/// branch must already be pushed to the remote. Mirrors the GitHub REST
+/// "Create a pull request" endpoint.
+///
+/// Docs: https://docs.github.com/rest/pulls/pulls#create-a-pull-request
+#[tauri::command]
+pub async fn github_create_pull_request(
+    owner: String,
+    repo: String,
+    title: String,
+    body: String,
+    head: String,
+    base: String,
+    draft: bool,
+) -> Result<CreatedPullRequest, String> {
+    let token = require_token().await?;
+
+    let url = format!("https://api.github.com/repos/{}/{}/pulls", owner, repo);
+    eprintln!(
+        "[github] create_pull_request {}/{} {} -> {}",
+        owner, repo, head, base
+    );
+    let response = http_client()?
+        .post(&url)
+        .bearer_auth(&token)
+        .header(reqwest::header::ACCEPT, "application/vnd.github+json")
+        .json(&CreatePullRequestBody {
+            title: &title,
+            body: &body,
+            head: &head,
+            base: &base,
+            draft,
+        })
+        .send()
+        .await
+        .map_err(|error| {
+            eprintln!(
+                "[github] create_pull_request {}/{} request error: {}",
+                owner, repo, error
+            );
+            error.to_string()
+        })?;
+
+    if !response.status().is_success() {
+        let context = format!("create_pull_request {}/{}", owner, repo);
+        return Err(describe_error_response(&context, response).await);
+    }
+
+    let created: CreatedPullRequestResponse = response.json().await.map_err(|error| {
+        eprintln!(
+            "[github] create_pull_request {}/{} decode error: {}",
+            owner, repo, error
+        );
+        error.to_string()
+    })?;
+
+    eprintln!(
+        "[github] create_pull_request {}/{} created PR #{}",
+        owner, repo, created.number
+    );
+
+    Ok(CreatedPullRequest {
+        number: created.number,
+        html_url: created.html_url,
+    })
+}
+
 // --- Connection state --------------------------------------------------------
 
 /// Whether an access token is currently stored for GitHub. Used on startup to

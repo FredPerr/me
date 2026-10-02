@@ -178,6 +178,63 @@ pub async fn get_worktree_status(
     })
 }
 
+/// Upper bound on the diff text returned to the frontend. A very large diff is
+/// of little use for generating a summary and risks exhausting memory in the
+/// agent prompt, so it is truncated with a trailing marker.
+const MAX_DIFF_BYTES: usize = 200_000;
+
+/// Return the unified diff of the worktree's current branch against the merge
+/// base with `base_branch`. This is the same change set that a pull request
+/// from this branch into `base_branch` would contain, used to generate a PR
+/// description. Oversized diffs are truncated to `MAX_DIFF_BYTES`.
+#[tauri::command]
+pub async fn get_worktree_diff(path: String, base_branch: String) -> Result<String, String> {
+    let repo = Repository::open(&path).map_err(|e| e.to_string())?;
+
+    let base_commit = resolve_branch_commit(&repo, &base_branch)?;
+    let head_commit = repo
+        .head()
+        .map_err(|e| e.to_string())?
+        .peel_to_commit()
+        .map_err(|e| e.to_string())?;
+
+    let merge_base_oid = repo
+        .merge_base(base_commit.id(), head_commit.id())
+        .map_err(|e| format!("Could not find merge base: {}", e))?;
+    let merge_base_tree = repo
+        .find_commit(merge_base_oid)
+        .map_err(|e| e.to_string())?
+        .tree()
+        .map_err(|e| e.to_string())?;
+    let head_tree = head_commit.tree().map_err(|e| e.to_string())?;
+
+    let diff = repo
+        .diff_tree_to_tree(Some(&merge_base_tree), Some(&head_tree), None)
+        .map_err(|e| e.to_string())?;
+
+    let mut buffer = String::new();
+    diff.print(git2::DiffFormat::Patch, |_delta, _hunk, line| {
+        match line.origin() {
+            '+' | '-' | ' ' => buffer.push(line.origin()),
+            _ => {}
+        }
+        buffer.push_str(&String::from_utf8_lossy(line.content()));
+        true
+    })
+    .map_err(|e| e.to_string())?;
+
+    if buffer.len() > MAX_DIFF_BYTES {
+        let mut end = MAX_DIFF_BYTES;
+        while end > 0 && !buffer.is_char_boundary(end) {
+            end -= 1;
+        }
+        buffer.truncate(end);
+        buffer.push_str("\n\n[diff truncated: too large to include in full]\n");
+    }
+
+    Ok(buffer)
+}
+
 struct FileChangeCounts {
     added: usize,
     modified: usize,
@@ -1114,6 +1171,61 @@ pub async fn pull_worktree(path: String) -> Result<PullResult, String> {
         pulled: true,
         message: Some(stdout.trim().to_string()),
     })
+}
+
+/// Fetch a pull-request head branch from `origin` and create (or update) a local
+/// branch of the same name pointing at the fetched commit, so a context worktree
+/// can be checked out to it.
+///
+/// Open PRs typically live on the remote and are not present locally, so this
+/// bridges that gap. Returns an error (so the caller can warn and block context
+/// creation) when the branch no longer exists on the remote, access is denied,
+/// or the machine is offline. Fetching is serialized per repository via the
+/// shared-FETCH_HEAD lock, matching `pull_worktree`.
+#[tauri::command]
+pub async fn fetch_pr_branch(path: String, branch: String) -> Result<(), String> {
+    let repo = Repository::open(&path)
+        .map_err(|e| format!("Failed to open repository at '{}': {}", path, e))?;
+
+    if repo.find_remote("origin").is_err() {
+        return Err("No 'origin' remote configured".to_string());
+    }
+
+    // A branch already checked out somewhere can be reused as-is; no fetch needed.
+    if repo
+        .find_branch(&branch, git2::BranchType::Local)
+        .is_ok()
+    {
+        return Ok(());
+    }
+
+    let lock = repo_lock(&common_git_dir(&path));
+    let _guard = lock.lock().expect("repo lock poisoned");
+
+    let auth_args = remote_auth_args(&repo, "origin");
+
+    // Fetch the single PR head branch into a predictable local ref so the exact
+    // fetched commit is addressable regardless of the repo's fetch refspec.
+    let local_ref = format!("refs/heads/{}", branch);
+    let refspec = format!("{}:{}", branch, local_ref);
+
+    let fetch = std::process::Command::new("git")
+        .args(&auth_args)
+        .args(["fetch", "origin", &refspec])
+        .current_dir(&path)
+        .output()
+        .map_err(|e| format!("Failed to run git fetch: {}", e))?;
+
+    if !fetch.status.success() {
+        let stderr = String::from_utf8_lossy(&fetch.stderr);
+        return Err(format!(
+            "Could not fetch branch '{}' from origin: {}",
+            branch,
+            stderr.trim()
+        ));
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]

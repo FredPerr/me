@@ -1,5 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
+	CreatedPullRequest,
+	CreatePullRequestInput,
 	DeviceAuthorization,
 	DevicePollResult,
 	GitProvider,
@@ -43,6 +45,21 @@ export class GitHubProvider implements GitProvider {
 		return invoke<ProviderPullRequest[]>("github_list_pull_requests", {
 			owner: repository.owner,
 			repo: repository.repo,
+		});
+	}
+
+	createPullRequest(
+		repository: RepositoryRef,
+		input: CreatePullRequestInput,
+	): Promise<CreatedPullRequest> {
+		return invoke<CreatedPullRequest>("github_create_pull_request", {
+			owner: repository.owner,
+			repo: repository.repo,
+			title: input.title,
+			body: input.body,
+			head: input.head,
+			base: input.base,
+			draft: input.draft,
 		});
 	}
 
