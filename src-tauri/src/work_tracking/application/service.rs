@@ -162,6 +162,20 @@ impl WorkTrackingService {
             .await
     }
 
+    pub async fn list_project_items(
+        &self,
+        raw_connection_id: &str,
+        raw_project_id: &str,
+        raw_cursor: Option<&str>,
+    ) -> Result<Page<WorkItem>, WorkTrackingError> {
+        let id = ConnectionId::parse(raw_connection_id, InputField::ConnectionId)?;
+        let project_id = WorkProjectId::parse(raw_project_id, InputField::ProjectId)?;
+        let page = default_page(raw_cursor)?;
+        self.resolve(&id)?
+            .list_project_items(&project_id, page)
+            .await
+    }
+
     /// Builds a fresh adapter per call; no credential is kept between calls.
     fn resolve(&self, id: &ConnectionId) -> Result<Box<dyn WorkTracker>, WorkTrackingError> {
         let connection = self
@@ -452,6 +466,36 @@ mod tests {
             ]
         );
         assert_eq!(script.created_with_keys.len(), 3);
+    }
+
+    #[test]
+    fn list_project_items_passes_project_scope() {
+        let fixture = fixture();
+        fixture.connections.insert(sample_connection());
+        fixture.credentials.insert(CONNECTION_ID, "key-1");
+        block_on(
+            fixture
+                .service
+                .list_project_items(CONNECTION_ID, "10", Some("2")),
+        )
+        .unwrap();
+        let script = fixture.script.lock().unwrap();
+        assert_eq!(
+            script.calls,
+            vec!["list_project_items project=10 cursor=Some(\"2\") size=50".to_string()]
+        );
+    }
+
+    #[test]
+    fn list_project_items_requires_project_id() {
+        let fixture = fixture();
+        assert_eq!(
+            block_on(fixture.service.list_project_items(CONNECTION_ID, "", None)),
+            Err(WorkTrackingError::invalid_input(
+                InputField::ProjectId,
+                InvalidInputReason::Required
+            ))
+        );
     }
 
     #[test]

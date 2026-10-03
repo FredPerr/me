@@ -72,6 +72,18 @@ export class TauriWorkTrackingGateway implements WorkTrackingGateway {
 		});
 	}
 
+	listProjectItems(
+		connectionId: ConnectionId,
+		projectId: WorkProjectId,
+		cursor?: string,
+	): Promise<Page<WorkItem>> {
+		return this.call<Page<WorkItem>>("work_tracking_list_project_items", {
+			connectionId,
+			projectId,
+			cursor: cursor ?? null,
+		});
+	}
+
 	private async call<T>(command: string, args?: InvokeArgs): Promise<T> {
 		try {
 			return await invoke<T>(command, args);

@@ -179,17 +179,16 @@ fn map_task(
     task: TaskDto,
     included: &IncludedDto,
     project_id: &WorkProjectId,
-    group_id: &WorkItemGroupId,
+    fallback_group_id: Option<&WorkItemGroupId>,
     base_url: &BaseUrl,
 ) -> WorkItem {
     WorkItem {
         id: WorkItemId::from_numeric(task.id),
         project_id: project_id.clone(),
-        group_id: Some(
-            task.tasklist_id
-                .map(WorkItemGroupId::from_numeric)
-                .unwrap_or_else(|| group_id.clone()),
-        ),
+        group_id: task
+            .tasklist_id
+            .map(WorkItemGroupId::from_numeric)
+            .or_else(|| fallback_group_id.cloned()),
         parent_id: task
             .parent_task_id
             .filter(|parent| *parent != 0)
@@ -243,7 +242,7 @@ pub fn map_tasklists(
 pub fn map_tasks(
     response: TasksResponse,
     project_id: &WorkProjectId,
-    group_id: &WorkItemGroupId,
+    fallback_group_id: Option<&WorkItemGroupId>,
     base_url: &BaseUrl,
     page: u32,
 ) -> Page<WorkItem> {
@@ -253,7 +252,7 @@ pub fn map_tasks(
         items: response
             .tasks
             .into_iter()
-            .map(|task| map_task(task, &included, project_id, group_id, base_url))
+            .map(|task| map_task(task, &included, project_id, fallback_group_id, base_url))
             .collect(),
     }
 }
@@ -292,7 +291,13 @@ mod tests {
     }
 
     fn tasks(json: &str, page: u32) -> Page<WorkItem> {
-        map_tasks(parse(json), &project_id(), &group_id(), &base_url(), page)
+        map_tasks(
+            parse(json),
+            &project_id(),
+            Some(&group_id()),
+            &base_url(),
+            page,
+        )
     }
 
     fn task(page: &Page<WorkItem>, id: u64) -> &WorkItem {

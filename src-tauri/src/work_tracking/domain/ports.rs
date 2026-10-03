@@ -28,6 +28,12 @@ pub trait WorkTracker: Send + Sync {
         group_id: &WorkItemGroupId,
         page: PageRequest,
     ) -> Result<Page<WorkItem>, WorkTrackingError>;
+    /// Open items of a project across all of its groups.
+    async fn list_project_items(
+        &self,
+        project_id: &WorkProjectId,
+        page: PageRequest,
+    ) -> Result<Page<WorkItem>, WorkTrackingError>;
 }
 
 /// Synchronous because both backends (plugin store, keyring) are synchronous.

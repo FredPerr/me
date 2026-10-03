@@ -89,6 +89,7 @@ pub fn run() {
             work_tracking::commands::work_tracking_list_projects,
             work_tracking::commands::work_tracking_list_groups,
             work_tracking::commands::work_tracking_list_items,
+            work_tracking::commands::work_tracking_list_project_items,
             workspace_detector::get_active_workspaces,
             ai_session::spawn_ai_session,
             ai_session::kill_ai_session,

@@ -42,6 +42,11 @@ export const en = {
 		},
 		settings: {
 			title: "Settings",
+			tabs: {
+				general: "General",
+				integrations: "Integrations",
+				projects: "Projects",
+			},
 			general: {
 				title: "General",
 				ideCommand: "IDE Command",
@@ -105,6 +110,12 @@ export const en = {
 				configPath: "Config path",
 				browseFolderPath: "Browse folder",
 				copyConfigPath: "Copy config path",
+				remoteProjects: "Linked task projects",
+				remoteProjectsDescription:
+					"Tasks from these projects can be shown on the board to start contexts from them.",
+				remoteProjectsNoConnection:
+					"Connect a work tracker in Settings → Integrations to link projects.",
+				linkRemoteProject: "Link a {{provider}} project",
 				gitRepoRoot: "This folder is a root git repository",
 				notGitRepo: "Not a root git repository",
 				symlinks: "Shared symlinks",
@@ -260,6 +271,12 @@ export const en = {
 			kanban: {
 				columnEmpty: "Nothing here yet",
 				dragHandle: "Drag to move",
+				showTasks: "Show tasks",
+				showTasksHint: "Show open tasks from the linked work tracker projects in the Idle column",
+				noLinkedProjects: "Link work tracker projects in this project's settings to show tasks.",
+				tasksLoadError: "Could not load tasks: {{message}}",
+				taskCardLabel: "Create a context from task {{title}}",
+				taskBadge: "Task",
 				status: {
 					idle: "Idle",
 					ready: "Ready",
@@ -403,6 +420,8 @@ export const en = {
 			loadMore: "Load more",
 			itemsLoaded: "{{count}} items loaded",
 			retry: "Retry",
+			notConnected: "No work tracker connected.",
+			goToSettings: "Connect one in Settings → Integrations",
 			connection: {
 				title: "Work tracker",
 				description:
@@ -427,19 +446,14 @@ export const en = {
 				teamwork: "Teamwork",
 			},
 			link: {
-				title: "Linked remote projects",
 				localProject: "Local project",
+				localProjectHint: "Contexts created from the selected tasks go into this project.",
 				localProjectPlaceholder: "Select a local project",
-				noLocalProjects: "No local projects yet. Add one in Settings.",
-				selectLocalProjectFirst: "Select a local project first",
-				linkTo: "Link {{name}} to {{project}}",
 				unlink: "Unlink",
 				unlinkNamed: "Unlink {{name}}",
 				open: "Open",
 				noLinks: "No remote projects linked",
 				connectionUnavailable: "Connection unavailable",
-				linkError: "Could not link the remote project.",
-				unlinkError: "Could not unlink the remote project.",
 			},
 			projects: {
 				title: "Projects",
@@ -464,6 +478,20 @@ export const en = {
 				due: "Due {{date}}",
 				assignees: "Assigned to {{names}}",
 				openInProvider: "Open {{title}} in the provider",
+			},
+			createFromTask: {
+				title: "Create context from task",
+				openTask: "Open in work tracker",
+				noDescription: "This task has no description.",
+				descriptionLabel: "Description",
+				baseContextLabel: "Base context",
+				baseContextHint: "The new branches start from this context's branches.",
+				contextNameLabel: "Context name",
+				branchPreview: "Branch: {{branch}}",
+				invalidBranch: "This name does not produce a valid branch name.",
+				promptLabel: "Kiro prompt",
+				promptHint: "Stored on the context and prefilled when you open Kiro.",
+				createdMessage: 'Created context "{{name}}" from the task.',
 			},
 			bulkCreate: {
 				button: "Bulk create ({{count}})",

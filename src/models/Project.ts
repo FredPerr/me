@@ -72,7 +72,15 @@ export class Context {
 			: DEFAULT_CONTEXT_STATUS,
 		public readonly preprompt?: string,
 		public readonly expanded: boolean = false,
+		public readonly workItemRef?: WorkItemRef,
 	) {}
+
+	isCreatedFrom(ref: WorkItemRef): boolean {
+		return (
+			this.workItemRef?.connectionId === ref.connectionId &&
+			this.workItemRef.workItemId === ref.workItemId
+		);
+	}
 
 	getBranchForRepository(repositoryId: string): string | undefined {
 		return this.branches.find((b) => b.repositoryId === repositoryId)?.branch;
@@ -93,6 +101,7 @@ export class Context {
 			this.status,
 			this.preprompt,
 			this.expanded,
+			this.workItemRef,
 		);
 	}
 
@@ -107,6 +116,7 @@ export class Context {
 			status,
 			this.preprompt,
 			this.expanded,
+			this.workItemRef,
 		);
 	}
 
@@ -121,6 +131,7 @@ export class Context {
 			this.status,
 			this.preprompt,
 			expanded,
+			this.workItemRef,
 		);
 	}
 
@@ -171,6 +182,7 @@ export class Context {
 			status,
 			data.preprompt,
 			data.expanded ?? false,
+			parseWorkItemRef(data.workItemRef),
 		);
 	}
 
@@ -185,6 +197,7 @@ export class Context {
 			status: this.status,
 			preprompt: this.preprompt,
 			expanded: this.expanded,
+			workItemRef: this.workItemRef,
 		};
 	}
 }
@@ -340,7 +353,21 @@ export type ContextData = {
 	status?: ContextStatus;
 	preprompt?: string;
 	expanded?: boolean;
+	workItemRef?: WorkItemRef;
 };
+
+/** Identifies the remote task a context was created from. */
+export type WorkItemRef = {
+	connectionId: string;
+	workItemId: string;
+};
+
+function parseWorkItemRef(data: unknown): WorkItemRef | undefined {
+	if (typeof data !== "object" || data === null) return undefined;
+	const { connectionId, workItemId } = data as Partial<WorkItemRef>;
+	if (typeof connectionId !== "string" || typeof workItemId !== "string") return undefined;
+	return { connectionId, workItemId };
+}
 
 export type ProjectData = {
 	name: string;

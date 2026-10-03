@@ -1,13 +1,24 @@
-import { Button, Grid, Group, Stack, Text, Title, Tooltip } from "@mantine/core";
+import {
+	Alert,
+	Anchor,
+	Button,
+	Grid,
+	Group,
+	Loader,
+	Select,
+	Stack,
+	Text,
+	Title,
+	Tooltip,
+} from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import { SparkleIcon } from "@phosphor-icons/react";
 import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useNavigate } from "react-router";
 import { BulkCreateFromTasksModal } from "@/components/work-tracking/BulkCreateFromTasksModal";
-import { ConnectionPanel } from "@/components/work-tracking/ConnectionPanel";
-import { LocalProjectLinkPanel } from "@/components/work-tracking/LocalProjectLinkPanel";
 import { RemoteProjectList } from "@/components/work-tracking/RemoteProjectList";
-import { ReplaceKeyModal } from "@/components/work-tracking/ReplaceKeyModal";
+import { translateError } from "@/components/work-tracking/translateError";
 import { WorkItemGroupList } from "@/components/work-tracking/WorkItemGroupList";
 import { WorkItemList } from "@/components/work-tracking/WorkItemList";
 import type {
@@ -15,27 +26,29 @@ import type {
 	WorkItemId,
 	WorkProjectId,
 } from "@/domain/work-tracking/identifiers";
-import type { ProviderConnection } from "@/domain/work-tracking/ProviderConnection";
 import { DEFAULT_PROVIDER_KIND } from "@/domain/work-tracking/ProviderKind";
 import type { WorkItem } from "@/domain/work-tracking/WorkItem";
 import type { WorkItemGroup } from "@/domain/work-tracking/WorkItemGroup";
 import type { WorkProject } from "@/domain/work-tracking/WorkProject";
+import { useProjects } from "@/hooks/useProjects";
 import { usePagedRemoteList } from "@/hooks/work-tracking/usePagedRemoteList";
-import { useRemoteProjectLinks } from "@/hooks/work-tracking/useRemoteProjectLinks";
-import { useWorkTrackingConnections } from "@/hooks/work-tracking/useWorkTrackingConnections";
+import {
+	ConnectionsStatus,
+	useWorkTrackingConnections,
+} from "@/hooks/work-tracking/useWorkTrackingConnections";
 import { workTrackingGateway } from "@/infra/work-tracking/workTracking";
+import { SettingsTab, settingsPath } from "./settingsTabs";
 
 export function TasksPage() {
 	const { t } = useTranslation();
-	const { connections, status, error, revision, save, remove, reload } =
-		useWorkTrackingConnections();
-	const { projects, loading, link, unlink, isPending } = useRemoteProjectLinks();
+	const navigate = useNavigate();
+	const { connections, status, error, revision, reload } = useWorkTrackingConnections();
+	const { projects, loading } = useProjects();
 	const [selectedProjectTag, setSelectedProjectTag] = useState<string | null>(null);
 	const [selectedRemoteProjectId, setSelectedRemoteProjectId] = useState<WorkProjectId | null>(
 		null,
 	);
 	const [selectedGroupId, setSelectedGroupId] = useState<WorkItemGroupId | null>(null);
-	const [replaceKeyOpened, setReplaceKeyOpened] = useState(false);
 	const [selectedTaskIds, setSelectedTaskIds] = useState<ReadonlySet<WorkItemId>>(() => new Set());
 	const [bulkOpened, { open: openBulk, close: closeBulk }] = useDisclosure(false);
 
@@ -100,38 +113,48 @@ export function TasksPage() {
 		clearSelection();
 	}
 
-	async function handleRemove(removedConnection: ProviderConnection) {
-		await remove(removedConnection.id);
-		setSelectedRemoteProjectId(null);
-		setSelectedGroupId(null);
-		setReplaceKeyOpened(false);
-		clearSelection();
-	}
-
-	function openReplaceKey() {
-		setReplaceKeyOpened(true);
+	function openIntegrationSettings() {
+		navigate(settingsPath(SettingsTab.Integrations));
 	}
 
 	return (
 		<Stack gap="lg" w="100%" p="lg">
 			<Title order={2}>{t("workTracking.title")}</Title>
-			<ConnectionPanel
-				connection={connection}
-				status={status}
-				error={error}
-				save={save}
-				remove={handleRemove}
-				onReplaceKey={openReplaceKey}
-				onRetry={reload}
-			/>
-			<LocalProjectLinkPanel
-				projects={projects}
-				loading={loading}
-				selectedProject={selectedProject}
-				onSelectProject={setSelectedProjectTag}
-				connections={connections}
-				unlink={unlink}
-				isPending={isPending}
+			{status === ConnectionsStatus.Loading && <Loader size="sm" />}
+			{status === ConnectionsStatus.Error && error && (
+				<Alert color="red" title={t("common.error")}>
+					<Stack gap="xs" align="flex-start">
+						<Text size="sm">{translateError(t, error)}</Text>
+						<Button size="xs" variant="light" onClick={reload}>
+							{t("workTracking.retry")}
+						</Button>
+					</Stack>
+				</Alert>
+			)}
+			{status === ConnectionsStatus.Ready && !connection && (
+				<Stack gap={4}>
+					<Text size="sm" c="dimmed">
+						{t("workTracking.notConnected")}
+					</Text>
+					<Anchor size="sm" onClick={openIntegrationSettings}>
+						{t("workTracking.goToSettings")}
+					</Anchor>
+				</Stack>
+			)}
+			<Select
+				label={t("workTracking.link.localProject")}
+				description={t("workTracking.link.localProjectHint")}
+				placeholder={t("workTracking.link.localProjectPlaceholder")}
+				data={projects.map((project) => ({
+					value: project.tag,
+					label: `${project.name} (${project.tag})`,
+				}))}
+				value={selectedProject?.tag ?? null}
+				onChange={setSelectedProjectTag}
+				disabled={loading}
+				maw={400}
+				searchable
+				clearable
 			/>
 			{connection && (
 				<Grid gap="lg">
@@ -140,12 +163,8 @@ export function TasksPage() {
 							list={projectList}
 							selectedRemoteProjectId={selectedRemoteProjectId}
 							onSelect={handleSelectRemoteProject}
-							selectedProject={selectedProject}
 							connection={connection}
-							link={link}
-							unlink={unlink}
-							isPending={isPending}
-							onReplaceKey={openReplaceKey}
+							onReplaceKey={openIntegrationSettings}
 						/>
 					</Grid.Col>
 					<Grid.Col span={{ base: 12, md: 4 }}>
@@ -154,7 +173,7 @@ export function TasksPage() {
 								list={groupList}
 								selectedGroupId={selectedGroupId}
 								onSelect={handleSelectGroup}
-								onReplaceKey={openReplaceKey}
+								onReplaceKey={openIntegrationSettings}
 							/>
 						) : (
 							<ColumnHint title={t("workTracking.groups.title")}>
@@ -184,7 +203,7 @@ export function TasksPage() {
 								<WorkItemList
 									list={itemList}
 									connection={connection}
-									onReplaceKey={openReplaceKey}
+									onReplaceKey={openIntegrationSettings}
 									selection={
 										canSelectTasks
 											? { selectedIds: selectedTaskIds, onToggle: toggleTaskSelected }
@@ -200,12 +219,6 @@ export function TasksPage() {
 					</Grid.Col>
 				</Grid>
 			)}
-			<ReplaceKeyModal
-				opened={replaceKeyOpened}
-				onClose={() => setReplaceKeyOpened(false)}
-				connection={connection}
-				save={save}
-			/>
 			{selectedProject && (
 				<BulkCreateFromTasksModal
 					opened={bulkOpened}

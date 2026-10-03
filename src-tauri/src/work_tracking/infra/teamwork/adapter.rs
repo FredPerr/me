@@ -1,8 +1,8 @@
 use async_trait::async_trait;
 
 use super::client::{
-    paged_query, tasklists_path, tasks_path, TeamworkClient, ME_PATH, PROJECTS_PATH,
-    PROJECTS_QUERY, TASKLISTS_QUERY, TASKS_QUERY,
+    paged_query, project_tasks_path, tasklists_path, tasks_path, TeamworkClient, ME_PATH,
+    PROJECTS_PATH, PROJECTS_QUERY, TASKLISTS_QUERY, TASKS_QUERY,
 };
 use super::dto::{MeResponse, ProjectsResponse, TasklistsResponse, TasksResponse};
 use super::mapper;
@@ -90,7 +90,28 @@ impl WorkTracker for TeamworkWorkTracker {
         Ok(mapper::map_tasks(
             response,
             project_id,
-            group_id,
+            Some(group_id),
+            &self.base_url,
+            page_number,
+        ))
+    }
+
+    async fn list_project_items(
+        &self,
+        project_id: &WorkProjectId,
+        page: PageRequest,
+    ) -> Result<Page<WorkItem>, WorkTrackingError> {
+        let project_segment = mapper::numeric_id(project_id.as_str(), InputField::ProjectId)?;
+        let page_number = mapper::page_number(page.cursor())?;
+        let query = paged_query(TASKS_QUERY, page_number, page.page_size());
+        let response: TasksResponse = self
+            .client
+            .get_json(&project_tasks_path(project_segment), &query)
+            .await?;
+        Ok(mapper::map_tasks(
+            response,
+            project_id,
+            None,
             &self.base_url,
             page_number,
         ))
@@ -133,6 +154,13 @@ mod tests {
         );
         assert_eq!(
             block_on(tracker.list_items(&project, &group, first_page())),
+            Err(WorkTrackingError::invalid_input(
+                InputField::ProjectId,
+                InvalidInputReason::InvalidFormat
+            ))
+        );
+        assert_eq!(
+            block_on(tracker.list_project_items(&project, first_page())),
             Err(WorkTrackingError::invalid_input(
                 InputField::ProjectId,
                 InvalidInputReason::InvalidFormat

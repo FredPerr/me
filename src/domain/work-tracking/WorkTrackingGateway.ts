@@ -29,4 +29,9 @@ export interface WorkTrackingGateway {
 		groupId: WorkItemGroupId,
 		cursor?: string,
 	): Promise<Page<WorkItem>>;
+	listProjectItems(
+		connectionId: ConnectionId,
+		projectId: WorkProjectId,
+		cursor?: string,
+	): Promise<Page<WorkItem>>;
 }

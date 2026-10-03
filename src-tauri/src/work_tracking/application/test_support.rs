@@ -129,6 +129,20 @@ impl WorkTracker for FakeWorkTracker {
         ));
         script.items_result.clone()
     }
+
+    async fn list_project_items(
+        &self,
+        project_id: &WorkProjectId,
+        page: PageRequest,
+    ) -> Result<Page<WorkItem>, WorkTrackingError> {
+        let mut script = self.script.lock().unwrap();
+        script.calls.push(format!(
+            "list_project_items project={} {}",
+            project_id.as_str(),
+            describe(&page)
+        ));
+        script.items_result.clone()
+    }
 }
 
 #[derive(Default)]

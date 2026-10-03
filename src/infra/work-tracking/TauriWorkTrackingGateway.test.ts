@@ -113,6 +113,18 @@ describe("TauriWorkTrackingGateway", () => {
 		});
 	});
 
+	it("lists items of a whole project", async () => {
+		invokeMock.mockResolvedValueOnce(EMPTY_PAGE);
+
+		await gateway.listProjectItems(CONNECTION_ID, PROJECT_ID, "2");
+
+		expect(invokeMock).toHaveBeenCalledWith("work_tracking_list_project_items", {
+			connectionId: CONNECTION_ID,
+			projectId: PROJECT_ID,
+			cursor: "2",
+		});
+	});
+
 	it("rethrows a structured rejection as a typed WorkTrackingError", async () => {
 		invokeMock.mockRejectedValueOnce({
 			kind: "invalidInput",

@@ -20,6 +20,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { IconPicker } from "@/components/shared/IconPicker";
+import { RemoteProjectLinks } from "@/domain/work-tracking/RemoteProjectLinks";
 import { pickFolder } from "@/hooks/useFolderPicker";
 import { BranchNamingPolicy, DEFAULT_BRANCH_PREFIXES } from "@/models/BranchNaming";
 import {
@@ -32,6 +33,7 @@ import {
 import { ProjectDirectory } from "@/models/ProjectDirectory";
 import { resolvePath } from "@/utils/resolvePath";
 import { BranchPrefixFormList } from "./BranchPrefixFormList";
+import { RemoteProjectLinksField } from "./RemoteProjectLinksField";
 import { RepositoryFormList } from "./RepositoryFormList";
 
 type ProjectFormProps = {
@@ -60,6 +62,9 @@ export function ProjectForm({ initialProject, onSubmit, onCancel }: ProjectFormP
 		initialProject?.branchNaming.toJSON().allowNoPrefix ?? true,
 	);
 	const [branchPrefixesValid, setBranchPrefixesValid] = useState(true);
+	const [remoteProjectLinks, setRemoteProjectLinks] = useState(
+		initialProject?.remoteProjectLinks ?? RemoteProjectLinks.empty(),
+	);
 
 	const isMultiRepo =
 		repositories.length > 1 || (repositories.length === 1 && repositories[0].relPath !== ".");
@@ -127,7 +132,7 @@ export function ProjectForm({ initialProject, onSubmit, onCancel }: ProjectFormP
 			repositories,
 			contexts,
 			symlinks: symlinks.filter((s) => s.trim()),
-			remoteProjectLinks: initialProject?.remoteProjectLinks.toJSON() ?? [],
+			remoteProjectLinks: remoteProjectLinks.toJSON(),
 			branchNaming: BranchNamingPolicy.create(branchPrefixes, allowNoBranchPrefix).toJSON(),
 		};
 
@@ -250,6 +255,7 @@ export function ProjectForm({ initialProject, onSubmit, onCancel }: ProjectFormP
 					onAllowNoPrefixChange={setAllowNoBranchPrefix}
 					onValidityChange={setBranchPrefixesValid}
 				/>
+				<RemoteProjectLinksField value={remoteProjectLinks} onChange={setRemoteProjectLinks} />
 				{isEditing && configPath && (
 					<TextInput
 						label={t("settings.projectForm.configPath")}

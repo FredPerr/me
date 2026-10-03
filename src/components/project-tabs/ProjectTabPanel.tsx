@@ -1,4 +1,14 @@
-import { Button, Divider, Group, Stack, TabsPanel } from "@mantine/core";
+import {
+	Button,
+	Checkbox,
+	Divider,
+	Group,
+	Loader,
+	Stack,
+	TabsPanel,
+	Text,
+	Tooltip,
+} from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import {
 	AppWindowIcon,
@@ -17,9 +27,12 @@ import { SearchContextInput } from "@/components/contexts/SearchContextInput";
 import { ShareForReviewModal } from "@/components/project-tabs/ShareForReviewModal";
 import { GitRemoteLink } from "@/components/shared/GitRemoteLink";
 import { PullContextsButton } from "@/components/shared/PullContextsButton";
+import { translateError } from "@/components/work-tracking/translateError";
 import { useContextKiroSessions } from "@/hooks/useContextKiroSessions";
+import type { BulkContextSpec } from "@/hooks/useContexts";
 import { useContexts } from "@/hooks/useContexts";
 import { useOpenInIde } from "@/hooks/useOpenInIde";
+import { useLinkedProjectTasks } from "@/hooks/work-tracking/useLinkedProjectTasks";
 import type { Context, Project } from "@/models/Project";
 
 type ProjectTabPanelProps = {
@@ -44,6 +57,16 @@ export function ProjectTabPanel({ project }: ProjectTabPanelProps) {
 		setContextStatus,
 	);
 	const [searchFilter, setSearchFilter] = useState("");
+	const [showTasks, setShowTasks] = useState(false);
+	const hasLinkedProjects = project.remoteProjectLinks.toArray().length > 0;
+	const linkedTasks = useLinkedProjectTasks(
+		project.remoteProjectLinks,
+		showTasks && hasLinkedProjects,
+	);
+
+	async function handleCreateFromTask(spec: BulkContextSpec, baseContext: Context) {
+		await createContextsBulk([spec], baseContext);
+	}
 
 	async function handleRunKiro(context: Context, prompt: string) {
 		await runKiro({ context, prompt });
@@ -66,7 +89,30 @@ export function ProjectTabPanel({ project }: ProjectTabPanelProps) {
 		>
 			<Stack gap="sm" py="md" style={{ flex: 1, minHeight: 0 }}>
 				<Group justify="space-between">
-					<SearchContextInput value={searchFilter} onChange={setSearchFilter} />
+					<Group gap="md">
+						<SearchContextInput value={searchFilter} onChange={setSearchFilter} />
+						<Tooltip label={t("contexts.kanban.showTasksHint")}>
+							<Checkbox
+								size="xs"
+								label={t("contexts.kanban.showTasks")}
+								checked={showTasks}
+								onChange={(event) => setShowTasks(event.currentTarget.checked)}
+							/>
+						</Tooltip>
+						{linkedTasks.loading && <Loader size="xs" />}
+						{showTasks && !hasLinkedProjects && (
+							<Text size="xs" c="dimmed">
+								{t("contexts.kanban.noLinkedProjects")}
+							</Text>
+						)}
+						{showTasks && linkedTasks.error && (
+							<Text size="xs" c="red">
+								{t("contexts.kanban.tasksLoadError", {
+									message: translateError(t, linkedTasks.error),
+								})}
+							</Text>
+						)}
+					</Group>
 					<Group gap="xs">
 						<GitRemoteLink project={project} />
 						<PullContextsButton project={project} />
@@ -125,6 +171,8 @@ export function ProjectTabPanel({ project }: ProjectTabPanelProps) {
 					isKiroRunning={isRunning}
 					getKiroConversation={getConversation}
 					searchFilter={searchFilter}
+					tasks={linkedTasks.tasks}
+					onCreateFromTask={handleCreateFromTask}
 				/>
 			</Stack>
 			<CreateFromBranchesModal

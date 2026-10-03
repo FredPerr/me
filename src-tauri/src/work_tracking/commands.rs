@@ -198,6 +198,18 @@ pub async fn work_tracking_list_items(
         .await?)
 }
 
+#[tauri::command]
+pub async fn work_tracking_list_project_items(
+    state: State<'_, WorkTrackingService>,
+    connection_id: String,
+    project_id: String,
+    cursor: Option<String>,
+) -> Result<Page<WorkItem>, CommandError> {
+    Ok(state
+        .list_project_items(&connection_id, &project_id, cursor.as_deref())
+        .await?)
+}
+
 #[cfg(test)]
 mod tests {
     use serde_json::{json, Value};

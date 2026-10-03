@@ -27,6 +27,7 @@ export function KanbanColumn({ status, count, children }: KanbanColumnProps) {
 			</Group>
 			<Paper
 				ref={setNodeRef}
+				data-vertical-scroll-area
 				withBorder
 				radius="md"
 				p={8}

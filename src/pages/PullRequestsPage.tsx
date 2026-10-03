@@ -14,6 +14,7 @@ import {
 import { useProjects } from "@/hooks/useProjects";
 import type { GitProviderId, ProviderPullRequest } from "@/models/git-provider/GitProvider";
 import type { Context, Project, PullRequestDraft } from "@/models/Project";
+import { SettingsTab, settingsPath } from "./settingsTabs";
 
 type DraftEntry = {
 	project: Project;
@@ -115,7 +116,7 @@ function NotConnected() {
 			<Text size="sm" c="dimmed" ta="center" maw={420}>
 				{t("pullRequests.notConnectedDescription")}
 			</Text>
-			<Anchor size="sm" onClick={() => navigate("/settings")}>
+			<Anchor size="sm" onClick={() => navigate(settingsPath(SettingsTab.Integrations))}>
 				{t("pullRequests.goToSettings")}
 			</Anchor>
 		</Stack>

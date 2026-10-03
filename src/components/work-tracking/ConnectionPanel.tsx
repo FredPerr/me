@@ -7,7 +7,6 @@ import {
 	Paper,
 	Stack,
 	Text,
-	Title,
 	VisuallyHidden,
 } from "@mantine/core";
 import { KeyIcon, TrashIcon } from "@phosphor-icons/react";
@@ -47,7 +46,6 @@ export function ConnectionPanel({
 	return (
 		<Paper withBorder p="md" radius="md">
 			<Stack gap="sm">
-				<Title order={3}>{t("workTracking.connection.title")}</Title>
 				{status === ConnectionsStatus.Loading && (
 					<Group>
 						<Loader size="sm" />
@@ -68,12 +66,7 @@ export function ConnectionPanel({
 					(connection ? (
 						<ConnectedSummary connection={connection} remove={remove} onReplaceKey={onReplaceKey} />
 					) : (
-						<>
-							<Text size="sm" c="dimmed">
-								{t("workTracking.connection.description")}
-							</Text>
-							<ConnectionForm save={save} />
-						</>
+						<ConnectionForm save={save} />
 					))}
 			</Stack>
 		</Paper>

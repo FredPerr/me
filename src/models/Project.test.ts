@@ -108,6 +108,41 @@ describe("Project", () => {
 		});
 	});
 
+	describe("Context.workItemRef", () => {
+		const WORK_ITEM_REF = { connectionId: "teamwork:acme.teamwork.com", workItemId: "101" };
+
+		function buildContextFromTask(): Context {
+			return new Context(
+				"context-task",
+				"task",
+				[],
+				false,
+				undefined,
+				{},
+				undefined,
+				undefined,
+				false,
+				WORK_ITEM_REF,
+			);
+		}
+
+		it("recognizes the task it was created from", () => {
+			expect(buildContextFromTask().isCreatedFrom(WORK_ITEM_REF)).toBe(true);
+		});
+
+		it("keeps the task reference through status changes and serialization", () => {
+			const restored = Context.fromJSON(buildContextFromTask().withStatus("review").toJSON());
+
+			expect(restored.workItemRef).toEqual(WORK_ITEM_REF);
+		});
+
+		it("ignores a malformed task reference when deserializing", () => {
+			const data = { ...buildContextFromTask().toJSON(), workItemRef: { connectionId: 1 } };
+
+			expect(Context.fromJSON(JSON.parse(JSON.stringify(data))).workItemRef).toBeUndefined();
+		});
+	});
+
 	describe("Context.getWorktreePath", () => {
 		it("returns the project path for the root repository of the default context", () => {
 			const project = buildProject([]);

@@ -8,6 +8,7 @@ import {
 	Project,
 	type PullRequestDraft,
 	type Repository,
+	type WorkItemRef,
 } from "@/models/Project";
 import { ProjectDirectory } from "@/models/ProjectDirectory";
 
@@ -60,6 +61,7 @@ type BulkContextSpec = {
 	contextName: string;
 	branchName: string;
 	preprompt?: string;
+	workItemRef?: WorkItemRef;
 };
 
 export type {
@@ -224,6 +226,8 @@ export function useContexts(project: Project) {
 						{},
 						undefined,
 						spec.preprompt,
+						false,
+						spec.workItemRef,
 					),
 				);
 			}

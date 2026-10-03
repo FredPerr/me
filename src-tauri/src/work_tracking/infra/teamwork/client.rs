@@ -51,6 +51,17 @@ pub fn tasks_path(tasklist_id: &str) -> [&str; 6] {
     ]
 }
 
+pub fn project_tasks_path(project_id: &str) -> [&str; 6] {
+    [
+        "projects",
+        "api",
+        "v3",
+        "projects",
+        project_id,
+        "tasks.json",
+    ]
+}
+
 /// Explicit filters followed by `page` and `pageSize`.
 pub fn paged_query(
     filters: &[(&'static str, &'static str)],
@@ -304,6 +315,27 @@ mod tests {
                 ("includeCompletedTasks", "false"),
                 ("page", "3"),
                 ("pageSize", "100"),
+            ])
+        );
+    }
+
+    #[test]
+    fn build_url_for_project_tasks() {
+        let url = build_url(
+            &base(),
+            &project_tasks_path("42"),
+            &paged_query(TASKS_QUERY, 1, 50),
+        );
+        assert_eq!(url.path(), "/projects/api/v3/projects/42/tasks.json");
+        assert_eq!(
+            decoded_query(&url),
+            pairs(&[
+                ("include", "users,tags"),
+                ("getSubTasks", "true"),
+                ("nestSubTasks", "false"),
+                ("includeCompletedTasks", "false"),
+                ("page", "1"),
+                ("pageSize", "50"),
             ])
         );
     }
