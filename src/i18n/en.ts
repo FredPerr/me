@@ -98,7 +98,8 @@ export const en = {
 				noPath: "No path configured",
 				noProjects: "No projects configured yet.",
 				deleteConfirm: "Are you sure you want to delete this project?",
-				repoCount: "{{count}} repos(s)",
+				repoCount_one: "{{count}} repository",
+				repoCount_other: "{{count}} repositories",
 			},
 			projectForm: {
 				parentPath: "Parent Directory Path",
@@ -271,12 +272,6 @@ export const en = {
 			kanban: {
 				columnEmpty: "Nothing here yet",
 				dragHandle: "Drag to move",
-				showTasks: "Show tasks",
-				showTasksHint: "Show open tasks from the linked work tracker projects in the Idle column",
-				noLinkedProjects: "Link work tracker projects in this project's settings to show tasks.",
-				tasksLoadError: "Could not load tasks: {{message}}",
-				taskCardLabel: "Create a context from task {{title}}",
-				taskBadge: "Task",
 				status: {
 					idle: "Idle",
 					ready: "Ready",
@@ -284,6 +279,31 @@ export const en = {
 					needsHuman: "Needs human",
 					review: "Review",
 					done: "Done",
+				},
+			},
+			fromTasks: {
+				button: "Create from tasks",
+				buttonHint:
+					"Pick open tasks from the linked work tracker projects and create a context for each",
+				title: "Create contexts from tasks",
+				selectDescription:
+					"Select the tasks you want a context for. Tasks that already have one are hidden.",
+				configureDescription: "Review each context before creating them all at once.",
+				searchPlaceholder: "Filter tasks",
+				selectAll: "Select all",
+				noLinkedProjects: "Link work tracker projects in this project's settings to pick tasks.",
+				loadError: "Could not load tasks: {{message}}",
+				noPendingTasks: "Every open task already has a context.",
+				next: "Next ({{count}})",
+				createButton: "Create {{count}} contexts",
+				createdTitle: "Contexts created",
+				createdMessage: "Created {{count}} contexts from tasks.",
+				createFailed: "Failed to create contexts",
+				issues: {
+					nameRequired: "A context name is required.",
+					invalidBranch: "This name does not produce a valid branch name.",
+					duplicateName: "Another context already uses this name.",
+					duplicateBranch: "Another context in this batch produces the same branch.",
 				},
 			},
 			kiro: {
@@ -480,18 +500,13 @@ export const en = {
 				openInProvider: "Open {{title}} in the provider",
 			},
 			createFromTask: {
-				title: "Create context from task",
 				openTask: "Open in work tracker",
-				noDescription: "This task has no description.",
-				descriptionLabel: "Description",
 				baseContextLabel: "Base context",
 				baseContextHint: "The new branches start from this context's branches.",
 				contextNameLabel: "Context name",
 				branchPreview: "Branch: {{branch}}",
-				invalidBranch: "This name does not produce a valid branch name.",
 				promptLabel: "Kiro prompt",
 				promptHint: "Stored on the context and prefilled when you open Kiro.",
-				createdMessage: 'Created context "{{name}}" from the task.',
 			},
 			bulkCreate: {
 				button: "Bulk create ({{count}})",

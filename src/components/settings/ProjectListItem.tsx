@@ -22,7 +22,7 @@ export function ProjectListItem({ project, onEdit, onDelete }: ProjectListItemPr
 					<Text size="sm" c="dimmed">
 						{project.path}
 					</Text>
-					<Text>{t("settings.projects.repoCount", { count: project.repositories.length })}</Text>
+					<Text>{t("settings.projects.repoCount", { count: project.effectiveRepositories().length })}</Text>
 				</div>
 				<Group gap="xs">
 					<ActionIcon variant="subtle" onClick={() => onEdit(project)} aria-label="Edit project">

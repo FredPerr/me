@@ -10,25 +10,16 @@ import {
 } from "@dnd-kit/core";
 import { Group } from "@mantine/core";
 import { useMemo, useRef, useState } from "react";
-import type { LinkedTask } from "@/application/work-tracking/listLinkedProjectTasks";
-import { selectPendingTasks } from "@/application/work-tracking/selectPendingTasks";
-import type { BulkContextSpec, CreateContextParams } from "@/hooks/useContexts";
+import type { CreateContextParams } from "@/hooks/useContexts";
 import { useHorizontalWheelScroll } from "@/hooks/useHorizontalWheelScroll";
 import type { KiroConversation } from "@/models/ai-session/KiroConversation";
-import {
-	CONTEXT_STATUSES,
-	type ContextStatus,
-	IDLE_CONTEXT_STATUS,
-	isContextStatus,
-} from "@/models/ContextStatus";
+import { CONTEXT_STATUSES, type ContextStatus, isContextStatus } from "@/models/ContextStatus";
 import type { Context, Project } from "@/models/Project";
 import { ContextCard } from "./ContextCard";
 import { ContextCardDragHandle } from "./ContextCardDragHandle";
-import { CreateFromTaskModal } from "./CreateFromTaskModal";
 import { DraggableContextCard } from "./DraggableContextCard";
 import { KanbanColumn } from "./KanbanColumn";
 import { KiroConversationModal } from "./KiroConversationModal";
-import { TaskCard } from "./TaskCard";
 
 type KanbanBoardProps = {
 	contexts: Context[];
@@ -42,8 +33,6 @@ type KanbanBoardProps = {
 	isKiroRunning: (contextId: string) => boolean;
 	getKiroConversation: (contextId: string) => KiroConversation | undefined;
 	searchFilter?: string;
-	tasks?: readonly LinkedTask[];
-	onCreateFromTask: (spec: BulkContextSpec, baseContext: Context) => Promise<void>;
 };
 
 export function KanbanBoard({
@@ -58,12 +47,9 @@ export function KanbanBoard({
 	isKiroRunning,
 	getKiroConversation,
 	searchFilter,
-	tasks = [],
-	onCreateFromTask,
 }: KanbanBoardProps) {
 	const [activeId, setActiveId] = useState<string | null>(null);
 	const [openKiroContextId, setOpenKiroContextId] = useState<string | null>(null);
-	const [openTask, setOpenTask] = useState<LinkedTask | null>(null);
 	const [kiroPromptDrafts, setKiroPromptDrafts] = useState<Record<string, string>>({});
 	const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 	const boardRef = useRef<HTMLDivElement>(null);
@@ -84,11 +70,6 @@ export function KanbanBoard({
 		}
 		return groups;
 	}, [filtered]);
-
-	const pendingTasks = useMemo(
-		() => selectPendingTasks(tasks, contexts, searchFilter),
-		[tasks, contexts, searchFilter],
-	);
 
 	const activeContext = activeId ? filtered.find((c) => c.id === activeId) : undefined;
 	const openKiroContext = openKiroContextId
@@ -130,13 +111,8 @@ export function KanbanBoard({
 			>
 				{CONTEXT_STATUSES.map((status) => {
 					const columnContexts = contextsByStatus.get(status) ?? [];
-					const columnTasks = status === IDLE_CONTEXT_STATUS ? pendingTasks : [];
 					return (
-						<KanbanColumn
-							key={status}
-							status={status}
-							count={columnContexts.length + columnTasks.length}
-						>
+						<KanbanColumn key={status} status={status} count={columnContexts.length}>
 							{columnContexts.map((context) => (
 								<DraggableContextCard
 									key={context.id}
@@ -149,13 +125,6 @@ export function KanbanBoard({
 									onOpenKiro={(target) => setOpenKiroContextId(target.id)}
 									isKiroRunning={isKiroRunning(context.id)}
 									hasKiroHistory={(getKiroConversation(context.id)?.turns.length ?? 0) > 0}
-								/>
-							))}
-							{columnTasks.map((task) => (
-								<TaskCard
-									key={`${task.connectionId}|${task.item.id}`}
-									task={task}
-									onOpen={setOpenTask}
 								/>
 							))}
 						</KanbanColumn>
@@ -174,16 +143,6 @@ export function KanbanBoard({
 					/>
 				) : null}
 			</DragOverlay>
-
-			{openTask && (
-				<CreateFromTaskModal
-					task={openTask}
-					project={project}
-					contexts={contexts}
-					onClose={() => setOpenTask(null)}
-					onCreate={onCreateFromTask}
-				/>
-			)}
 
 			{openKiroContext && (
 				<KiroConversationModal
