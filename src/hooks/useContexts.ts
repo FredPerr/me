@@ -1,6 +1,6 @@
 import { notifications } from "@mantine/notifications";
 import { invoke } from "@tauri-apps/api/core";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ContextStatus } from "@/models/ContextStatus";
 import {
 	Context,
@@ -11,6 +11,7 @@ import {
 	type WorkItemRef,
 } from "@/models/Project";
 import { ProjectDirectory } from "@/models/ProjectDirectory";
+import { slugify } from "@/utils/slugify";
 
 type RepositoryBranchConfig = {
 	repositoryId: string;
@@ -74,22 +75,68 @@ export type {
 	RepositoryBranchConfig,
 };
 
+/**
+ * Resolves the `.worktrees` folder segment for a base context referenced by
+ * name. Linked contexts symlink into the base context's folder, so the segment
+ * must match what that base context actually uses on disk: its stored slug when
+ * present, otherwise its raw name (and "default" stays "default" so the backend
+ * keeps mapping it to the repository root rather than a worktree folder).
+ */
+function resolveFolderSegment(project: Project, baseContextName: string): string {
+	const base = project.contexts.find((c) => c.name === baseContextName);
+	return base ? base.folderSegment : baseContextName;
+}
+
 export function useContexts(project: Project) {
 	const [defaultContext, setDefaultContext] = useState<Context | null>(null);
 	const [persistedContexts, setPersistedContexts] = useState<Context[]>(project.contexts ?? []);
+
+	// Mirrors the live persisted contexts so mutations compose the project to
+	// save from the newest in-memory list rather than the (possibly stale)
+	// `project` prop. Writing `project.contexts` directly would clobber edits
+	// and newly created contexts that the prop has not caught up to yet.
+	const persistedContextsRef = useRef(persistedContexts);
+	useEffect(() => {
+		persistedContextsRef.current = persistedContexts;
+	}, [persistedContexts]);
 
 	useEffect(() => {
 		setPersistedContexts(project.contexts ?? []);
 	}, [project]);
 
+	const buildProjectToSave = useCallback(
+		(nonDefaultContexts: Context[]): Project =>
+			new Project(
+				project.name,
+				project.tag,
+				project.path,
+				project.repositories,
+				nonDefaultContexts,
+				project.icon,
+				project.symlinks,
+				project.remoteProjectLinks,
+				project.branchNaming,
+			),
+		[project],
+	);
+
 	const hasPersistedDefault = (project.contexts ?? []).some((c) => c.isDefault);
 
 	useEffect(() => {
+		let cancelled = false;
 		if (hasPersistedDefault) {
 			setDefaultContext(null);
+			healPersistedDefault(project).then((healed) => {
+				if (!cancelled && healed) setPersistedContexts(healed);
+			});
 		} else {
-			buildDefaultContext(project).then(setDefaultContext);
+			buildDefaultContext(project).then((built) => {
+				if (!cancelled) setDefaultContext(built);
+			});
 		}
+		return () => {
+			cancelled = true;
+		};
 	}, [project, hasPersistedDefault]);
 
 	const contexts = defaultContext ? [defaultContext, ...persistedContexts] : persistedContexts;
@@ -97,14 +144,15 @@ export function useContexts(project: Project) {
 	const createContext = useCallback(
 		async ({ name, repositories: repoConfigs, baseContextName }: CreateContextParams) => {
 			const repos = await buildRepoInputs(project, repoConfigs);
+			const folderName = slugify(name);
 
 			if (repos.length > 0) {
 				await invoke("create_context", {
 					projectPath: project.path,
-					contextName: name,
+					contextName: folderName,
 					repos,
 					symlinks: project.symlinks,
-					baseContextName: baseContextName ?? null,
+					baseContextName: baseContextName ? resolveFolderSegment(project, baseContextName) : null,
 				});
 			}
 
@@ -117,23 +165,38 @@ export function useContexts(project: Project) {
 					),
 			);
 
-			const newContext = new Context(crypto.randomUUID(), name, branches, false, baseContextName);
-			const updatedProject = project.addContext(newContext);
+			const newContext = new Context(
+				crypto.randomUUID(),
+				name,
+				branches,
+				false,
+				baseContextName,
+				undefined,
+				undefined,
+				undefined,
+				undefined,
+				undefined,
+				false,
+				undefined,
+				folderName,
+			);
 
-			await ProjectDirectory.saveProject(updatedProject);
-			setPersistedContexts((prev) => [...prev, newContext]);
+			const nextContexts = [...persistedContextsRef.current, newContext];
+			await ProjectDirectory.saveProject(buildProjectToSave(nextContexts));
+			setPersistedContexts(nextContexts);
 		},
-		[project],
+		[project, buildProjectToSave],
 	);
 
 	const createContextFromBranches = useCallback(
 		async ({ name, repositories: branchConfigs }: CreateContextFromBranchesParams) => {
 			const repos = await buildRepoInputsFromExistingBranches(project, branchConfigs);
+			const folderName = slugify(name);
 
 			if (repos.length > 0) {
 				await invoke("create_context", {
 					projectPath: project.path,
-					contextName: name,
+					contextName: folderName,
 					repos,
 					symlinks: project.symlinks,
 					baseContextName: null,
@@ -144,13 +207,27 @@ export function useContexts(project: Project) {
 				(repo) => new ContextBranch(repo.repository_id, repo.branch, repo.linked),
 			);
 
-			const newContext = new Context(crypto.randomUUID(), name, branches, false);
-			const updatedProject = project.addContext(newContext);
+			const newContext = new Context(
+				crypto.randomUUID(),
+				name,
+				branches,
+				false,
+				undefined,
+				undefined,
+				undefined,
+				undefined,
+				undefined,
+				undefined,
+				false,
+				undefined,
+				folderName,
+			);
 
-			await ProjectDirectory.saveProject(updatedProject);
-			setPersistedContexts((prev) => [...prev, newContext]);
+			const nextContexts = [...persistedContextsRef.current, newContext];
+			await ProjectDirectory.saveProject(buildProjectToSave(nextContexts));
+			setPersistedContexts(nextContexts);
 		},
-		[project],
+		[project, buildProjectToSave],
 	);
 
 	const createContextFromPullRequests = useCallback(
@@ -162,11 +239,12 @@ export function useContexts(project: Project) {
 			await fetchPullRequestBranches(project, prConfigs);
 
 			const repos = await buildRepoInputsFromPullRequests(project, prConfigs);
+			const folderName = slugify(name);
 
 			if (repos.length > 0) {
 				await invoke("create_context", {
 					projectPath: project.path,
-					contextName: name,
+					contextName: folderName,
 					repos,
 					symlinks: project.symlinks,
 					baseContextName: null,
@@ -187,19 +265,26 @@ export function useContexts(project: Project) {
 				undefined,
 				{},
 				"review",
+				undefined,
+				false,
+				undefined,
+				false,
+				undefined,
+				folderName,
 			);
-			const updatedProject = project.addContext(newContext);
 
-			await ProjectDirectory.saveProject(updatedProject);
-			setPersistedContexts((prev) => [...prev, newContext]);
+			const nextContexts = [...persistedContextsRef.current, newContext];
+			await ProjectDirectory.saveProject(buildProjectToSave(nextContexts));
+			setPersistedContexts(nextContexts);
 		},
-		[project],
+		[project, buildProjectToSave],
 	);
 
 	const createContextsBulk = useCallback(
 		async (specs: BulkContextSpec[], baseContext?: Context) => {
 			const createdContexts: Context[] = [];
 			const baseContextName = baseContext?.name;
+			const baseFolderSegment = baseContext ? baseContext.folderSegment : null;
 
 			for (const spec of specs) {
 				const repos = baseContext
@@ -207,12 +292,13 @@ export function useContexts(project: Project) {
 					: await buildRepoInputsForBranch(project, spec.branchName);
 				if (repos.length === 0) continue;
 
+				const folderName = slugify(spec.contextName);
 				await invoke("create_context", {
 					projectPath: project.path,
-					contextName: spec.contextName,
+					contextName: folderName,
 					repos,
 					symlinks: project.symlinks,
-					baseContextName: baseContextName ?? null,
+					baseContextName: baseFolderSegment,
 				});
 
 				const branches = repos.map((repo) => new ContextBranch(repo.repository_id, repo.branch));
@@ -228,21 +314,20 @@ export function useContexts(project: Project) {
 						spec.preprompt,
 						false,
 						spec.workItemRef,
+						false,
+						undefined,
+						folderName,
 					),
 				);
 			}
 
 			if (createdContexts.length === 0) return;
 
-			let updatedProject = project;
-			for (const context of createdContexts) {
-				updatedProject = updatedProject.addContext(context);
-			}
-
-			await ProjectDirectory.saveProject(updatedProject);
-			setPersistedContexts((prev) => [...prev, ...createdContexts]);
+			const nextContexts = [...persistedContextsRef.current, ...createdContexts];
+			await ProjectDirectory.saveProject(buildProjectToSave(nextContexts));
+			setPersistedContexts(nextContexts);
 		},
-		[project],
+		[project, buildProjectToSave],
 	);
 
 	const deleteContext = useCallback(
@@ -255,7 +340,7 @@ export function useContexts(project: Project) {
 			try {
 				await invoke("delete_context", {
 					projectPath: project.path,
-					contextName: context.name,
+					contextName: context.folderSegment,
 					repos,
 					symlinks: project.symlinks,
 				});
@@ -268,33 +353,25 @@ export function useContexts(project: Project) {
 				return;
 			}
 
-			const updatedProject = project.removeContext(contextId);
-			await ProjectDirectory.saveProject(updatedProject);
-			setPersistedContexts((prev) => prev.filter((c) => c.id !== contextId));
+			const nextContexts = persistedContextsRef.current.filter((c) => c.id !== contextId);
+			await ProjectDirectory.saveProject(buildProjectToSave(nextContexts));
+			setPersistedContexts(nextContexts);
 		},
-		[project, contexts],
+		[project, contexts, buildProjectToSave],
 	);
 
 	const savePullRequestDrafts = useCallback(
 		async (contextId: string, drafts: Record<string, PullRequestDraft>) => {
-			const target = persistedContexts.find((c) => c.id === contextId);
+			const target = persistedContextsRef.current.find((c) => c.id === contextId);
 			if (!target) return;
 
 			const updatedContext = target.withPullRequestDrafts(drafts);
-			const updatedProject = new Project(
-				project.name,
-				project.tag,
-				project.path,
-				project.repositories,
-				project.contexts.map((c) => (c.id === contextId ? updatedContext : c)),
-				project.icon,
-				project.symlinks,
-				project.remoteProjectLinks,
-				project.branchNaming,
+			const nextContexts = persistedContextsRef.current.map((c) =>
+				c.id === contextId ? updatedContext : c,
 			);
 
 			try {
-				await ProjectDirectory.saveProject(updatedProject);
+				await ProjectDirectory.saveProject(buildProjectToSave(nextContexts));
 			} catch (error) {
 				notifications.show({
 					title: "Failed to save pull request drafts",
@@ -304,9 +381,9 @@ export function useContexts(project: Project) {
 				return;
 			}
 
-			setPersistedContexts((prev) => prev.map((c) => (c.id === contextId ? updatedContext : c)));
+			setPersistedContexts(nextContexts);
 		},
-		[project, persistedContexts],
+		[buildProjectToSave],
 	);
 
 	const setContextStatus = useCallback(
@@ -316,27 +393,16 @@ export function useContexts(project: Project) {
 				return;
 			}
 
-			const target = persistedContexts.find((c) => c.id === contextId);
+			const previousContexts = persistedContextsRef.current;
+			const target = previousContexts.find((c) => c.id === contextId);
 			if (!target || target.status === status) return;
 
 			const updatedContext = target.withStatus(status);
-			const previousContexts = persistedContexts;
-			setPersistedContexts((prev) => prev.map((c) => (c.id === contextId ? updatedContext : c)));
-
-			const updatedProject = new Project(
-				project.name,
-				project.tag,
-				project.path,
-				project.repositories,
-				project.contexts.map((c) => (c.id === contextId ? updatedContext : c)),
-				project.icon,
-				project.symlinks,
-				project.remoteProjectLinks,
-				project.branchNaming,
-			);
+			const nextContexts = previousContexts.map((c) => (c.id === contextId ? updatedContext : c));
+			setPersistedContexts(nextContexts);
 
 			try {
-				await ProjectDirectory.saveProject(updatedProject);
+				await ProjectDirectory.saveProject(buildProjectToSave(nextContexts));
 			} catch (error) {
 				setPersistedContexts(previousContexts);
 				notifications.show({
@@ -346,7 +412,7 @@ export function useContexts(project: Project) {
 				});
 			}
 		},
-		[project, persistedContexts, defaultContext],
+		[buildProjectToSave, defaultContext],
 	);
 
 	const setContextExpanded = useCallback(
@@ -356,27 +422,16 @@ export function useContexts(project: Project) {
 				return;
 			}
 
-			const target = persistedContexts.find((c) => c.id === contextId);
+			const previousContexts = persistedContextsRef.current;
+			const target = previousContexts.find((c) => c.id === contextId);
 			if (!target || target.expanded === expanded) return;
 
 			const updatedContext = target.withExpanded(expanded);
-			const previousContexts = persistedContexts;
-			setPersistedContexts((prev) => prev.map((c) => (c.id === contextId ? updatedContext : c)));
-
-			const updatedProject = new Project(
-				project.name,
-				project.tag,
-				project.path,
-				project.repositories,
-				project.contexts.map((c) => (c.id === contextId ? updatedContext : c)),
-				project.icon,
-				project.symlinks,
-				project.remoteProjectLinks,
-				project.branchNaming,
-			);
+			const nextContexts = previousContexts.map((c) => (c.id === contextId ? updatedContext : c));
+			setPersistedContexts(nextContexts);
 
 			try {
-				await ProjectDirectory.saveProject(updatedProject);
+				await ProjectDirectory.saveProject(buildProjectToSave(nextContexts));
 			} catch (error) {
 				setPersistedContexts(previousContexts);
 				notifications.show({
@@ -386,7 +441,62 @@ export function useContexts(project: Project) {
 				});
 			}
 		},
-		[project, persistedContexts, defaultContext],
+		[buildProjectToSave, defaultContext],
+	);
+
+	const setContextStatic = useCallback(
+		async (contextId: string, isStatic: boolean) => {
+			if (defaultContext && contextId === defaultContext.id) return;
+
+			const previousContexts = persistedContextsRef.current;
+			const target = previousContexts.find((c) => c.id === contextId);
+			if (!target || target.isStatic === isStatic) return;
+
+			const updatedContext = target.withStatic(isStatic);
+			const nextContexts = previousContexts.map((c) => (c.id === contextId ? updatedContext : c));
+			setPersistedContexts(nextContexts);
+
+			try {
+				await ProjectDirectory.saveProject(buildProjectToSave(nextContexts));
+			} catch (error) {
+				setPersistedContexts(previousContexts);
+				notifications.show({
+					title: "Failed to update context",
+					message: String(error),
+					color: "red",
+				});
+			}
+		},
+		[buildProjectToSave, defaultContext],
+	);
+
+	const setContextKiroConversationId = useCallback(
+		async (contextId: string, kiroConversationId: string) => {
+			if (defaultContext && contextId === defaultContext.id) {
+				setDefaultContext(defaultContext.withKiroConversationId(kiroConversationId));
+				return;
+			}
+
+			const previousContexts = persistedContextsRef.current;
+			const target = previousContexts.find((c) => c.id === contextId);
+			if (!target || target.kiroConversationId === kiroConversationId) return;
+
+			const updatedContext = target.withKiroConversationId(kiroConversationId);
+			const nextContexts = previousContexts.map((c) => (c.id === contextId ? updatedContext : c));
+			setPersistedContexts(nextContexts);
+
+			try {
+				await ProjectDirectory.saveProject(buildProjectToSave(nextContexts));
+			} catch (error) {
+				setPersistedContexts(previousContexts);
+				notifications.show({
+					title: "Failed to save conversation",
+					message: String(error),
+					color: "red",
+				});
+			}
+		},
+		[buildProjectToSave, defaultContext],
 	);
 
 	return {
@@ -400,6 +510,8 @@ export function useContexts(project: Project) {
 		savePullRequestDrafts,
 		setContextStatus,
 		setContextExpanded,
+		setContextStatic,
+		setContextKiroConversationId,
 	};
 }
 
@@ -457,12 +569,18 @@ async function buildRepoInputsFromBaseContext(
 	return inputs;
 }
 
-async function buildDefaultContext(project: Project): Promise<Context | null> {
-	if (project.repositories.length === 0) return null;
-
+/**
+ * Resolve the default branch (main/master/first) for each of the given
+ * repositories, returning one {@link ContextBranch} per repository that could
+ * be resolved. Repositories that don't exist yet or have no branches are
+ * skipped.
+ */
+async function resolveDefaultBranchesFor(
+	project: Project,
+	repositories: Repository[],
+): Promise<ContextBranch[]> {
 	const branches: ContextBranch[] = [];
-
-	for (const repo of project.repositories) {
+	for (const repo of repositories) {
 		try {
 			const resolvedPath = await repo.resolveAbsolutePath(project.path);
 			const branchList = await invoke<string[]>("list_branches", { path: resolvedPath });
@@ -477,10 +595,63 @@ async function buildDefaultContext(project: Project): Promise<Context | null> {
 			// repo might not exist yet
 		}
 	}
+	return branches;
+}
 
+async function buildDefaultContext(project: Project): Promise<Context | null> {
+	// Use the effective repositories so mono-repo projects (which have no
+	// explicit `repositories` entry) still get a default context whose branch is
+	// keyed by the same synthetic repository id their child contexts use.
+	const repositories = project.effectiveRepositories();
+	if (repositories.length === 0) return null;
+
+	const branches = await resolveDefaultBranchesFor(project, repositories);
 	if (branches.length === 0) return null;
 
 	return new Context("default", "default", branches, true);
+}
+
+/**
+ * Repair a persisted default context whose branches are missing or stale.
+ *
+ * Older data (and mono-repo projects saved before their synthetic repository
+ * existed) could persist a default context with an empty `branches` array,
+ * leaving child contexts with no base branch to open pull requests against.
+ * This re-resolves the default branch for every effective repository the
+ * default is missing and returns a healed context, or the original context
+ * when nothing needs to change.
+ */
+async function healDefaultContext(project: Project, persistedDefault: Context): Promise<Context> {
+	const repositories = project.effectiveRepositories();
+	const missing = repositories.filter(
+		(repo) => persistedDefault.getBranchForRepository(repo.id) === undefined,
+	);
+	if (missing.length === 0) return persistedDefault;
+
+	const resolved = await resolveDefaultBranchesFor(project, missing);
+	if (resolved.length === 0) return persistedDefault;
+
+	return persistedDefault.withBranches([...persistedDefault.branches, ...resolved]);
+}
+
+/**
+ * Heal the project's persisted default context in place: re-resolve any missing
+ * branches, persist the project when something changed, and return the updated
+ * contexts list. Returns null when no healing was needed so callers can avoid a
+ * redundant state update.
+ */
+async function healPersistedDefault(project: Project): Promise<Context[] | null> {
+	const persistedDefault = (project.contexts ?? []).find((context) => context.isDefault);
+	if (!persistedDefault) return null;
+
+	const healed = await healDefaultContext(project, persistedDefault);
+	if (healed === persistedDefault) return null;
+
+	const contexts = project.contexts.map((context) =>
+		context.id === persistedDefault.id ? healed : context,
+	);
+	await ProjectDirectory.saveProject(project.withContexts(contexts));
+	return contexts;
 }
 
 async function buildRepoInputs(project: Project, repoConfigs: RepositoryBranchConfig[]) {

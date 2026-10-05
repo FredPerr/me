@@ -72,7 +72,7 @@ export type RepositoryRef = {
 	repo: string;
 };
 
-/** An open pull request as shown on the pull-requests page. */
+/** A pull request as shown on the pull-requests page and context cards. */
 export type ProviderPullRequest = {
 	number: number;
 	title: string;
@@ -81,8 +81,26 @@ export type ProviderPullRequest = {
 	headBranch: string;
 	baseBranch: string;
 	draft: boolean;
+	/** Lifecycle state reported by the provider. */
+	state: "open" | "closed";
+	/** Whether a closed pull request was merged rather than discarded. */
+	merged: boolean;
 	updatedAt: string;
 };
+
+/**
+ * The GitHub-style lifecycle status of a pull request, used to pick its icon
+ * and color on cards.
+ */
+export type PullRequestStatus = "draft" | "open" | "merged" | "closed";
+
+/** Derive the lifecycle status from a pull request's state flags. */
+export function pullRequestStatus(pullRequest: ProviderPullRequest): PullRequestStatus {
+	if (pullRequest.merged) return "merged";
+	if (pullRequest.state === "closed") return "closed";
+	if (pullRequest.draft) return "draft";
+	return "open";
+}
 
 /** The details needed to open a new pull request. */
 export type CreatePullRequestInput = {

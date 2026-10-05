@@ -14,7 +14,10 @@ import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { LinkedTask } from "@/application/work-tracking/listLinkedProjectTasks";
 import { translateError } from "@/components/work-tracking/translateError";
+import { WorkItemRow } from "@/components/work-tracking/WorkItemRow";
+import type { ProviderConnection } from "@/domain/work-tracking/ProviderConnection";
 import type { WorkTrackingError } from "@/domain/work-tracking/WorkTrackingError";
+import { useWorkTrackingConnections } from "@/hooks/work-tracking/useWorkTrackingConnections";
 import { taskKeyOf } from "@/models/bulk/taskContextDrafts";
 
 type TaskSelectionStepProps = {
@@ -39,7 +42,13 @@ export function TaskSelectionStep({
 	onNext,
 }: TaskSelectionStepProps) {
 	const { t } = useTranslation();
+	const { connections } = useWorkTrackingConnections();
 	const [query, setQuery] = useState("");
+
+	const connectionById = useMemo(
+		() => new Map<ProviderConnection["id"], ProviderConnection>(connections.map((c) => [c.id, c])),
+		[connections],
+	);
 
 	const visibleTasks = useMemo(() => {
 		const normalizedQuery = query.toLowerCase().trim();
@@ -115,16 +124,35 @@ export function TaskSelectionStep({
 					onChange={toggleAllVisible}
 					disabled={visibleTasks.length === 0}
 				/>
-				<ScrollArea.Autosize mah={360} type="auto">
-					<Stack gap={6} pl="md">
-						{visibleTasks.map((task) => (
-							<Checkbox
-								key={taskKeyOf(task)}
-								label={task.item.title}
-								checked={selectedKeys.has(taskKeyOf(task))}
-								onChange={() => toggleTask(task)}
-							/>
-						))}
+				<ScrollArea.Autosize mah={420} type="auto">
+					<Stack gap={0}>
+						{visibleTasks.map((task) => {
+							const key = taskKeyOf(task);
+							const connection = connectionById.get(task.connectionId);
+							if (!connection) {
+								return (
+									<Checkbox
+										key={key}
+										label={task.item.title}
+										checked={selectedKeys.has(key)}
+										onChange={() => toggleTask(task)}
+										py={6}
+									/>
+								);
+							}
+							return (
+								<WorkItemRow
+									key={key}
+									item={task.item}
+									connection={connection}
+									isOrphanSubtask={false}
+									selectable
+									selected={selectedKeys.has(key)}
+									onToggleSelected={() => toggleTask(task)}
+									showDescription
+								/>
+							);
+						})}
 					</Stack>
 				</ScrollArea.Autosize>
 			</Stack>

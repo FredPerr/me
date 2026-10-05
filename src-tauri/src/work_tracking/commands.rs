@@ -48,6 +48,7 @@ fn field_name(field: InputField) -> &'static str {
         InputField::ConnectionId => "connectionId",
         InputField::ProjectId => "projectId",
         InputField::GroupId => "groupId",
+        InputField::ItemId => "itemId",
         InputField::Cursor => "cursor",
         InputField::PageSize => "pageSize",
     }
@@ -208,6 +209,15 @@ pub async fn work_tracking_list_project_items(
     Ok(state
         .list_project_items(&connection_id, &project_id, cursor.as_deref())
         .await?)
+}
+
+#[tauri::command]
+pub async fn work_tracking_assign_me_to_task(
+    state: State<'_, WorkTrackingService>,
+    connection_id: String,
+    item_id: String,
+) -> Result<(), CommandError> {
+    Ok(state.assign_me_to_task(&connection_id, &item_id).await?)
 }
 
 #[cfg(test)]

@@ -59,6 +59,8 @@ type WorkItemRowProps = {
 	selectable?: boolean;
 	selected?: boolean;
 	onToggleSelected?: (item: WorkItem, selected: boolean) => void;
+	/** Shows a short, truncated description under the title when available. */
+	showDescription?: boolean;
 };
 
 export function WorkItemRow({
@@ -68,6 +70,7 @@ export function WorkItemRow({
 	selectable = false,
 	selected = false,
 	onToggleSelected,
+	showDescription = false,
 }: WorkItemRowProps) {
 	const { t, i18n } = useTranslation();
 	const dueDate = formatDueDate(item.dueDate, i18n.language);
@@ -88,6 +91,11 @@ export function WorkItemRow({
 					<Text size="sm" fw={500}>
 						{item.title}
 					</Text>
+					{showDescription && item.description && (
+						<Text size="xs" c="dimmed" lineClamp={2}>
+							{item.description}
+						</Text>
+					)}
 					<Group gap={6}>
 						<Badge variant="light" size="sm" color={STATUS_COLORS[item.status]}>
 							{t(STATUS_LABEL_KEYS[item.status])}

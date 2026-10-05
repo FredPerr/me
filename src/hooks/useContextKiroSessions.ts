@@ -43,6 +43,23 @@ type UseContextKiroSessionsResult = {
 };
 
 /**
+ * Extracts Kiro's conversation id from one line of its `stream-json` output.
+ * Every event (`metadata`, `sessionUpdate`, `runFinished`, ...) carries
+ * `data.sessionId`; non-JSON or unrelated lines yield `undefined`.
+ */
+function parseKiroConversationId(line: string): string | undefined {
+	const trimmed = line.trim();
+	if (!trimmed.startsWith("{")) return undefined;
+	try {
+		const parsed = JSON.parse(trimmed) as { data?: { sessionId?: unknown } };
+		const sessionId = parsed.data?.sessionId;
+		return typeof sessionId === "string" && sessionId.length > 0 ? sessionId : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+/**
  * Resolves the first existing path among the context's IDE path candidates,
  * falling back to the last candidate. Mirrors how "open in IDE" picks the
  * working directory so a Kiro run lands in the same place.
@@ -71,6 +88,7 @@ async function resolveWorkingDirectory(project: Project, context: Context): Prom
 export function useContextKiroSessions(
 	project: Project,
 	onStatusChange: (contextId: string, status: ContextStatus) => void,
+	onKiroConversationId: (contextId: string, conversationId: string) => void,
 ): UseContextKiroSessionsResult {
 	const { settings } = useAppSettings();
 
@@ -86,10 +104,27 @@ export function useContextKiroSessions(
 	// Latest status-change callback, read without resubscribing.
 	const onStatusChangeRef = useRef(onStatusChange);
 	onStatusChangeRef.current = onStatusChange;
+	// Latest conversation-id callback, read without resubscribing.
+	const onKiroConversationIdRef = useRef(onKiroConversationId);
+	onKiroConversationIdRef.current = onKiroConversationId;
+	// Contexts whose Kiro conversation id has already been captured this run, so
+	// the id is persisted once rather than on every output line that carries it.
+	const capturedConversationContexts = useRef<Set<string>>(new Set());
 
 	const appendLine = useCallback((event: OutputEvent) => {
 		const contextId = sessionToContext.current[event.sessionId];
 		if (!contextId) return;
+
+		// Capture Kiro's own conversation id (from its stream-json output) once
+		// per context, so follow-up prompts can resume it with --resume-id.
+		if (event.stream === "stdout" && !capturedConversationContexts.current.has(contextId)) {
+			const conversationId = parseKiroConversationId(event.line);
+			if (conversationId) {
+				capturedConversationContexts.current.add(contextId);
+				onKiroConversationIdRef.current(contextId, conversationId);
+			}
+		}
+
 		lineCounter.current += 1;
 		const lineId = lineCounter.current;
 
@@ -161,6 +196,7 @@ export function useContextKiroSessions(
 				adapterId: KIRO_ADAPTER_ID,
 				prompt,
 				workingDirectory,
+				resumeId: context.kiroConversationId || undefined,
 				shell: settings?.shell || undefined,
 				trustAllTools: true,
 			});

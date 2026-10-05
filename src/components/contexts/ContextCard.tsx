@@ -2,11 +2,11 @@ import {
 	ActionIcon,
 	Button,
 	Card,
-	Collapse,
 	Flex,
 	Group,
 	Loader,
 	Modal,
+	SimpleGrid,
 	Stack,
 	Text,
 	Tooltip,
@@ -14,8 +14,7 @@ import {
 import { useDisclosure } from "@mantine/hooks";
 import {
 	AppWindowIcon,
-	ArrowsInIcon,
-	ArrowsOutIcon,
+	CubeIcon,
 	GitBranchIcon,
 	GitPullRequestIcon,
 	InfoIcon,
@@ -28,12 +27,14 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useActiveWorkspaces } from "@/hooks/useActiveWorkspaces";
 import { useContextDiffStats } from "@/hooks/useContextDiffStats";
+import type { PullRequestLookup } from "@/hooks/useContextPullRequestStatus";
 import { type CreateContextParams, useContexts } from "@/hooks/useContexts";
 import { useOpenInIde } from "@/hooks/useOpenInIde";
 import type { Context, Project } from "@/models/Project";
 import "./ContextCard.css";
 import { CreateFromContextModal } from "./CreateFromContextModal";
 import { CreatePullRequestModal } from "./CreatePullRequestModal";
+import { PullRequestStatusIcon } from "./PullRequestStatusIcon";
 
 type ContextCardProps = {
 	context: Context;
@@ -41,8 +42,12 @@ type ContextCardProps = {
 	allContexts: Context[];
 	onDelete: (contextId: string) => Promise<void> | void;
 	onCreate: (params: CreateContextParams) => Promise<void>;
+	/** Looks up the pull request status for a sub-repo branch, when connected. */
+	pullRequestLookup?: PullRequestLookup;
 	/** Persists the expanded/collapsed state for this context. */
 	onExpandedChange?: (contextId: string, expanded: boolean) => void;
+	/** Marks the context as a static environment, excluding it from the status columns. */
+	onStaticChange?: (contextId: string, isStatic: boolean) => void;
 	/** Opens the shared Kiro conversation modal for this context. */
 	onOpenKiro?: (context: Context) => void;
 	isKiroRunning?: boolean;
@@ -56,7 +61,8 @@ export function ContextCard({
 	allContexts,
 	onDelete,
 	onCreate,
-	onExpandedChange,
+	pullRequestLookup,
+	onStaticChange,
 	onOpenKiro,
 	isKiroRunning = false,
 	hasKiroHistory = false,
@@ -70,12 +76,6 @@ export function ContextCard({
 	const [opened, { open: openModal, close: closeModal }] = useDisclosure(false);
 	const [createOpened, { open: openCreateModal, close: closeCreateModal }] = useDisclosure(false);
 	const [prOpened, { open: openPrModal, close: closePrModal }] = useDisclosure(false);
-	const [expanded, { toggle }] = useDisclosure(context.expanded);
-
-	function toggleExpanded() {
-		toggle();
-		onExpandedChange?.(context.id, !expanded);
-	}
 	const [deleting, setDeleting] = useState(false);
 
 	const branchName = context.branches[0]?.branch ?? context.name;
@@ -110,81 +110,19 @@ export function ContextCard({
 				padding="xs"
 				style={isContextActive ? { borderColor: "var(--mantine-color-green-6)" } : undefined}
 			>
-				<Stack gap="xs">
-					<Flex justify="space-between">
+				<Flex gap="xs" align="flex-start" wrap="nowrap">
+					<Stack gap="xs" style={{ flex: 1, minWidth: 0 }}>
 						<Flex gap="xs" align="center">
 							{dragHandle}
 							<Text
 								fw={600}
 								size="xs"
+								style={{ minWidth: 0, wordBreak: "break-word" }}
 								c={context.isDefault ? "primary.2" : isContextActive ? "green.6" : undefined}
 							>
 								{context.isDefault ? t("common.default") : context.name}
 							</Text>
 						</Flex>
-						<Flex gap={3}>
-							{canRunKiro && (
-								<Tooltip
-									label={
-										isKiroRunning
-											? t("contexts.kiro.running")
-											: hasKiroHistory
-												? t("contexts.kiro.openConversation")
-												: t("contexts.kiro.run")
-									}
-								>
-									<ActionIcon
-										variant={isKiroRunning ? "light" : "subtle"}
-										color={isKiroRunning ? "grape" : undefined}
-										size="sm"
-										radius={2}
-										onClick={handleOpenKiro}
-										aria-label={t("contexts.kiro.openConversation")}
-									>
-										{isKiroRunning ? <Loader size={14} color="grape" /> : <RobotIcon size={16} />}
-									</ActionIcon>
-								</Tooltip>
-							)}
-							{!context.isDefault && canDraftPullRequests && (
-								<Tooltip label={t("contexts.draftPullRequest")}>
-									<ActionIcon
-										variant="subtle"
-										size="sm"
-										radius={2}
-										onClick={handleDraftPullRequests}
-										aria-label="Draft pull requests"
-									>
-										<GitPullRequestIcon size={16} />
-									</ActionIcon>
-								</Tooltip>
-							)}
-							<Tooltip label={t("contexts.openAllInIde")}>
-								<ActionIcon
-									variant="subtle"
-									radius={2}
-									size="sm"
-									onClick={handleOpenInIDE}
-									disabled={!isAvailable}
-									aria-label="Open all in IDE"
-								>
-									<AppWindowIcon size={16} />
-								</ActionIcon>
-							</Tooltip>
-							<Tooltip label={expanded ? t("contexts.collapse") : t("contexts.expand")}>
-								<ActionIcon
-									variant="subtle"
-									radius={2}
-									size="sm"
-									onClick={toggleExpanded}
-									aria-expanded={expanded}
-									aria-label={expanded ? t("contexts.collapse") : t("contexts.expand")}
-								>
-									{expanded ? <ArrowsInIcon size={16} /> : <ArrowsOutIcon size={16} />}
-								</ActionIcon>
-							</Tooltip>
-						</Flex>
-					</Flex>
-					<Collapse expanded={expanded}>
 						<Stack gap="xs">
 							{context.baseContextName && (
 								<Flex align="center" gap={6}>
@@ -206,18 +144,22 @@ export function ContextCard({
 											stats.filesDeleted > 0 ||
 											stats.insertions > 0 ||
 											stats.deletions > 0);
+									const pullRequest = pullRequestLookup?.(cb.repositoryId, cb.branch) ?? null;
 									return (
 										<Flex key={cb.repositoryId} align="center" justify="space-between">
-											<Text size="xs" c="dark.1" style={{ fontFamily: "monospace" }}>
-												{isLast ? "└─ " : "├─ "}
-												{repo?.name ?? "?"} (
-												{cb.linked ? (
-													<LockIcon size={10} />
-												) : (
-													<GitBranchIcon color="var(--mantine-color-primary-1)" size={10} />
-												)}
-												)
-											</Text>
+											<Flex align="center" gap={2}>
+												<Text size="xs" c="dark.1" style={{ fontFamily: "monospace" }}>
+													{isLast ? "└─ " : "├─ "}
+													{repo?.name ?? "?"} (
+													{cb.linked ? (
+														<LockIcon size={10} />
+													) : (
+														<GitBranchIcon color="var(--mantine-color-primary-1)" size={10} />
+													)}
+													)
+												</Text>
+												{pullRequest && <PullRequestStatusIcon pullRequest={pullRequest} />}
+											</Flex>
 											{!context.isDefault && !hasBaseContext && (
 												<Text size="xs" c="red.3" style={{ fontFamily: "monospace" }}>
 													whoops
@@ -265,37 +207,103 @@ export function ContextCard({
 									);
 								})}
 							</Stack>
-							<Group gap={3} justify="flex-end">
-								<Tooltip label={t("contexts.createFromContext")}>
-									<ActionIcon
-										variant="subtle"
-										size="sm"
-										radius={2}
-										onClick={openCreateModal}
-										aria-label="Create context from this"
-									>
-										<GitBranchIcon size={16} />
-									</ActionIcon>
-								</Tooltip>
-								{!context.isDefault && (
-									<Tooltip label={t("contexts.deleteContext")}>
-										<ActionIcon
-											variant="subtle"
-											color="gray"
-											size="sm"
-											radius={2}
-											onClick={openModal}
-											aria-label="Delete context"
-											className="context-card-delete"
-										>
-											<TrashIcon size={16} />
-										</ActionIcon>
-									</Tooltip>
-								)}
-							</Group>
 						</Stack>
-					</Collapse>
-				</Stack>
+					</Stack>
+
+					<SimpleGrid cols={2} spacing={3} verticalSpacing={3} style={{ flexShrink: 0 }}>
+						{canRunKiro && (
+							<Tooltip
+								label={
+									isKiroRunning
+										? t("contexts.kiro.running")
+										: hasKiroHistory
+											? t("contexts.kiro.openConversation")
+											: t("contexts.kiro.run")
+								}
+							>
+								<ActionIcon
+									variant={isKiroRunning ? "light" : "subtle"}
+									color={isKiroRunning ? "grape" : undefined}
+									size="sm"
+									radius={2}
+									onClick={handleOpenKiro}
+									aria-label={t("contexts.kiro.openConversation")}
+								>
+									{isKiroRunning ? <Loader size={14} color="grape" /> : <RobotIcon size={16} />}
+								</ActionIcon>
+							</Tooltip>
+						)}
+						{!context.isDefault && canDraftPullRequests && (
+							<Tooltip label={t("contexts.draftPullRequest")}>
+								<ActionIcon
+									variant="subtle"
+									size="sm"
+									radius={2}
+									onClick={handleDraftPullRequests}
+									aria-label="Draft pull requests"
+								>
+									<GitPullRequestIcon size={16} />
+								</ActionIcon>
+							</Tooltip>
+						)}
+						<Tooltip label={t("contexts.openAllInIde")}>
+							<ActionIcon
+								variant="subtle"
+								radius={2}
+								size="sm"
+								onClick={handleOpenInIDE}
+								disabled={!isAvailable}
+								aria-label="Open all in IDE"
+							>
+								<AppWindowIcon size={16} />
+							</ActionIcon>
+						</Tooltip>
+						{!context.isDefault && onStaticChange && (
+							<Tooltip
+								label={context.isStatic ? t("contexts.static.unmark") : t("contexts.static.mark")}
+							>
+								<ActionIcon
+									variant={context.isStatic ? "light" : "subtle"}
+									color={context.isStatic ? "teal" : "gray"}
+									size="sm"
+									radius={2}
+									onClick={() => onStaticChange(context.id, !context.isStatic)}
+									aria-label={
+										context.isStatic ? t("contexts.static.unmark") : t("contexts.static.mark")
+									}
+								>
+									<CubeIcon size={16} />
+								</ActionIcon>
+							</Tooltip>
+						)}
+						<Tooltip label={t("contexts.createFromContext")}>
+							<ActionIcon
+								variant="subtle"
+								size="sm"
+								radius={2}
+								onClick={openCreateModal}
+								aria-label="Create context from this"
+							>
+								<GitBranchIcon size={16} />
+							</ActionIcon>
+						</Tooltip>
+						{!context.isDefault && (
+							<Tooltip label={t("contexts.deleteContext")}>
+								<ActionIcon
+									variant="subtle"
+									color="gray"
+									size="sm"
+									radius={2}
+									onClick={openModal}
+									aria-label="Delete context"
+									className="context-card-delete"
+								>
+									<TrashIcon size={16} />
+								</ActionIcon>
+							</Tooltip>
+						)}
+					</SimpleGrid>
+				</Flex>
 			</Card>
 
 			<Modal opened={opened} onClose={closeModal} title={t("contexts.deleteConfirmTitle")}>

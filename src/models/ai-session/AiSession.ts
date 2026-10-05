@@ -50,6 +50,8 @@ export type SpawnOptions = {
 	workingDirectory: string;
 	command?: string;
 	agent?: string;
+	/** Prior Kiro conversation id to resume so a follow-up keeps the context. */
+	resumeId?: string;
 	shell?: string;
 	environment?: EnvVar[];
 	/** Run tools without per-action confirmation (headless runs set this). */

@@ -23,6 +23,7 @@ export function GeneralSettings() {
 	const [ideCommand, setIdeCommand] = useState("");
 	const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(true);
 	const [refreshInterval, setRefreshInterval] = useState<number>(5);
+	const [useFlowBoard, setUseFlowBoard] = useState(false);
 	const [settingsFilePath, setSettingsFilePath] = useState("");
 
 	useEffect(() => {
@@ -38,6 +39,7 @@ export function GeneralSettings() {
 			setIdeCommand(settings.ideCommand);
 			setAutoRefreshEnabled(settings.workspaceRefreshInterval !== null);
 			setRefreshInterval(settings.workspaceRefreshInterval ?? 5);
+			setUseFlowBoard(settings.useFlowBoard);
 		}
 	}, [settings]);
 
@@ -48,6 +50,7 @@ export function GeneralSettings() {
 				...settings,
 				ideCommand,
 				workspaceRefreshInterval: autoRefreshEnabled ? refreshInterval : null,
+				useFlowBoard,
 			});
 			notifications.show({
 				title: t("settings.general.saved"),
@@ -90,6 +93,12 @@ export function GeneralSettings() {
 					max={60}
 				/>
 			)}
+			<Switch
+				label={t("settings.general.useFlowBoard")}
+				description={t("settings.general.useFlowBoardDescription")}
+				checked={useFlowBoard}
+				onChange={(event) => setUseFlowBoard(event.currentTarget.checked)}
+			/>
 			<TextInput
 				label={t("settings.general.settingsFile")}
 				description={t("settings.general.settingsFileDescription")}

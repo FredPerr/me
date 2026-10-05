@@ -8,15 +8,21 @@ import {
 	useSensor,
 	useSensors,
 } from "@dnd-kit/core";
-import { Group } from "@mantine/core";
-import { useMemo, useRef, useState } from "react";
+import { Group, ScrollArea } from "@mantine/core";
+import { useMemo, useState } from "react";
+import { useContextPullRequestStatus } from "@/hooks/useContextPullRequestStatus";
 import type { CreateContextParams } from "@/hooks/useContexts";
-import { useHorizontalWheelScroll } from "@/hooks/useHorizontalWheelScroll";
 import type { KiroConversation } from "@/models/ai-session/KiroConversation";
-import { CONTEXT_STATUSES, type ContextStatus, isContextStatus } from "@/models/ContextStatus";
+import {
+	CONTEXT_STATUSES,
+	type ContextStatus,
+	IDLE_CONTEXT_STATUS,
+	isContextStatus,
+} from "@/models/ContextStatus";
 import type { Context, Project } from "@/models/Project";
 import { ContextCard } from "./ContextCard";
 import { ContextCardDragHandle } from "./ContextCardDragHandle";
+import { CreateFromTasksColumnButton } from "./CreateFromTasksColumnButton";
 import { DraggableContextCard } from "./DraggableContextCard";
 import { KanbanColumn } from "./KanbanColumn";
 import { KiroConversationModal } from "./KiroConversationModal";
@@ -33,6 +39,8 @@ type KanbanBoardProps = {
 	isKiroRunning: (contextId: string) => boolean;
 	getKiroConversation: (contextId: string) => KiroConversation | undefined;
 	searchFilter?: string;
+	onCreateFromTasks?: () => void;
+	onStaticChange: (contextId: string, isStatic: boolean) => void;
 };
 
 export function KanbanBoard({
@@ -47,13 +55,14 @@ export function KanbanBoard({
 	isKiroRunning,
 	getKiroConversation,
 	searchFilter,
+	onCreateFromTasks,
+	onStaticChange,
 }: KanbanBoardProps) {
 	const [activeId, setActiveId] = useState<string | null>(null);
+	const { lookup: pullRequestLookup } = useContextPullRequestStatus(project);
 	const [openKiroContextId, setOpenKiroContextId] = useState<string | null>(null);
 	const [kiroPromptDrafts, setKiroPromptDrafts] = useState<Record<string, string>>({});
 	const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
-	const boardRef = useRef<HTMLDivElement>(null);
-	useHorizontalWheelScroll(boardRef);
 
 	const filtered = useMemo(() => {
 		const query = searchFilter?.toLowerCase().trim();
@@ -66,6 +75,7 @@ export function KanbanBoard({
 			CONTEXT_STATUSES.map((status) => [status, []]),
 		);
 		for (const context of filtered) {
+			if (context.isEffectivelyStatic) continue;
 			groups.get(context.status)?.push(context);
 		}
 		return groups;
@@ -102,35 +112,51 @@ export function KanbanBoard({
 			onDragEnd={handleDragEnd}
 			onDragCancel={() => setActiveId(null)}
 		>
-			<Group
-				ref={boardRef}
-				align="stretch"
-				gap={4}
-				wrap="nowrap"
-				style={{ flex: 1, minHeight: 0, overflowX: "auto" }}
+			<ScrollArea
+				type="always"
+				scrollbarSize={10}
+				scrollbars="x"
+				style={{ flex: 1, minHeight: 0 }}
+				styles={{
+					viewport: { height: "100%" },
+					content: { height: "100%", display: "flex" },
+				}}
 			>
-				{CONTEXT_STATUSES.map((status) => {
-					const columnContexts = contextsByStatus.get(status) ?? [];
-					return (
-						<KanbanColumn key={status} status={status} count={columnContexts.length}>
-							{columnContexts.map((context) => (
-								<DraggableContextCard
-									key={context.id}
-									context={context}
-									project={project}
-									allContexts={contexts}
-									onDelete={onDelete}
-									onCreate={onCreate}
-									onExpandedChange={onExpandedChange}
-									onOpenKiro={(target) => setOpenKiroContextId(target.id)}
-									isKiroRunning={isKiroRunning(context.id)}
-									hasKiroHistory={(getKiroConversation(context.id)?.turns.length ?? 0) > 0}
-								/>
-							))}
-						</KanbanColumn>
-					);
-				})}
-			</Group>
+				<Group align="stretch" gap={4} wrap="nowrap" style={{ height: "100%", minHeight: 0 }}>
+					{CONTEXT_STATUSES.map((status) => {
+						const columnContexts = contextsByStatus.get(status) ?? [];
+						return (
+							<KanbanColumn
+								key={status}
+								status={status}
+								count={columnContexts.length}
+								headerAction={
+									status === IDLE_CONTEXT_STATUS && onCreateFromTasks ? (
+										<CreateFromTasksColumnButton onClick={onCreateFromTasks} />
+									) : undefined
+								}
+							>
+								{columnContexts.map((context) => (
+									<DraggableContextCard
+										key={context.id}
+										context={context}
+										project={project}
+										allContexts={contexts}
+										onDelete={onDelete}
+										onCreate={onCreate}
+										pullRequestLookup={pullRequestLookup}
+										onExpandedChange={onExpandedChange}
+										onStaticChange={onStaticChange}
+										onOpenKiro={(target) => setOpenKiroContextId(target.id)}
+										isKiroRunning={isKiroRunning(context.id)}
+										hasKiroHistory={(getKiroConversation(context.id)?.turns.length ?? 0) > 0}
+									/>
+								))}
+							</KanbanColumn>
+						);
+					})}
+				</Group>
+			</ScrollArea>
 			<DragOverlay>
 				{activeContext ? (
 					<ContextCard
@@ -139,6 +165,7 @@ export function KanbanBoard({
 						allContexts={contexts}
 						onDelete={onDelete}
 						onCreate={onCreate}
+						pullRequestLookup={pullRequestLookup}
 						dragHandle={<ContextCardDragHandle />}
 					/>
 				) : null}

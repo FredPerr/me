@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
 	ConnectionId,
 	WorkItemGroupId,
+	WorkItemId,
 	WorkProjectId,
 } from "@/domain/work-tracking/identifiers";
 import { ProviderKind } from "@/domain/work-tracking/ProviderKind";
@@ -18,6 +19,7 @@ const invokeMock = vi.mocked(invoke);
 const CONNECTION_ID = "teamwork:acme.teamwork.com" as ConnectionId;
 const PROJECT_ID = "42" as WorkProjectId;
 const GROUP_ID = "7" as WorkItemGroupId;
+const ITEM_ID = "321" as WorkItemId;
 const EMPTY_PAGE = { items: [] };
 
 describe("TauriWorkTrackingGateway", () => {
@@ -122,6 +124,17 @@ describe("TauriWorkTrackingGateway", () => {
 			connectionId: CONNECTION_ID,
 			projectId: PROJECT_ID,
 			cursor: "2",
+		});
+	});
+
+	it("assigns the current user to a task", async () => {
+		invokeMock.mockResolvedValueOnce(null);
+
+		await gateway.assignMeToTask(CONNECTION_ID, ITEM_ID);
+
+		expect(invokeMock).toHaveBeenCalledWith("work_tracking_assign_me_to_task", {
+			connectionId: CONNECTION_ID,
+			itemId: ITEM_ID,
 		});
 	});
 

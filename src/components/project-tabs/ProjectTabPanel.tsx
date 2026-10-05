@@ -14,11 +14,13 @@ import { BulkCreateContextsModal } from "@/components/contexts/BulkCreateContext
 import { CreateContextsFromTasksModal } from "@/components/contexts/CreateContextsFromTasksModal";
 import { CreateFromBranchesModal } from "@/components/contexts/CreateFromBranchesModal";
 import { CreateFromPullRequestsModal } from "@/components/contexts/CreateFromPullRequestsModal";
+import { FlowBoard } from "@/components/contexts/FlowBoard";
 import { KanbanBoard } from "@/components/contexts/KanbanBoard";
 import { SearchContextInput } from "@/components/contexts/SearchContextInput";
 import { ShareForReviewModal } from "@/components/project-tabs/ShareForReviewModal";
 import { GitRemoteLink } from "@/components/shared/GitRemoteLink";
 import { PullContextsButton } from "@/components/shared/PullContextsButton";
+import { useAppSettings } from "@/hooks/useAppSettings";
 import { useContextKiroSessions } from "@/hooks/useContextKiroSessions";
 import { useContexts } from "@/hooks/useContexts";
 import { useOpenInIde } from "@/hooks/useOpenInIde";
@@ -30,6 +32,7 @@ type ProjectTabPanelProps = {
 
 export function ProjectTabPanel({ project }: ProjectTabPanelProps) {
 	const { t } = useTranslation();
+	const { settings } = useAppSettings();
 	const { openFirstExisting, isAvailable } = useOpenInIde();
 	const {
 		contexts,
@@ -40,10 +43,13 @@ export function ProjectTabPanel({ project }: ProjectTabPanelProps) {
 		deleteContext,
 		setContextStatus,
 		setContextExpanded,
+		setContextStatic,
+		setContextKiroConversationId,
 	} = useContexts(project);
 	const { runKiro, killKiro, isRunning, getConversation } = useContextKiroSessions(
 		project,
 		setContextStatus,
+		setContextKiroConversationId,
 	);
 	const [searchFilter, setSearchFilter] = useState("");
 
@@ -57,6 +63,8 @@ export function ProjectTabPanel({ project }: ProjectTabPanelProps) {
 	const [bulkOpened, { open: openBulk, close: closeBulk }] = useDisclosure(false);
 	const [shareOpened, { open: openShare, close: closeShare }] = useDisclosure(false);
 	const [fromTasksOpened, { open: openFromTasks, close: closeFromTasks }] = useDisclosure(false);
+
+	const hasLinkedProjects = project.remoteProjectLinks.toArray().length > 0;
 
 	async function handleOpenRootInIde() {
 		await openFirstExisting(await project.resolveRootIdePathCandidates());
@@ -128,19 +136,43 @@ export function ProjectTabPanel({ project }: ProjectTabPanelProps) {
 					</Group>
 				</Group>
 				<Divider />
-				<KanbanBoard
-					contexts={contexts}
-					project={project}
-					onDelete={deleteContext}
-					onCreate={createContext}
-					onStatusChange={setContextStatus}
-					onExpandedChange={setContextExpanded}
-					onRunKiro={handleRunKiro}
-					onKillKiro={killKiro}
-					isKiroRunning={isRunning}
-					getKiroConversation={getConversation}
-					searchFilter={searchFilter}
-				/>
+				{settings?.useFlowBoard ? (
+					<FlowBoard
+						contexts={contexts}
+						project={project}
+						onDelete={deleteContext}
+						onCreate={createContext}
+						onStatusChange={setContextStatus}
+						onExpandedChange={setContextExpanded}
+						onRunKiro={handleRunKiro}
+						onKillKiro={killKiro}
+						isKiroRunning={isRunning}
+						getKiroConversation={getConversation}
+						searchFilter={searchFilter}
+						onCreateFromTasks={hasLinkedProjects ? openFromTasks : undefined}
+						onBulkCreate={openBulk}
+						onShareForReview={openShare}
+						onCreateFromBranches={openFromBranches}
+						onCreateFromPullRequests={openFromPullRequests}
+						onStaticChange={setContextStatic}
+					/>
+				) : (
+					<KanbanBoard
+						contexts={contexts}
+						project={project}
+						onDelete={deleteContext}
+						onCreate={createContext}
+						onStatusChange={setContextStatus}
+						onExpandedChange={setContextExpanded}
+						onRunKiro={handleRunKiro}
+						onKillKiro={killKiro}
+						isKiroRunning={isRunning}
+						getKiroConversation={getConversation}
+						searchFilter={searchFilter}
+						onCreateFromTasks={hasLinkedProjects ? openFromTasks : undefined}
+						onStaticChange={setContextStatic}
+					/>
+				)}
 			</Stack>
 			<CreateFromBranchesModal
 				opened={fromBranchesOpened}

@@ -8,26 +8,29 @@ type KanbanColumnProps = {
 	status: ContextStatus;
 	count: number;
 	children: ReactNode;
+	headerAction?: ReactNode;
 };
 
-export function KanbanColumn({ status, count, children }: KanbanColumnProps) {
+export function KanbanColumn({ status, count, children, headerAction }: KanbanColumnProps) {
 	const { t } = useTranslation();
 	const { setNodeRef, isOver } = useDroppable({ id: status });
 	const color = CONTEXT_STATUS_COLORS[status];
 
 	return (
-		<Stack gap="xs" style={{ minWidth: 340, flex: "1 0 340px", minHeight: 0 }}>
-			<Group gap="xs" px={4}>
-				<Text size="xs" fw={700} tt="uppercase" c={`${color}.4`}>
-					{t(`contexts.kanban.status.${status}`)}
-				</Text>
-				<Badge size="sm" variant="light" color={color}>
-					{count}
-				</Badge>
+		<Stack gap="xs" style={{ minWidth: 340, flex: "1 0 340px", minHeight: 0, height: "100%" }}>
+			<Group gap="xs" px={4} justify="space-between" wrap="nowrap">
+				<Group gap="xs" wrap="nowrap">
+					<Text size="xs" fw={700} tt="uppercase" c={`${color}.4`}>
+						{t(`contexts.kanban.status.${status}`)}
+					</Text>
+					<Badge size="sm" variant="light" color={color}>
+						{count}
+					</Badge>
+				</Group>
+				{headerAction}
 			</Group>
 			<Paper
 				ref={setNodeRef}
-				data-vertical-scroll-area
 				withBorder
 				radius="md"
 				p={8}

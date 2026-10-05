@@ -1,0 +1,9 @@
+/* The board pans on middle/right drag, so React Flow omits its default `.draggable`
+   grab cursor (it only adds it for left-button panning). Force the grab affordance. */
+.react-flow__pane {
+	cursor: grab;
+}
+
+.react-flow__pane.dragging {
+	cursor: grabbing;
+}

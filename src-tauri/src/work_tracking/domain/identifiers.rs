@@ -56,6 +56,7 @@ typed_id!(WorkItemGroupId);
 typed_id!(@parse WorkItemGroupId);
 typed_id!(@numeric WorkItemGroupId);
 typed_id!(WorkItemId);
+typed_id!(@parse WorkItemId);
 typed_id!(@numeric WorkItemId);
 typed_id!(PersonId);
 typed_id!(@numeric PersonId);

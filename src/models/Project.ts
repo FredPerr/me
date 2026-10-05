@@ -8,6 +8,7 @@ import {
 	isContextStatus,
 } from "@/models/ContextStatus";
 import { normalizeFolderPath, resolvePath } from "@/utils/resolvePath";
+import { slugify } from "@/utils/slugify";
 
 export class Repository {
 	constructor(
@@ -73,7 +74,34 @@ export class Context {
 		public readonly preprompt?: string,
 		public readonly expanded: boolean = false,
 		public readonly workItemRef?: WorkItemRef,
+		public readonly isStatic: boolean = false,
+		/**
+		 * Kiro CLI conversation id from the first headless run in this context.
+		 * Reused via `--resume-id` so follow-up prompts keep the earlier context.
+		 */
+		public readonly kiroConversationId?: string,
+		/**
+		 * Filesystem-safe segment used for this context's `.worktrees/<segment>`
+		 * folder. New contexts store a slug of the name; contexts created before
+		 * this field existed have none and fall back to the raw name (see
+		 * {@link folderSegment}), so their on-disk folders keep resolving.
+		 */
+		public readonly folderName?: string,
 	) {}
+
+	/**
+	 * The `.worktrees/<segment>` folder segment for this context: the stored
+	 * slug when present, otherwise the raw name for backward compatibility with
+	 * folders created before slugging existed.
+	 */
+	get folderSegment(): string {
+		return this.folderName ?? this.name;
+	}
+
+	/** Default contexts are always static; otherwise honor the manual flag. */
+	get isEffectivelyStatic(): boolean {
+		return this.isDefault || this.isStatic;
+	}
 
 	isCreatedFrom(ref: WorkItemRef): boolean {
 		return (
@@ -102,6 +130,27 @@ export class Context {
 			this.preprompt,
 			this.expanded,
 			this.workItemRef,
+			this.isStatic,
+			this.kiroConversationId,
+			this.folderName,
+		);
+	}
+
+	withBranches(branches: ContextBranch[]): Context {
+		return new Context(
+			this.id,
+			this.name,
+			branches,
+			this.isDefault,
+			this.baseContextName,
+			this.pullRequestDrafts,
+			this.status,
+			this.preprompt,
+			this.expanded,
+			this.workItemRef,
+			this.isStatic,
+			this.kiroConversationId,
+			this.folderName,
 		);
 	}
 
@@ -117,6 +166,9 @@ export class Context {
 			this.preprompt,
 			this.expanded,
 			this.workItemRef,
+			this.isStatic,
+			this.kiroConversationId,
+			this.folderName,
 		);
 	}
 
@@ -132,6 +184,45 @@ export class Context {
 			this.preprompt,
 			expanded,
 			this.workItemRef,
+			this.isStatic,
+			this.kiroConversationId,
+			this.folderName,
+		);
+	}
+
+	withStatic(isStatic: boolean): Context {
+		return new Context(
+			this.id,
+			this.name,
+			this.branches,
+			this.isDefault,
+			this.baseContextName,
+			this.pullRequestDrafts,
+			this.status,
+			this.preprompt,
+			this.expanded,
+			this.workItemRef,
+			isStatic,
+			this.kiroConversationId,
+			this.folderName,
+		);
+	}
+
+	withKiroConversationId(kiroConversationId: string): Context {
+		return new Context(
+			this.id,
+			this.name,
+			this.branches,
+			this.isDefault,
+			this.baseContextName,
+			this.pullRequestDrafts,
+			this.status,
+			this.preprompt,
+			this.expanded,
+			this.workItemRef,
+			this.isStatic,
+			kiroConversationId,
+			this.folderName,
 		);
 	}
 
@@ -144,11 +235,11 @@ export class Context {
 			if (normalizedRel === "." || normalizedRel === "") return normalizedProject;
 			return `${normalizedProject}/${normalizedRel}`;
 		}
-		return `${normalizedProject}/.worktrees/${this.name}/${repository.name}`;
+		return `${normalizedProject}/.worktrees/${this.folderSegment}/${repository.name}`;
 	}
 
 	getContextFolderPath(projectPath: string): string {
-		return `${normalizeFolderPath(projectPath)}/.worktrees/${this.name}`;
+		return `${normalizeFolderPath(projectPath)}/.worktrees/${this.folderSegment}`;
 	}
 
 	static create(
@@ -162,6 +253,15 @@ export class Context {
 			name,
 			repositories.map((repo) => new ContextBranch(repo.id, branchName)),
 			isDefault,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			slugify(name),
 		);
 	}
 
@@ -183,6 +283,9 @@ export class Context {
 			data.preprompt,
 			data.expanded ?? false,
 			parseWorkItemRef(data.workItemRef),
+			data.isStatic ?? false,
+			data.kiroConversationId,
+			data.folderName,
 		);
 	}
 
@@ -198,6 +301,9 @@ export class Context {
 			preprompt: this.preprompt,
 			expanded: this.expanded,
 			workItemRef: this.workItemRef,
+			isStatic: this.isStatic,
+			kiroConversationId: this.kiroConversationId,
+			folderName: this.folderName,
 		};
 	}
 }
@@ -282,6 +388,20 @@ export class Project {
 		);
 	}
 
+	withContexts(contexts: Context[]): Project {
+		return new Project(
+			this.name,
+			this.tag,
+			this.path,
+			this.repositories,
+			contexts,
+			this.icon,
+			this.symlinks,
+			this.remoteProjectLinks,
+			this.branchNaming,
+		);
+	}
+
 	withRemoteProjectLinks(remoteProjectLinks: RemoteProjectLinks): Project {
 		return new Project(
 			this.name,
@@ -354,6 +474,9 @@ export type ContextData = {
 	preprompt?: string;
 	expanded?: boolean;
 	workItemRef?: WorkItemRef;
+	isStatic?: boolean;
+	kiroConversationId?: string;
+	folderName?: string;
 };
 
 /** Identifies the remote task a context was created from. */

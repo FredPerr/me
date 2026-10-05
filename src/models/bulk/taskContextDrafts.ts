@@ -23,11 +23,14 @@ export function taskKeyOf(task: LinkedTask): string {
 	return `${task.connectionId}|${task.item.id}`;
 }
 
-export function draftTaskContext(task: LinkedTask): TaskContextDraft {
+export function draftTaskContext(
+	task: LinkedTask,
+	preamble: string = DEFAULT_TASKS_PREAMBLE,
+): TaskContextDraft {
 	return {
 		task,
 		contextName: task.item.title.trim(),
-		prompt: buildTaskPreprompt(DEFAULT_TASKS_PREAMBLE, task.item),
+		prompt: buildTaskPreprompt(preamble, task.item),
 	};
 }
 

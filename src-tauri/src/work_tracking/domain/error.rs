@@ -8,6 +8,7 @@ pub enum InputField {
     ConnectionId,
     ProjectId,
     GroupId,
+    ItemId,
     Cursor,
     PageSize,
 }

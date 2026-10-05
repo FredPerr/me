@@ -1,6 +1,7 @@
 import { useDraggable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
 import { Box } from "@mantine/core";
+import type { PullRequestLookup } from "@/hooks/useContextPullRequestStatus";
 import type { CreateContextParams } from "@/hooks/useContexts";
 import type { Context, Project } from "@/models/Project";
 import { ContextCard } from "./ContextCard";
@@ -12,7 +13,9 @@ type DraggableContextCardProps = {
 	allContexts: Context[];
 	onDelete: (contextId: string) => Promise<void> | void;
 	onCreate: (params: CreateContextParams) => Promise<void>;
+	pullRequestLookup?: PullRequestLookup;
 	onExpandedChange?: (contextId: string, expanded: boolean) => void;
+	onStaticChange?: (contextId: string, isStatic: boolean) => void;
 	onOpenKiro?: (context: Context) => void;
 	isKiroRunning?: boolean;
 	hasKiroHistory?: boolean;
@@ -24,7 +27,9 @@ export function DraggableContextCard({
 	allContexts,
 	onDelete,
 	onCreate,
+	pullRequestLookup,
 	onExpandedChange,
+	onStaticChange,
 	onOpenKiro,
 	isKiroRunning,
 	hasKiroHistory,
@@ -51,7 +56,9 @@ export function DraggableContextCard({
 				allContexts={allContexts}
 				onDelete={onDelete}
 				onCreate={onCreate}
+				pullRequestLookup={pullRequestLookup}
 				onExpandedChange={onExpandedChange}
+				onStaticChange={onStaticChange}
 				onOpenKiro={onOpenKiro}
 				isKiroRunning={isKiroRunning}
 				hasKiroHistory={hasKiroHistory}

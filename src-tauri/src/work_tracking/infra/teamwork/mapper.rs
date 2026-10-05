@@ -109,6 +109,25 @@ fn fallback_name(id: u64) -> String {
     format!("#{id}")
 }
 
+/// Additive assignee update for `PATCH /tasks/{id}.json`. Teamwork's `add`
+/// block appends the user to the task's assignees without touching the people
+/// already assigned, so other assignees are preserved. The user id is sent as
+/// the numeric string Teamwork returned, so it round-trips exactly.
+pub fn add_assignee_body(user_id: &PersonId) -> serde_json::Value {
+    serde_json::json!({
+        "task": {
+            "assignees": {
+                "add": { "userIds": [user_id.as_str()] }
+            }
+        }
+    })
+}
+
+/// Parses the numeric person id from a `me.json` response.
+pub fn me_person_id(response: &super::dto::MeResponse) -> PersonId {
+    PersonId::from_numeric(response.person.id)
+}
+
 fn assignees(ids: &[u64], included: &IncludedDto) -> Vec<Person> {
     ids.iter()
         .map(|id| {
@@ -517,6 +536,24 @@ mod tests {
         assert!(
             serde_json::from_str::<super::super::dto::MeResponse>(r#"{"person":{"id":1}}"#).is_ok()
         );
+    }
+
+    #[test]
+    fn add_assignee_body_is_additive_and_numeric() {
+        let body = add_assignee_body(&PersonId::from_numeric(42));
+        assert_eq!(
+            body,
+            serde_json::json!({
+                "task": { "assignees": { "add": { "userIds": ["42"] } } }
+            })
+        );
+    }
+
+    #[test]
+    fn me_person_id_reads_the_person_id() {
+        let response: super::super::dto::MeResponse =
+            serde_json::from_str(r#"{"person":{"id":99}}"#).unwrap();
+        assert_eq!(me_person_id(&response), PersonId::from_numeric(99));
     }
 
     #[test]

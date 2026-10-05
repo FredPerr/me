@@ -1,10 +1,22 @@
-import { Button, Group, Modal, ScrollArea, Select, Stack, Text } from "@mantine/core";
+import {
+	Button,
+	Checkbox,
+	Group,
+	Modal,
+	ScrollArea,
+	Select,
+	Stack,
+	Text,
+	Textarea,
+} from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { selectPendingTasks } from "@/application/work-tracking/selectPendingTasks";
+import { toWorkItemId } from "@/domain/work-tracking/identifiers";
 import type { BulkContextSpec } from "@/hooks/useContexts";
 import { useLinkedProjectTasks } from "@/hooks/work-tracking/useLinkedProjectTasks";
+import { workTrackingGateway } from "@/infra/work-tracking/workTracking";
 import {
 	draftTaskContext,
 	type TaskContextDraft,
@@ -12,6 +24,7 @@ import {
 	toBulkContextSpec,
 	validateTaskContextDrafts,
 } from "@/models/bulk/taskContextDrafts";
+import { buildTaskPreprompt, DEFAULT_TASKS_PREAMBLE } from "@/models/bulk/tasksToContextSpecs";
 import type { Context, Project } from "@/models/Project";
 import { TaskContextDraftCard } from "./TaskContextDraftCard";
 import { TaskSelectionStep } from "./TaskSelectionStep";
@@ -37,6 +50,8 @@ export function CreateContextsFromTasksModal({
 	const [step, setStep] = useState<Step>("select");
 	const [selectedKeys, setSelectedKeys] = useState<ReadonlySet<string>>(new Set());
 	const [draftsByKey, setDraftsByKey] = useState<ReadonlyMap<string, TaskContextDraft>>(new Map());
+	const [instruction, setInstruction] = useState(DEFAULT_TASKS_PREAMBLE);
+	const [assignMe, setAssignMe] = useState(false);
 	const [selectedBaseContextId, setSelectedBaseContextId] = useState<string | null>(null);
 	const [creating, setCreating] = useState(false);
 
@@ -69,14 +84,49 @@ export function CreateContextsFromTasksModal({
 		for (const task of pendingTasks) {
 			const key = taskKeyOf(task);
 			if (!selectedKeys.has(key)) continue;
-			nextDrafts.set(key, draftsByKey.get(key) ?? draftTaskContext(task));
+			nextDrafts.set(key, draftsByKey.get(key) ?? draftTaskContext(task, instruction));
 		}
 		setDraftsByKey(nextDrafts);
 		setStep("configure");
 	}
 
+	function applyInstruction(nextInstruction: string) {
+		setInstruction(nextInstruction);
+		setDraftsByKey((current) => {
+			const next = new Map<string, TaskContextDraft>();
+			for (const [key, draft] of current) {
+				next.set(key, { ...draft, prompt: buildTaskPreprompt(nextInstruction, draft.task.item) });
+			}
+			return next;
+		});
+	}
+
 	function updateDraft(draft: TaskContextDraft) {
 		setDraftsByKey((current) => new Map(current).set(taskKeyOf(draft.task), draft));
+	}
+
+	/**
+	 * Adds the current user to each selected remote task. Runs after the local
+	 * contexts are created, so a provider failure here is surfaced as a warning
+	 * without undoing the created contexts.
+	 */
+	async function assignMeToSelectedTasks() {
+		const results = await Promise.allSettled(
+			validatedDrafts.map(({ draft }) =>
+				workTrackingGateway.assignMeToTask(
+					draft.task.connectionId,
+					toWorkItemId(draft.task.item.id),
+				),
+			),
+		);
+		const failed = results.filter((result) => result.status === "rejected").length;
+		if (failed > 0) {
+			notifications.show({
+				title: t("contexts.fromTasks.assignMeFailedTitle"),
+				message: t("contexts.fromTasks.assignMeFailedMessage", { count: failed }),
+				color: "yellow",
+			});
+		}
 	}
 
 	async function handleCreate() {
@@ -89,6 +139,9 @@ export function CreateContextsFromTasksModal({
 				message: t("contexts.fromTasks.createdMessage", { count: validatedDrafts.length }),
 				color: "green",
 			});
+			if (assignMe) {
+				await assignMeToSelectedTasks();
+			}
 			onClose();
 		} catch (error) {
 			notifications.show({
@@ -137,6 +190,23 @@ export function CreateContextsFromTasksModal({
 						allowDeselect={false}
 						disabled={creating}
 						searchable
+					/>
+					<Textarea
+						label={t("workTracking.createFromTask.sharedInstructionLabel")}
+						description={t("workTracking.createFromTask.sharedInstructionHint")}
+						value={instruction}
+						onChange={(event) => applyInstruction(event.currentTarget.value)}
+						autosize
+						minRows={2}
+						maxRows={6}
+						disabled={creating}
+					/>
+					<Checkbox
+						label={t("contexts.fromTasks.assignMeLabel")}
+						description={t("contexts.fromTasks.assignMeHint")}
+						checked={assignMe}
+						onChange={(event) => setAssignMe(event.currentTarget.checked)}
+						disabled={creating}
 					/>
 					<ScrollArea.Autosize mah="55vh" type="auto">
 						<Stack gap="sm">

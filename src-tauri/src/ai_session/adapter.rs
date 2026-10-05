@@ -40,6 +40,10 @@ pub struct SpawnRequest {
     pub working_directory: String,
     /// Optional named agent/profile to run, when the CLI supports it.
     pub agent: Option<String>,
+    /// Optional id of a prior conversation to resume, so the run continues with
+    /// the earlier context instead of starting fresh. Honored by adapters whose
+    /// CLI supports resuming (Kiro's `--resume-id`).
+    pub resume_id: Option<String>,
     /// Optional login shell used to resolve the binary via the user's PATH.
     pub shell: Option<String>,
     /// Additional environment variables supplied by the caller (e.g. an API
@@ -84,8 +88,22 @@ pub trait CliAdapter: Send + Sync {
     /// How this CLI receives the prompt.
     fn prompt_delivery(&self) -> PromptDelivery;
 
+    /// Whether to emit an end-of-options separator (`--`) before the positional
+    /// prompt argument. CLIs built on clap-style parsers otherwise treat a
+    /// prompt that starts with `-` (e.g. a Markdown bullet list) as an unknown
+    /// option and reject the run. Only meaningful for [`PromptDelivery::Argument`].
+    fn prompt_needs_options_terminator(&self) -> bool {
+        false
+    }
+
     /// Builds the flag that selects a named agent/profile, if supported.
     fn agent_arguments(&self, _agent: &str) -> Vec<String> {
+        Vec::new()
+    }
+
+    /// Builds the flag that resumes a prior conversation by id, if the CLI
+    /// supports it. Empty by default, so an unsupported CLI ignores the request.
+    fn resume_arguments(&self, _resume_id: &str) -> Vec<String> {
         Vec::new()
     }
 
@@ -124,12 +142,20 @@ pub trait CliAdapter: Send + Sync {
         if let Some(agent) = request.agent.as_deref().filter(|value| !value.is_empty()) {
             arguments.extend(self.agent_arguments(agent));
         }
+        if let Some(resume_id) = request.resume_id.as_deref().filter(|value| !value.is_empty()) {
+            arguments.extend(self.resume_arguments(resume_id));
+        }
         if request.trust_all_tools {
             arguments.extend(self.trust_all_arguments());
         }
 
         let stdin_payload = match self.prompt_delivery() {
             PromptDelivery::Argument => {
+                // Terminate option parsing so a prompt beginning with `-` is
+                // treated as the positional prompt rather than a flag.
+                if self.prompt_needs_options_terminator() {
+                    arguments.push("--".to_string());
+                }
                 arguments.push(request.prompt.clone());
                 None
             }

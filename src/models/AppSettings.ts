@@ -4,6 +4,7 @@ export type AppSettings = {
 	ideCommand: string;
 	shell: string | null;
 	workspaceRefreshInterval: number | null;
+	useFlowBoard: boolean;
 };
 
 const SETTINGS_STORE_FILE = "settings.json";
@@ -13,6 +14,7 @@ const DEFAULT_SETTINGS: AppSettings = {
 	ideCommand: "kiro",
 	shell: null,
 	workspaceRefreshInterval: 5,
+	useFlowBoard: false,
 };
 
 async function openStore() {

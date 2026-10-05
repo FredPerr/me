@@ -2,6 +2,7 @@ import { type InvokeArgs, invoke } from "@tauri-apps/api/core";
 import type {
 	ConnectionId,
 	WorkItemGroupId,
+	WorkItemId,
 	WorkProjectId,
 } from "@/domain/work-tracking/identifiers";
 import type { Page } from "@/domain/work-tracking/Page";
@@ -81,6 +82,13 @@ export class TauriWorkTrackingGateway implements WorkTrackingGateway {
 			connectionId,
 			projectId,
 			cursor: cursor ?? null,
+		});
+	}
+
+	async assignMeToTask(connectionId: ConnectionId, itemId: WorkItemId): Promise<void> {
+		await this.call<null>("work_tracking_assign_me_to_task", {
+			connectionId,
+			itemId,
 		});
 	}
 

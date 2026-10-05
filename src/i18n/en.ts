@@ -53,6 +53,9 @@ export const en = {
 				ideCommandDescription: "Command used to open projects (e.g. kiro, code, cursor)",
 				autoRefresh: "Auto-refresh active workspaces",
 				refreshInterval: "Refresh interval (seconds)",
+				useFlowBoard: "Flow board view",
+				useFlowBoardDescription:
+					"Display the context board as a flow diagram with columns connected by arrows.",
 				settingsFile: "Settings file",
 				settingsFileDescription: "Location of the settings file on your system.",
 				openSettingsFile: "Open in file explorer",
@@ -184,6 +187,12 @@ export const en = {
 			createdMessage: 'Created context "{{name}}"',
 			createFailed: "Failed to create context",
 			createFromContext: "Create context from this",
+			static: {
+				mark: "Mark as static environment",
+				unmark: "Unmark as static environment",
+				columnTitle: "Static contexts",
+				columnEmpty: "No static contexts",
+			},
 			createFromContextDescription: 'Create a new context branching from "{{name}}".',
 			createFromBranches: "Create from branches",
 			createFromBranchesDescription:
@@ -240,6 +249,12 @@ export const en = {
 			loadingBranches: "Loading branches…",
 			noBranchesFound: "No branches found",
 			draftPullRequest: "Create pull requests",
+			pullRequestStatus: {
+				open: "Open pull request #{{number}}",
+				draft: "Draft pull request #{{number}}",
+				merged: "Merged pull request #{{number}}",
+				closed: "Closed pull request #{{number}}",
+			},
 			prTitle: "Title",
 			prTitlePlaceholder: "Add a title",
 			prDescription: "Description",
@@ -256,6 +271,8 @@ export const en = {
 					"This repository has no GitHub or Bitbucket remote, so a pull request cannot be created here.",
 				noBaseBranch:
 					"No base branch found in the base context, so there is nothing to open the pull request against.",
+				sameBranch:
+					'The context branch "{{branch}}" is also the base branch, so there is nothing to compare. Pick a different base.',
 				missingTitle: "Title required",
 				missingTitleMessage: "Add a title before creating the pull request.",
 				pushFailed: "Could not push the branch",
@@ -299,6 +316,11 @@ export const en = {
 				createdTitle: "Contexts created",
 				createdMessage: "Created {{count}} contexts from tasks.",
 				createFailed: "Failed to create contexts",
+				assignMeLabel: "Assign me to these tasks",
+				assignMeHint: "Adds you as an assignee on the work tracker, keeping existing assignees.",
+				assignMeFailedTitle: "Could not assign you to every task",
+				assignMeFailedMessage:
+					"Assigning you failed for {{count}} task(s). The contexts were still created.",
 				issues: {
 					nameRequired: "A context name is required.",
 					invalidBranch: "This name does not produce a valid branch name.",
@@ -507,6 +529,9 @@ export const en = {
 				branchPreview: "Branch: {{branch}}",
 				promptLabel: "Kiro prompt",
 				promptHint: "Stored on the context and prefilled when you open Kiro.",
+				sharedInstructionLabel: "Shared instruction",
+				sharedInstructionHint:
+					"Applied to every context. Each task's title and description are appended below it.",
 			},
 			bulkCreate: {
 				button: "Bulk create ({{count}})",

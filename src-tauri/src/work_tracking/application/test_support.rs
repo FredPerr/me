@@ -10,7 +10,9 @@ use super::registry::WorkTrackerFactory;
 use crate::work_tracking::domain::api_key::ApiKey;
 use crate::work_tracking::domain::base_url::BaseUrl;
 use crate::work_tracking::domain::error::WorkTrackingError;
-use crate::work_tracking::domain::identifiers::{ConnectionId, WorkItemGroupId, WorkProjectId};
+use crate::work_tracking::domain::identifiers::{
+    ConnectionId, PersonId, WorkItemGroupId, WorkItemId, WorkProjectId,
+};
 use crate::work_tracking::domain::page::{Page, PageRequest};
 use crate::work_tracking::domain::ports::{ConnectionRepository, CredentialStore, WorkTracker};
 use crate::work_tracking::domain::provider_connection::{DisplayName, ProviderConnection};
@@ -38,6 +40,8 @@ pub struct Script {
     pub projects_result: Result<Page<WorkProject>, WorkTrackingError>,
     pub groups_result: Result<Page<WorkItemGroup>, WorkTrackingError>,
     pub items_result: Result<Page<WorkItem>, WorkTrackingError>,
+    pub current_user_result: Result<PersonId, WorkTrackingError>,
+    pub assign_result: Result<(), WorkTrackingError>,
     pub created_with_keys: Vec<String>,
     pub calls: Vec<String>,
 }
@@ -49,6 +53,8 @@ impl Script {
             projects_result: Ok(empty_page()),
             groups_result: Ok(empty_page()),
             items_result: Ok(empty_page()),
+            current_user_result: Ok(PersonId::from_numeric(7)),
+            assign_result: Ok(()),
             created_with_keys: Vec::new(),
             calls: Vec::new(),
         }))
@@ -87,6 +93,26 @@ impl WorkTracker for FakeWorkTracker {
         let mut script = self.script.lock().unwrap();
         script.calls.push("verify_connection".into());
         script.verify_result.clone()
+    }
+
+    async fn current_user_id(&self) -> Result<PersonId, WorkTrackingError> {
+        let mut script = self.script.lock().unwrap();
+        script.calls.push("current_user_id".into());
+        script.current_user_result.clone()
+    }
+
+    async fn assign_user_to_task(
+        &self,
+        item_id: &WorkItemId,
+        user_id: &PersonId,
+    ) -> Result<(), WorkTrackingError> {
+        let mut script = self.script.lock().unwrap();
+        script.calls.push(format!(
+            "assign_user_to_task item={} user={}",
+            item_id.as_str(),
+            user_id.as_str()
+        ));
+        script.assign_result.clone()
     }
 
     async fn list_projects(
@@ -209,6 +235,7 @@ pub struct FakeCredentialStore {
     pub fail_read: AtomicBool,
     pub fail_delete: AtomicBool,
     pub save_calls: AtomicUsize,
+    pub read_calls: AtomicUsize,
 }
 
 impl FakeCredentialStore {
@@ -232,6 +259,7 @@ impl CredentialStore for FakeCredentialStore {
     }
 
     fn read(&self, id: &ConnectionId) -> Result<Option<ApiKey>, WorkTrackingError> {
+        self.read_calls.fetch_add(1, Ordering::SeqCst);
         if self.fail_read.load(Ordering::SeqCst) {
             return Err(WorkTrackingError::StorageError);
         }

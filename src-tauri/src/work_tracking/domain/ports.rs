@@ -2,17 +2,28 @@ use async_trait::async_trait;
 
 use super::api_key::ApiKey;
 use super::error::WorkTrackingError;
-use super::identifiers::{ConnectionId, WorkItemGroupId, WorkProjectId};
+use super::identifiers::{ConnectionId, PersonId, WorkItemGroupId, WorkItemId, WorkProjectId};
 use super::page::{Page, PageRequest};
 use super::provider_connection::ProviderConnection;
 use super::work_item::WorkItem;
 use super::work_item_group::WorkItemGroup;
 use super::work_project::WorkProject;
 
-/// Read-only access to a remote work tracker, implemented once per provider.
+/// Access to a remote work tracker, implemented once per provider. Mostly
+/// read-only; the single mutation is adding an assignee to a task.
 #[async_trait]
 pub trait WorkTracker: Send + Sync {
     async fn verify_connection(&self) -> Result<(), WorkTrackingError>;
+
+    /// The id of the authenticated user, used to assign them to a task.
+    async fn current_user_id(&self) -> Result<PersonId, WorkTrackingError>;
+
+    /// Adds `user_id` to a task's assignees without removing existing ones.
+    async fn assign_user_to_task(
+        &self,
+        item_id: &WorkItemId,
+        user_id: &PersonId,
+    ) -> Result<(), WorkTrackingError>;
     async fn list_projects(
         &self,
         page: PageRequest,

@@ -67,8 +67,10 @@ export function KiroConversationModal({
 			closeOnEscape={false}
 			styles={{
 				content: {
-					height: "100vh",
-					maxHeight: "100vh",
+					// Fill the viewport minus the modal's own top/bottom offset so the
+					// content never overflows past the bottom of the screen.
+					height: "calc(100dvh - 2 * var(--modal-y-offset, 5dvh))",
+					maxHeight: "calc(100dvh - 2 * var(--modal-y-offset, 5dvh))",
 					display: "flex",
 					flexDirection: "column",
 				},

@@ -74,6 +74,28 @@ async function resolveProvider(
 	}
 }
 
+/**
+ * The repository's default integration branch (main/master), used as the PR
+ * base when the base context has no branch recorded for this repository.
+ */
+async function resolveDefaultBranch(
+	project: Project,
+	repository: Repository,
+): Promise<string | null> {
+	try {
+		const resolvedPath = await repository.resolveAbsolutePath(project.path);
+		const branches = await invoke<string[]>("list_branches", { path: resolvedPath });
+		return (
+			branches.find((branch) => branch === "main") ??
+			branches.find((branch) => branch === "master") ??
+			branches[0] ??
+			null
+		);
+	} catch {
+		return null;
+	}
+}
+
 export function CreatePullRequestModal({
 	opened,
 	onClose,
@@ -107,13 +129,20 @@ export function CreatePullRequestModal({
 		async function resolveTargets() {
 			const resolved = await Promise.all(
 				context.branches.map(async (branch) => {
-					const repository = project.findRepository(branch.repositoryId);
+					const repository = project.findEffectiveRepository(branch.repositoryId);
 					if (!repository) return null;
 					const resolved = await resolveProvider(project, repository);
+					// Prefer the base context's branch; fall back to the repository's
+					// default branch so a context whose base has no recorded branch for
+					// this repo (e.g. a mono-repo default saved with empty branches)
+					// still has something to open the pull request against.
+					const baseBranch =
+						baseContext?.getBranchForRepository(branch.repositoryId) ??
+						(await resolveDefaultBranch(project, repository));
 					return {
 						repository,
 						headBranch: branch.branch,
-						baseBranch: baseContext?.getBranchForRepository(branch.repositoryId) ?? null,
+						baseBranch,
 						resolved,
 					} satisfies RepositoryTarget;
 				}),
@@ -216,7 +245,8 @@ export function CreatePullRequestModal({
 		const draft = draftFor(repositoryId);
 		const generation = stateFor(repositoryId);
 		const created = createdByRepository[repositoryId];
-		const canCreate = Boolean(target.resolved) && Boolean(target.baseBranch);
+		const sameBranch = target.baseBranch === target.headBranch;
+		const canCreate = Boolean(target.resolved) && Boolean(target.baseBranch) && !sameBranch;
 
 		return (
 			<Tabs.Panel key={repositoryId} value={repositoryId} pt="md">
@@ -229,6 +259,11 @@ export function CreatePullRequestModal({
 					{target.resolved && !target.baseBranch && (
 						<Alert color="orange" icon={<WarningIcon size={16} />}>
 							{t("contexts.createPr.noBaseBranch")}
+						</Alert>
+					)}
+					{target.resolved && target.baseBranch && sameBranch && (
+						<Alert color="orange" icon={<WarningIcon size={16} />}>
+							{t("contexts.createPr.sameBranch", { branch: target.headBranch })}
 						</Alert>
 					)}
 					{canCreate && (

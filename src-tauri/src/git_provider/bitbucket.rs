@@ -275,7 +275,7 @@ pub async fn bitbucket_list_repositories() -> Result<Vec<BitbucketRepository>, S
 
 // --- Pull requests ----------------------------------------------------------
 
-/// An open pull request, as shown on the pull-requests page.
+/// A pull request, as shown on the pull-requests page and context cards.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BitbucketPullRequest {
@@ -286,6 +286,10 @@ pub struct BitbucketPullRequest {
     pub head_branch: String,
     pub base_branch: String,
     pub draft: bool,
+    /// Normalized lifecycle state for the shared port: "open" or "closed".
+    pub state: String,
+    /// Whether the pull request was merged (Bitbucket `MERGED` state).
+    pub merged: bool,
     pub updated_at: String,
 }
 
@@ -306,6 +310,9 @@ struct PullRequestResponse {
     updated_on: String,
     #[serde(default)]
     draft: bool,
+    /// Bitbucket lifecycle state: OPEN, MERGED, DECLINED or SUPERSEDED.
+    #[serde(default)]
+    state: String,
     links: Option<PullRequestLinks>,
 }
 
@@ -353,7 +360,14 @@ pub async fn bitbucket_list_pull_requests(
         .get(&url)
         .bearer_auth(&token)
         .header(reqwest::header::ACCEPT, "application/json")
-        .query(&[("state", "OPEN"), ("sort", "-updated_on"), ("pagelen", "50")])
+        .query(&[
+            ("state", "OPEN"),
+            ("state", "MERGED"),
+            ("state", "DECLINED"),
+            ("state", "SUPERSEDED"),
+            ("sort", "-updated_on"),
+            ("pagelen", "50"),
+        ])
         .send()
         .await
         .map_err(|error| {
@@ -378,7 +392,7 @@ pub async fn bitbucket_list_pull_requests(
     })?;
 
     eprintln!(
-        "[bitbucket] list_pull_requests {}/{} returned {} open PR(s)",
+        "[bitbucket] list_pull_requests {}/{} returned {} PR(s)",
         workspace,
         repo_slug,
         body.values.len()
@@ -387,21 +401,27 @@ pub async fn bitbucket_list_pull_requests(
     Ok(body
         .values
         .into_iter()
-        .map(|pull_request| BitbucketPullRequest {
-            number: pull_request.id,
-            title: pull_request.title,
-            html_url: pull_request
-                .links
-                .and_then(|links| links.html)
-                .and_then(|link| link.href)
-                .unwrap_or_default(),
-            author: pull_request.author.and_then(|author| {
-                author.nickname.or(author.display_name)
-            }),
-            head_branch: pull_request.source.branch.name,
-            base_branch: pull_request.destination.branch.name,
-            draft: pull_request.draft,
-            updated_at: pull_request.updated_on,
+        .map(|pull_request| {
+            let merged = pull_request.state.eq_ignore_ascii_case("MERGED");
+            let is_open = pull_request.state.eq_ignore_ascii_case("OPEN");
+            BitbucketPullRequest {
+                number: pull_request.id,
+                title: pull_request.title,
+                html_url: pull_request
+                    .links
+                    .and_then(|links| links.html)
+                    .and_then(|link| link.href)
+                    .unwrap_or_default(),
+                author: pull_request
+                    .author
+                    .and_then(|author| author.nickname.or(author.display_name)),
+                head_branch: pull_request.source.branch.name,
+                base_branch: pull_request.destination.branch.name,
+                draft: pull_request.draft,
+                merged,
+                state: if is_open { "open" } else { "closed" }.to_string(),
+                updated_at: pull_request.updated_on,
+            }
         })
         .collect())
 }

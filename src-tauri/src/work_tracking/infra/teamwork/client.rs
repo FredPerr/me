@@ -1,5 +1,5 @@
-//! Read-only HTTP client for Teamwork API v3. Errors never include the URL,
-//! headers or key.
+//! HTTP client for Teamwork API v3 (reads via `GET`, task mutations via
+//! `PATCH`). Errors never include the URL, headers or key.
 use std::time::Duration;
 
 use reqwest::header::{ACCEPT, RETRY_AFTER};
@@ -19,6 +19,18 @@ const BASIC_AUTH_PASSWORD: &str = "X";
 
 pub const ME_PATH: &[&str] = &["projects", "api", "v3", "me.json"];
 pub const PROJECTS_PATH: &[&str] = &["projects", "api", "v3", "projects.json"];
+
+/// `PATCH /projects/api/v3/tasks/{id}.json`. The id is a validated numeric
+/// string, so the composed `{id}.json` segment is always safe.
+pub fn task_path(task_id: &str) -> [String; 5] {
+    [
+        "projects".to_string(),
+        "api".to_string(),
+        "v3".to_string(),
+        "tasks".to_string(),
+        format!("{task_id}.json"),
+    ]
+}
 
 pub const PROJECTS_QUERY: &[(&str, &str)] = &[("includeArchivedProjects", "false")];
 pub const TASKLISTS_QUERY: &[(&str, &str)] = &[("showCompleted", "false")];
@@ -79,12 +91,12 @@ pub fn paged_query(
 }
 
 /// Segments are percent-encoded one by one, so the host is always the base host.
-fn build_url(base: &Url, path_segments: &[&str], query: &[(&str, String)]) -> Url {
+fn build_url<S: AsRef<str>>(base: &Url, path_segments: &[S], query: &[(&str, String)]) -> Url {
     let mut url = base.clone();
     if let Ok(mut segments) = url.path_segments_mut() {
         segments.pop_if_empty();
         for segment in path_segments {
-            segments.push(segment);
+            segments.push(segment.as_ref());
         }
     }
     if !query.is_empty() {
@@ -152,14 +164,14 @@ impl TeamworkClient {
         })
     }
 
-    /// The only request method of the adapter: `GET`.
-    pub async fn get_json<T: DeserializeOwned>(
+    /// Reads JSON from a `GET` endpoint.
+    pub async fn get_json<T: DeserializeOwned, S: AsRef<str>>(
         &self,
-        path_segments: &[&str],
+        path_segments: &[S],
         query: &[(&str, String)],
     ) -> Result<T, WorkTrackingError> {
         let url = build_url(&self.base_url, path_segments, query);
-        let mut response = self
+        let response = self
             .http
             .get(url)
             .basic_auth(self.api_key.expose(), Some(BASIC_AUTH_PASSWORD))
@@ -167,7 +179,35 @@ impl TeamworkClient {
             .send()
             .await
             .map_err(map_body_error)?;
+        self.read_json(response).await
+    }
 
+    /// Sends a `PATCH` with a JSON body and parses the JSON response. Used for
+    /// task mutations (e.g. assigning a user).
+    pub async fn patch_json<T: DeserializeOwned, S: AsRef<str>>(
+        &self,
+        path_segments: &[S],
+        body: &serde_json::Value,
+    ) -> Result<T, WorkTrackingError> {
+        let url = build_url(&self.base_url, path_segments, &[]);
+        let response = self
+            .http
+            .patch(url)
+            .basic_auth(self.api_key.expose(), Some(BASIC_AUTH_PASSWORD))
+            .header(ACCEPT, "application/json")
+            .json(body)
+            .send()
+            .await
+            .map_err(map_body_error)?;
+        self.read_json(response).await
+    }
+
+    /// Validates the status and reads a size-bounded JSON body. Shared by the
+    /// read and write request methods.
+    async fn read_json<T: DeserializeOwned>(
+        &self,
+        mut response: reqwest::Response,
+    ) -> Result<T, WorkTrackingError> {
         let retry_after = response
             .headers()
             .get(RETRY_AFTER)
@@ -338,6 +378,13 @@ mod tests {
                 ("pageSize", "50"),
             ])
         );
+    }
+
+    #[test]
+    fn build_url_for_single_task() {
+        let url = build_url(&base(), &task_path("42"), &[]);
+        assert_eq!(url.path(), "/projects/api/v3/tasks/42.json");
+        assert_eq!(url.query(), None);
     }
 
     #[test]

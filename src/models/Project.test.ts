@@ -108,6 +108,108 @@ describe("Project", () => {
 		});
 	});
 
+	describe("Context.isStatic", () => {
+		it("defaults to non-static for a regular context", () => {
+			const context = buildContext("feature-x", [PROJECT_TAG]);
+
+			expect(context.isStatic).toBe(false);
+			expect(context.isEffectivelyStatic).toBe(false);
+		});
+
+		it("treats the default context as effectively static even when the flag is off", () => {
+			const context = buildContext("default", [PROJECT_TAG], true);
+
+			expect(context.isStatic).toBe(false);
+			expect(context.isEffectivelyStatic).toBe(true);
+		});
+
+		it("returns a new context with the static flag set", () => {
+			const context = buildContext("staging", [PROJECT_TAG]);
+
+			const result = context.withStatic(true);
+
+			expect(result.isStatic).toBe(true);
+			expect(result.isEffectivelyStatic).toBe(true);
+			expect(context.isStatic).toBe(false);
+		});
+
+		it("round-trips the static flag through toJSON and fromJSON", () => {
+			const context = buildContext("staging", [PROJECT_TAG]).withStatic(true);
+
+			const restored = Context.fromJSON(context.toJSON());
+
+			expect(restored.isStatic).toBe(true);
+		});
+
+		it("defaults to non-static when deserializing data saved without the flag", () => {
+			const context = buildContext("staging", [PROJECT_TAG]);
+			const { isStatic: _omitted, ...dataWithoutStatic } = context.toJSON();
+
+			const restored = Context.fromJSON(dataWithoutStatic);
+
+			expect(restored.isStatic).toBe(false);
+		});
+	});
+
+	describe("Context.kiroConversationId", () => {
+		it("is undefined for a freshly created context", () => {
+			const context = buildContext("feature-x", [PROJECT_TAG]);
+
+			expect(context.kiroConversationId).toBeUndefined();
+		});
+
+		it("returns a new context carrying the conversation id", () => {
+			const context = buildContext("feature-x", [PROJECT_TAG]);
+
+			const result = context.withKiroConversationId("conv-123");
+
+			expect(result.kiroConversationId).toBe("conv-123");
+			expect(context.kiroConversationId).toBeUndefined();
+		});
+
+		it("round-trips the conversation id through toJSON and fromJSON", () => {
+			const context = buildContext("feature-x", [PROJECT_TAG]).withKiroConversationId("conv-123");
+
+			const restored = Context.fromJSON(context.toJSON());
+
+			expect(restored.kiroConversationId).toBe("conv-123");
+		});
+	});
+
+	describe("Context.folderSegment", () => {
+		it("falls back to the raw name when no folderName is stored (legacy contexts)", () => {
+			const context = buildContext("Ajout d'un pipeline", [PROJECT_TAG]);
+
+			expect(context.folderName).toBeUndefined();
+			expect(context.folderSegment).toBe("Ajout d'un pipeline");
+		});
+
+		it("uses the stored slug when folderName is set", () => {
+			const context = Context.create("Ajout d'un pipeline", [], "feature/x");
+
+			expect(context.folderName).toBe("ajout-d-un-pipeline");
+			expect(context.folderSegment).toBe("ajout-d-un-pipeline");
+		});
+
+		it("builds the worktree path from the folder segment, not the raw name", () => {
+			const legacy = buildContext("My Feature", [PROJECT_TAG]);
+			const slugged = Context.create("My Feature", [], "feature/x");
+			const repo = new Repository("repo-1", "api", "./api");
+
+			expect(legacy.getContextFolderPath("/p")).toBe("/p/.worktrees/My Feature");
+			expect(slugged.getContextFolderPath("/p")).toBe("/p/.worktrees/my-feature");
+			expect(slugged.getWorktreePath("/p", repo)).toBe("/p/.worktrees/my-feature/api");
+		});
+
+		it("round-trips folderName through toJSON and fromJSON", () => {
+			const context = Context.create("My Feature", [], "feature/x");
+
+			const restored = Context.fromJSON(context.toJSON());
+
+			expect(restored.folderName).toBe("my-feature");
+		});
+	});
+
 	describe("Context.workItemRef", () => {
 		const WORK_ITEM_REF = { connectionId: "teamwork:acme.teamwork.com", workItemId: "101" };
 

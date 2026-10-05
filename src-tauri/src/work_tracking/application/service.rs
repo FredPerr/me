@@ -1,12 +1,17 @@
 use std::sync::Arc;
 
+use std::collections::HashMap;
+use std::sync::Mutex;
+
 use serde::Serialize;
 
 use super::registry::WorkTrackerRegistry;
 use crate::work_tracking::domain::api_key::ApiKey;
 use crate::work_tracking::domain::base_url::BaseUrl;
 use crate::work_tracking::domain::error::{InputField, WorkTrackingError};
-use crate::work_tracking::domain::identifiers::{ConnectionId, WorkItemGroupId, WorkProjectId};
+use crate::work_tracking::domain::identifiers::{
+    ConnectionId, WorkItemGroupId, WorkItemId, WorkProjectId,
+};
 use crate::work_tracking::domain::page::{Cursor, Page, PageRequest, DEFAULT_PAGE_SIZE};
 use crate::work_tracking::domain::ports::{ConnectionRepository, CredentialStore, WorkTracker};
 use crate::work_tracking::domain::provider_connection::{DisplayName, ProviderConnection};
@@ -50,6 +55,11 @@ pub struct WorkTrackingService {
     connections: Arc<dyn ConnectionRepository>,
     credentials: Arc<dyn CredentialStore>,
     registry: WorkTrackerRegistry,
+    /// Caches decrypted API keys for the process lifetime so the OS keychain is
+    /// read at most once per connection per run. Without this, every provider
+    /// call reads the keychain, which on macOS can trigger a repeated unlock
+    /// prompt. Invalidated when a connection is saved or removed.
+    credential_cache: Mutex<HashMap<ConnectionId, ApiKey>>,
 }
 
 impl WorkTrackingService {
@@ -62,6 +72,7 @@ impl WorkTrackingService {
             connections,
             credentials,
             registry,
+            credential_cache: Mutex::new(HashMap::new()),
         }
     }
 
@@ -70,10 +81,16 @@ impl WorkTrackingService {
         Ok(connections
             .iter()
             .map(|connection| {
-                // A read error (e.g. locked keychain) degrades this connection
-                // instead of failing the call, so it can still be replaced or removed.
-                let credential_configured =
-                    matches!(self.credentials.read(connection.id()), Ok(Some(_)));
+                // Prefer the in-memory cache so listing does not read the OS
+                // keychain (which can prompt on macOS). A read error (e.g.
+                // locked keychain) degrades this connection instead of failing
+                // the call, so it can still be replaced or removed.
+                let credential_configured = self
+                    .credential_cache
+                    .lock()
+                    .unwrap()
+                    .contains_key(connection.id())
+                    || matches!(self.credentials.read(connection.id()), Ok(Some(_)));
                 ConnectionView::new(connection, credential_configured)
             })
             .collect())
@@ -97,6 +114,8 @@ impl WorkTrackingService {
 
         let id = connection.id();
         let existed = self.connections.find(id)?.is_some();
+        // Read the real stored key (not the cache) so the rollback below can
+        // restore exactly what was in the keychain before this call.
         let previous_key = self.credentials.read(id)?;
         self.credentials.save(id, &api_key)?;
         if self.connections.save(&connection).is_err() {
@@ -109,13 +128,20 @@ impl WorkTrackingService {
                     let _ = self.credentials.delete(id);
                 }
             }
+            self.invalidate_cached_credential(id);
             return Err(WorkTrackingError::StorageError);
         }
+        // Cache the freshly saved key so the next call does not read the keychain.
+        self.credential_cache
+            .lock()
+            .unwrap()
+            .insert(id.clone(), api_key);
         Ok(ConnectionView::new(&connection, true))
     }
 
     pub fn remove_connection(&self, raw_connection_id: &str) -> Result<(), WorkTrackingError> {
         let id = ConnectionId::parse(raw_connection_id, InputField::ConnectionId)?;
+        self.invalidate_cached_credential(&id);
         let removed = self.connections.remove(&id);
         let deleted = self.credentials.delete(&id);
         if removed.is_err() || deleted.is_err() {
@@ -176,17 +202,51 @@ impl WorkTrackingService {
             .await
     }
 
-    /// Builds a fresh adapter per call; no credential is kept between calls.
+    /// Adds the authenticated user to a task's assignees, preserving the people
+    /// already assigned. Resolves "me" first, then performs the additive update.
+    pub async fn assign_me_to_task(
+        &self,
+        raw_connection_id: &str,
+        raw_item_id: &str,
+    ) -> Result<(), WorkTrackingError> {
+        let id = ConnectionId::parse(raw_connection_id, InputField::ConnectionId)?;
+        let item_id = WorkItemId::parse(raw_item_id, InputField::ItemId)?;
+        let tracker = self.resolve(&id)?;
+        let user_id = tracker.current_user_id().await?;
+        tracker.assign_user_to_task(&item_id, &user_id).await
+    }
+
+    /// Builds a fresh adapter per call. The credential is served from the
+    /// process-lifetime cache, falling back to the keychain on a miss, so the
+    /// keychain is read at most once per connection per run.
     fn resolve(&self, id: &ConnectionId) -> Result<Box<dyn WorkTracker>, WorkTrackingError> {
         let connection = self
             .connections
             .find(id)?
             .ok_or(WorkTrackingError::NotConfigured)?;
+        let key = self.cached_credential(id)?;
+        self.registry.create(&connection, key)
+    }
+
+    /// Returns the API key from the in-memory cache, reading the keychain only
+    /// on a miss and caching the result for subsequent calls.
+    fn cached_credential(&self, id: &ConnectionId) -> Result<ApiKey, WorkTrackingError> {
+        if let Some(key) = self.credential_cache.lock().unwrap().get(id).cloned() {
+            return Ok(key);
+        }
         let key = self
             .credentials
             .read(id)?
             .ok_or(WorkTrackingError::NotConfigured)?;
-        self.registry.create(&connection, key)
+        self.credential_cache
+            .lock()
+            .unwrap()
+            .insert(id.clone(), key.clone());
+        Ok(key)
+    }
+
+    fn invalidate_cached_credential(&self, id: &ConnectionId) {
+        self.credential_cache.lock().unwrap().remove(id);
     }
 }
 
@@ -495,6 +555,119 @@ mod tests {
                 InputField::ProjectId,
                 InvalidInputReason::Required
             ))
+        );
+    }
+
+    #[test]
+    fn credential_is_read_from_keychain_only_once_per_run() {
+        let fixture = fixture();
+        fixture.connections.insert(sample_connection());
+        fixture.credentials.insert(CONNECTION_ID, "key-1");
+        // Three provider calls that each resolve the adapter.
+        block_on(fixture.service.list_projects(CONNECTION_ID, None)).unwrap();
+        block_on(fixture.service.list_groups(CONNECTION_ID, "10", None)).unwrap();
+        block_on(fixture.service.list_project_items(CONNECTION_ID, "10", None)).unwrap();
+        // The keychain was read once; later calls used the in-memory cache.
+        assert_eq!(fixture.credentials.read_calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn saving_a_connection_caches_the_new_key_without_rereading() {
+        let fixture = fixture();
+        block_on(fixture.service.save_connection(save_command("key-1"))).unwrap();
+        let reads_after_save = fixture.credentials.read_calls.load(Ordering::SeqCst);
+        block_on(fixture.service.list_projects(CONNECTION_ID, None)).unwrap();
+        // Resolving after a save does not read the keychain again.
+        assert_eq!(
+            fixture.credentials.read_calls.load(Ordering::SeqCst),
+            reads_after_save
+        );
+    }
+
+    #[test]
+    fn removing_a_connection_evicts_the_cached_key() {
+        let fixture = fixture();
+        fixture.connections.insert(sample_connection());
+        fixture.credentials.insert(CONNECTION_ID, "key-1");
+        // Prime the cache.
+        block_on(fixture.service.list_projects(CONNECTION_ID, None)).unwrap();
+        fixture.service.remove_connection(CONNECTION_ID).unwrap();
+        // A later call with no connection must report NotConfigured, proving the
+        // cached key was evicted rather than served stale.
+        assert_eq!(
+            block_on(fixture.service.list_projects(CONNECTION_ID, None)),
+            Err(WorkTrackingError::NotConfigured)
+        );
+    }
+
+    #[test]
+    fn list_connections_uses_cache_when_available() {
+        let fixture = fixture();
+        block_on(fixture.service.save_connection(save_command("key-1"))).unwrap();
+        let reads_before = fixture.credentials.read_calls.load(Ordering::SeqCst);
+        let views = fixture.service.list_connections().unwrap();
+        assert!(views[0].credential_configured);
+        // The cached key answered credential_configured without a keychain read.
+        assert_eq!(
+            fixture.credentials.read_calls.load(Ordering::SeqCst),
+            reads_before
+        );
+    }
+
+    #[test]
+    fn assign_me_resolves_user_then_assigns() {
+        let fixture = fixture();
+        fixture.connections.insert(sample_connection());
+        fixture.credentials.insert(CONNECTION_ID, "key-1");
+        fixture.script.lock().unwrap().current_user_result = Ok(
+            crate::work_tracking::domain::identifiers::PersonId::from_numeric(55),
+        );
+        assert_eq!(
+            block_on(fixture.service.assign_me_to_task(CONNECTION_ID, "321")),
+            Ok(())
+        );
+        let script = fixture.script.lock().unwrap();
+        assert_eq!(
+            script.calls,
+            vec![
+                "current_user_id".to_string(),
+                "assign_user_to_task item=321 user=55".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn assign_me_requires_connection_and_credential() {
+        let fixture = fixture();
+        assert_eq!(
+            block_on(fixture.service.assign_me_to_task(CONNECTION_ID, "1")),
+            Err(WorkTrackingError::NotConfigured)
+        );
+    }
+
+    #[test]
+    fn assign_me_validates_item_id() {
+        let fixture = fixture();
+        fixture.connections.insert(sample_connection());
+        fixture.credentials.insert(CONNECTION_ID, "key-1");
+        assert_eq!(
+            block_on(fixture.service.assign_me_to_task(CONNECTION_ID, "")),
+            Err(WorkTrackingError::invalid_input(
+                InputField::ItemId,
+                InvalidInputReason::Required
+            ))
+        );
+    }
+
+    #[test]
+    fn assign_me_propagates_assign_failure() {
+        let fixture = fixture();
+        fixture.connections.insert(sample_connection());
+        fixture.credentials.insert(CONNECTION_ID, "key-1");
+        fixture.script.lock().unwrap().assign_result = Err(WorkTrackingError::Forbidden);
+        assert_eq!(
+            block_on(fixture.service.assign_me_to_task(CONNECTION_ID, "321")),
+            Err(WorkTrackingError::Forbidden)
         );
     }
 

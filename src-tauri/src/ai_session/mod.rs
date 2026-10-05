@@ -68,6 +68,9 @@ pub struct SpawnOptions {
     pub command: Option<String>,
     /// Optional named agent/profile when supported by the CLI.
     pub agent: Option<String>,
+    /// Optional prior conversation id to resume, so a follow-up prompt keeps the
+    /// earlier context (Kiro's `--resume-id`).
+    pub resume_id: Option<String>,
     /// Optional login shell used to resolve the binary via the user's PATH.
     pub shell: Option<String>,
     /// Extra environment variables (e.g. the headless API key).
@@ -123,6 +126,7 @@ pub async fn spawn_ai_session(
         prompt: options.prompt,
         working_directory: options.working_directory,
         agent: options.agent,
+        resume_id: options.resume_id,
         shell: options.shell,
         environment: options
             .environment

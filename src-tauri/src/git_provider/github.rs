@@ -275,7 +275,7 @@ pub async fn github_list_repositories() -> Result<Vec<GitHubRepository>, String>
 
 // --- Pull requests ----------------------------------------------------------
 
-/// An open pull request, as shown on the pull-requests page.
+/// A pull request, as shown on the pull-requests page and context cards.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GitHubPullRequest {
@@ -286,6 +286,10 @@ pub struct GitHubPullRequest {
     pub head_branch: String,
     pub base_branch: String,
     pub draft: bool,
+    /// Lifecycle state as reported by GitHub: "open" or "closed".
+    pub state: String,
+    /// Whether a closed pull request was merged (true) or discarded (false).
+    pub merged: bool,
     pub updated_at: String,
 }
 
@@ -299,6 +303,11 @@ struct PullRequestResponse {
     base: PullRequestRef,
     #[serde(default)]
     draft: bool,
+    state: String,
+    /// Present (non-null) only when the pull request was merged. The list
+    /// endpoint omits a `merged` boolean, so merge status is derived from this.
+    #[serde(default)]
+    merged_at: Option<String>,
     updated_at: String,
 }
 
@@ -313,7 +322,9 @@ struct PullRequestRef {
     ref_name: String,
 }
 
-/// List open pull requests for `owner/repo`, most recently updated first.
+/// List pull requests for `owner/repo`, most recently updated first. Includes
+/// open and closed (merged or discarded) pull requests so callers can report
+/// the full lifecycle state of a branch.
 #[tauri::command]
 pub async fn github_list_pull_requests(
     owner: String,
@@ -328,9 +339,10 @@ pub async fn github_list_pull_requests(
         .bearer_auth(&token)
         .header(reqwest::header::ACCEPT, "application/vnd.github+json")
         .query(&[
-            ("state", "open"),
+            ("state", "all"),
             ("sort", "updated"),
             ("direction", "desc"),
+            ("per_page", "100"),
         ])
         .send()
         .await
@@ -356,7 +368,7 @@ pub async fn github_list_pull_requests(
     })?;
 
     eprintln!(
-        "[github] list_pull_requests {}/{} returned {} open PR(s)",
+        "[github] list_pull_requests {}/{} returned {} PR(s)",
         owner,
         repo,
         pull_requests.len()
@@ -372,6 +384,8 @@ pub async fn github_list_pull_requests(
             head_branch: pull_request.head.ref_name,
             base_branch: pull_request.base.ref_name,
             draft: pull_request.draft,
+            merged: pull_request.merged_at.is_some(),
+            state: pull_request.state,
             updated_at: pull_request.updated_at,
         })
         .collect())

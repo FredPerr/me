@@ -1,14 +1,16 @@
 use async_trait::async_trait;
 
 use super::client::{
-    paged_query, project_tasks_path, tasklists_path, tasks_path, TeamworkClient, ME_PATH,
-    PROJECTS_PATH, PROJECTS_QUERY, TASKLISTS_QUERY, TASKS_QUERY,
+    paged_query, project_tasks_path, task_path, tasklists_path, tasks_path, TeamworkClient,
+    ME_PATH, PROJECTS_PATH, PROJECTS_QUERY, TASKLISTS_QUERY, TASKS_QUERY,
 };
 use super::dto::{MeResponse, ProjectsResponse, TasklistsResponse, TasksResponse};
 use super::mapper;
 use crate::work_tracking::domain::base_url::BaseUrl;
 use crate::work_tracking::domain::error::{InputField, WorkTrackingError};
-use crate::work_tracking::domain::identifiers::{ConnectionId, WorkItemGroupId, WorkProjectId};
+use crate::work_tracking::domain::identifiers::{
+    ConnectionId, PersonId, WorkItemGroupId, WorkItemId, WorkProjectId,
+};
 use crate::work_tracking::domain::page::{Page, PageRequest};
 use crate::work_tracking::domain::ports::WorkTracker;
 use crate::work_tracking::domain::work_item::WorkItem;
@@ -35,6 +37,23 @@ impl TeamworkWorkTracker {
 impl WorkTracker for TeamworkWorkTracker {
     async fn verify_connection(&self) -> Result<(), WorkTrackingError> {
         let _: MeResponse = self.client.get_json(ME_PATH, &[]).await?;
+        Ok(())
+    }
+
+    async fn current_user_id(&self) -> Result<PersonId, WorkTrackingError> {
+        let response: MeResponse = self.client.get_json(ME_PATH, &[]).await?;
+        Ok(mapper::me_person_id(&response))
+    }
+
+    async fn assign_user_to_task(
+        &self,
+        item_id: &WorkItemId,
+        user_id: &PersonId,
+    ) -> Result<(), WorkTrackingError> {
+        let item_segment = mapper::numeric_id(item_id.as_str(), InputField::ItemId)?;
+        let body = mapper::add_assignee_body(user_id);
+        // The response envelope is irrelevant on success; discard it.
+        let _: serde::de::IgnoredAny = self.client.patch_json(&task_path(item_segment), &body).await?;
         Ok(())
     }
 

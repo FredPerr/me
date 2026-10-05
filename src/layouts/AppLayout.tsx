@@ -11,6 +11,7 @@ export function AppLayout() {
 				main: {
 					display: "flex",
 					flexDirection: "column",
+					height: "100dvh",
 					minHeight: "100dvh",
 					background:
 						"radial-gradient(ellipse at top right, rgba(214, 8, 103, 0.08), transparent 50%), radial-gradient(ellipse at bottom right, rgba(107, 49, 178, 0.08), transparent 50%)",

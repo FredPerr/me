@@ -1,4 +1,4 @@
-import type { ConnectionId, WorkItemGroupId, WorkProjectId } from "./identifiers";
+import type { ConnectionId, WorkItemGroupId, WorkItemId, WorkProjectId } from "./identifiers";
 import type { Page } from "./Page";
 import type { ProviderConnection } from "./ProviderConnection";
 import type { ProviderKind } from "./ProviderKind";
@@ -34,4 +34,6 @@ export interface WorkTrackingGateway {
 		projectId: WorkProjectId,
 		cursor?: string,
 	): Promise<Page<WorkItem>>;
+	/** Adds the authenticated user to a task's assignees, keeping existing ones. */
+	assignMeToTask(connectionId: ConnectionId, itemId: WorkItemId): Promise<void>;
 }

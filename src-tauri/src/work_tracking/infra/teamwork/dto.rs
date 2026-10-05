@@ -14,11 +14,17 @@ where
     Ok(Option::<T>::deserialize(deserializer)?.unwrap_or_default())
 }
 
-/// Only the presence of `person` is checked, so a non-Teamwork 200 body fails.
+/// The logged-in person. The presence of `person` validates a Teamwork 200
+/// body; its `id` identifies the current user for self-assignment.
 #[derive(Deserialize)]
 pub struct MeResponse {
-    #[serde(rename = "person")]
-    _person: serde::de::IgnoredAny,
+    pub person: MePersonDto,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MePersonDto {
+    pub id: u64,
 }
 
 #[derive(Deserialize)]
