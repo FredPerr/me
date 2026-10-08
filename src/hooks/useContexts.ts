@@ -697,8 +697,13 @@ async function buildRepoInputsFromExistingBranches(
 		if (!repo) continue;
 
 		const resolvedPath = await repo.resolveAbsolutePath(project.path);
-		const isLinked = !config.branch;
+		// When no branch is picked for a subrepo, fall back to its default
+		// branch and check it out as a real worktree (the backend reuses the
+		// existing worktree if that branch is already checked out). Only if the
+		// default branch cannot be resolved do we link to the current checkout,
+		// so we never push an empty branch name downstream.
 		const branch = config.branch ?? (await resolveDefaultBranch(project, repo));
+		const isLinked = branch === "";
 
 		inputs.push({
 			repository_id: repo.id,
