@@ -47,7 +47,7 @@ export function CreateFromBranchesModal({
 		async function fetchBranches() {
 			setLoadingBranches(true);
 			const options: Record<string, string[]> = {};
-			for (const repo of project.repositories) {
+			for (const repo of project.effectiveRepositories()) {
 				try {
 					const resolvedPath = await repo.resolveAbsolutePath(project.path);
 					options[repo.id] = await invoke<string[]>("list_branches", { path: resolvedPath });
@@ -84,7 +84,7 @@ export function CreateFromBranchesModal({
 	async function validateSelectedBranches(): Promise<boolean> {
 		const errors: Record<string, string> = {};
 
-		for (const repo of project.repositories) {
+		for (const repo of project.effectiveRepositories()) {
 			const branch = selectedBranches[repo.id];
 			if (!branch) continue;
 
@@ -121,7 +121,7 @@ export function CreateFromBranchesModal({
 			const isValid = await validateSelectedBranches();
 			if (!isValid) return;
 
-			const repositories: ExistingBranchConfig[] = project.repositories.map((repo) => ({
+			const repositories: ExistingBranchConfig[] = project.effectiveRepositories().map((repo) => ({
 				repositoryId: repo.id,
 				branch: selectedBranches[repo.id] ?? null,
 			}));
@@ -145,7 +145,7 @@ export function CreateFromBranchesModal({
 				<Text size="sm" c="dimmed">
 					{t("contexts.createFromBranchesDescription")}
 				</Text>
-				{project.repositories.map((repo) => {
+				{project.effectiveRepositories().map((repo) => {
 					const branch = selectedBranches[repo.id] ?? null;
 					return (
 						<Box

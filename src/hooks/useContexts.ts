@@ -693,7 +693,7 @@ async function buildRepoInputsFromExistingBranches(
 ) {
 	const inputs = [];
 	for (const config of branchConfigs) {
-		const repo = project.findRepository(config.repositoryId);
+		const repo = project.findEffectiveRepository(config.repositoryId);
 		if (!repo) continue;
 
 		const resolvedPath = await repo.resolveAbsolutePath(project.path);
