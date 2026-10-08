@@ -196,7 +196,7 @@ export const en = {
 			createFromContextDescription: 'Create a new context branching from "{{name}}".',
 			createFromBranches: "Create from branches",
 			createFromBranchesDescription:
-				"Create a context from existing local branches. Pick a branch for each repository, or leave one empty to link it to the current checkout.",
+				"Create a context from existing local branches. Pick a branch for each repository, or leave one empty to use its default branch.",
 			createFromPullRequests: "Create from PRs",
 			createFromPullRequestsDescription:
 				"Create a context from open pull requests to review them in the IDE. Pick a PR for each repository, or leave one empty to link it to the current checkout.",
@@ -244,8 +244,7 @@ export const en = {
 			},
 			selectExistingBranch: "Select an existing branch",
 			copyBranchToName: "Use this branch as the context name",
-			repoWillBeLinked:
-				"No branch selected — this repository will be linked to the current checkout.",
+			repoWillBeLinked: "No branch selected — its default branch will be used.",
 			loadingBranches: "Loading branches…",
 			noBranchesFound: "No branches found",
 			draftPullRequest: "Create pull requests",

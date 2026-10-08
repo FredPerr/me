@@ -34,6 +34,7 @@ export function CreateFromBranchesModal({
 	onCreate,
 }: CreateFromBranchesModalProps) {
 	const { t } = useTranslation();
+	const isSingleRepo = project.effectiveRepositories().length === 1;
 	const [contextName, setContextName] = useState("");
 	const [selectedBranches, setSelectedBranches] = useState<Record<string, string | null>>({});
 	const [branchOptions, setBranchOptions] = useState<Record<string, string[]>>({});
@@ -158,7 +159,7 @@ export function CreateFromBranchesModal({
 						>
 							<Group gap="xs" align="flex-end" wrap="nowrap">
 								<Select
-									label={repo.name}
+									label={isSingleRepo ? t("contexts.branch") : repo.name}
 									placeholder={
 										loadingBranches
 											? t("contexts.loadingBranches")
