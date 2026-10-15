@@ -1,5 +1,6 @@
 import {
 	ActionIcon,
+	Autocomplete,
 	Box,
 	Button,
 	Checkbox,
@@ -17,6 +18,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { CreateContextParams, RepositoryBranchConfig } from "@/hooks/useContexts";
 import type { Context, Project } from "@/models/Project";
+import { fuzzySelectFilter } from "@/utils/fuzzySelectFilter";
 import { BranchNameFromTaskPopover } from "./BranchNameFromTaskPopover";
 
 type CreateFromContextModalProps = {
@@ -28,8 +30,11 @@ type CreateFromContextModalProps = {
 };
 
 type RepositoryFormState = {
+	/** When off, the repo is symlinked to the base context instead of branched. */
 	createBranch: boolean;
+	/** Branch to check out: an existing branch, or a new name to create. */
 	branchName: string;
+	/** Base branch a new branch is cut from (ignored when the branch exists). */
 	baseBranch: string;
 };
 
@@ -94,12 +99,15 @@ export function CreateFromContextModal({
 		}
 	}
 
+	// A repo contributes if it creates/checks out a branch, or is symlinked
+	// (createBranch off); so at least one repo always produces a worktree entry.
 	const hasAtLeastOneBranch = Object.values(repoStates).some(
-		(s) => s.createBranch && s.branchName.trim(),
+		(s) => !s.createBranch || Boolean(s.branchName.trim()),
 	);
 
 	const hasErrors = Object.keys(branchErrors).length > 0;
 
+	/** Applies one branch name to every repo that is set to create a branch. */
 	function syncBranchesToName(name: string) {
 		const trimmed = name.trim();
 		setRepoStates((prev) => {
@@ -148,7 +156,14 @@ export function CreateFromContextModal({
 
 		for (const repo of repositories) {
 			const state = repoStates[repo.id];
-			if (!state.createBranch || !state.branchName.trim()) continue;
+			const branch = state.branchName.trim();
+			if (!state.createBranch || !branch) continue;
+
+			// Selecting an existing branch is fine: the backend checks it out
+			// (reusing its worktree if any). Only a brand-new branch name that
+			// collides with an already checked-out branch is a real conflict.
+			const branchExists = (branchOptions[repo.id] ?? []).includes(branch);
+			if (branchExists) continue;
 
 			try {
 				const resolvedPath = await repo.resolveAbsolutePath(project.path);
@@ -156,10 +171,10 @@ export function CreateFromContextModal({
 					"list_worktrees",
 					{ path: resolvedPath },
 				);
-				const conflicting = worktrees.find((wt) => wt.branch === state.branchName.trim());
+				const conflicting = worktrees.find((wt) => wt.branch === branch);
 				if (conflicting) {
 					errors[repo.id] = t("contexts.branchAlreadyInUse", {
-						branch: state.branchName.trim(),
+						branch,
 						worktree: conflicting.path,
 					});
 				}
@@ -182,11 +197,26 @@ export function CreateFromContextModal({
 
 			const repositoryConfigs: RepositoryBranchConfig[] = repositories.map((repo) => {
 				const state = repoStates[repo.id];
+				const branch = state.branchName.trim();
+				const branchExists = (branchOptions[repo.id] ?? []).includes(branch);
+				// Checkbox off, or no branch typed: link this repo to the base
+				// context's checkout. Empty branchName drives the link path in the
+				// hook; baseBranch keeps the source branch so the linked repo still
+				// records a meaningful branch. An existing branch is checked out
+				// as-is; a new name is created off the base branch.
+				if (!state.createBranch || !branch) {
+					return {
+						repositoryId: repo.id,
+						createBranch: false,
+						branchName: "",
+						baseBranch: state.baseBranch,
+					};
+				}
 				return {
 					repositoryId: repo.id,
-					createBranch: state.createBranch && !!state.branchName.trim(),
-					branchName: state.branchName.trim(),
-					baseBranch: state.baseBranch,
+					createBranch: !branchExists,
+					branchName: branch,
+					baseBranch: branchExists ? branch : state.baseBranch,
 				};
 			});
 
@@ -248,6 +278,9 @@ export function CreateFromContextModal({
 				/>
 				{repositories.map((repo) => {
 					const state = repoStates[repo.id];
+					const branches = branchOptions[repo.id] ?? [];
+					const branch = state.branchName.trim();
+					const branchExists = branches.includes(branch);
 					return (
 						<Box
 							key={repo.id}
@@ -269,32 +302,41 @@ export function CreateFromContextModal({
 										});
 									}}
 								/>
-								{state.createBranch && (
-									<Group gap="xs" grow>
+								{state.createBranch ? (
+									<Group gap="xs" grow align="flex-start">
 										<Select
 											label={t("contexts.baseBranch")}
-											value={state.baseBranch}
+											value={state.baseBranch || null}
 											onChange={(value) => updateRepoState(repo.id, { baseBranch: value ?? "" })}
-											data={branchOptions[repo.id] ?? []}
+											data={branches}
+											placeholder={t("contexts.selectExistingBranch")}
+											nothingFoundMessage={t("contexts.noBranchesFound")}
+											disabled={branchExists}
 											searchable
 											size="xs"
 										/>
-										<TextInput
-											label={t("contexts.newBranchName")}
-											placeholder="feature/my-feature"
-											value={state.branchName}
-											onChange={(e) =>
-												updateRepoState(repo.id, { branchName: e.currentTarget.value })
+										<Autocomplete
+											label={t("contexts.contextBranch")}
+											description={
+												branch
+													? branchExists
+														? t("contexts.branchExistsHint")
+														: t("contexts.branchNewHint")
+													: undefined
 											}
+											placeholder={t("contexts.selectExistingBranch")}
+											value={state.branchName}
+											onChange={(value) => updateRepoState(repo.id, { branchName: value })}
+											data={branches}
 											readOnly={syncBranchNames}
 											error={branchErrors[repo.id]}
+											filter={fuzzySelectFilter}
 											size="xs"
 										/>
 									</Group>
-								)}
-								{!state.createBranch && (
+								) : (
 									<Text size="xs" c="dimmed">
-										{t("contexts.keepExistingBranch")}: {state.baseBranch}
+										{t("contexts.repoWillBeLinkedToBase")}
 									</Text>
 								)}
 							</Stack>

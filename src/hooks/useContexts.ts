@@ -660,12 +660,19 @@ async function buildRepoInputs(project: Project, repoConfigs: RepositoryBranchCo
 		const repo = project.findEffectiveRepository(config.repositoryId);
 		if (!repo) continue;
 		const resolvedPath = await repo.resolveAbsolutePath(project.path);
+		// Three cases, keyed off what the modal selected for this repo:
+		//  - createBranch: cut a new branch (branchName) off the base and check out.
+		//  - an existing branch chosen (branchName set): check it out directly.
+		//  - nothing chosen (branchName empty): link to the base context's
+		//    checkout; the recorded branch is the base branch for meaning.
+		const checkoutExisting = !config.createBranch && Boolean(config.branchName);
+		const linked = !config.createBranch && !config.branchName;
 		inputs.push({
 			rel_path: resolvedPath,
 			name: repo.name,
-			branch: config.createBranch ? config.branchName : config.baseBranch,
+			branch: config.createBranch || checkoutExisting ? config.branchName : config.baseBranch,
 			base_branch: config.baseBranch,
-			linked: !config.createBranch,
+			linked,
 			post_checkout_command: repo.postCheckoutCommand ?? null,
 		});
 	}
