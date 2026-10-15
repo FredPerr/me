@@ -23,6 +23,9 @@ dist-ssr
 *.sln
 *.sw?
 
+# Git worktrees created by the app
+.worktrees/
+
 # CI analysis artifacts
 dep-graph.json
 bottleneck-comment.md
