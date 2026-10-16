@@ -10,30 +10,30 @@ pub mod person;
 pub mod ports;
 pub mod provider_connection;
 pub mod provider_kind;
-pub mod work_item;
-pub mod work_item_group;
-pub mod work_project;
+pub mod remote_project;
+pub mod task;
+pub mod task_group;
 
 #[cfg(test)]
 mod serialization_tests {
     use super::identifiers::PersonId;
-    use super::identifiers::{WorkItemId, WorkProjectId};
+    use super::identifiers::{RemoteProjectId, TaskId};
     use super::label::Label;
     use super::page::{Cursor, Page};
     use super::person::Person;
-    use super::work_item::{WorkItem, WorkItemPriority, WorkItemStatus};
+    use super::task::{Task, TaskPriority, TaskStatus};
 
-    fn minimal_item() -> WorkItem {
-        WorkItem {
-            id: WorkItemId::from_numeric(1),
-            project_id: WorkProjectId::from_numeric(2),
+    fn minimal_task() -> Task {
+        Task {
+            id: TaskId::from_numeric(1),
+            project_id: RemoteProjectId::from_numeric(2),
             group_id: None,
             parent_id: None,
             title: "Task".into(),
             description: None,
-            status: WorkItemStatus::InProgress,
+            status: TaskStatus::InProgress,
             raw_status: "new".into(),
-            priority: WorkItemPriority::None,
+            priority: TaskPriority::None,
             raw_priority: None,
             assignees: vec![Person::new(PersonId::from_numeric(3), "Ada".into(), None)],
             labels: vec![Label::new("bug".into(), None)],
@@ -44,8 +44,8 @@ mod serialization_tests {
     }
 
     #[test]
-    fn work_item_omits_absent_optionals() {
-        let json = serde_json::to_string(&minimal_item()).unwrap();
+    fn task_omits_absent_optionals() {
+        let json = serde_json::to_string(&minimal_task()).unwrap();
         assert!(!json.contains("null"), "{json}");
         for key in [
             "groupId",
@@ -67,7 +67,7 @@ mod serialization_tests {
     #[test]
     fn typed_id_serializes_as_bare_string() {
         assert_eq!(
-            serde_json::to_string(&WorkItemId::from_numeric(42)).unwrap(),
+            serde_json::to_string(&TaskId::from_numeric(42)).unwrap(),
             "\"42\""
         );
     }

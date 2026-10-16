@@ -1,4 +1,4 @@
-//! Work Tracking bounded context: remote projects, item groups and items from
+//! Work Tracking bounded context: remote projects, task groups and tasks from
 //! providers such as Teamwork (and later Jira or GitHub Issues).
 //!
 //! This module is the composition root: it is the only place outside

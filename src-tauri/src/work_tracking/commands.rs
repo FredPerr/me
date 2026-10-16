@@ -5,9 +5,9 @@ use tauri::State;
 use super::application::service::{ConnectionView, SaveConnectionCommand, WorkTrackingService};
 use super::domain::error::{InputField, InvalidInputReason, WorkTrackingError};
 use super::domain::page::Page;
-use super::domain::work_item::WorkItem;
-use super::domain::work_item_group::WorkItemGroup;
-use super::domain::work_project::WorkProject;
+use super::domain::remote_project::RemoteProject;
+use super::domain::task::Task;
+use super::domain::task_group::TaskGroup;
 
 /// Structured wire error. `message` is a fixed English sentence per kind and
 /// never contains provider or credential data.
@@ -168,7 +168,7 @@ pub async fn work_tracking_list_projects(
     state: State<'_, WorkTrackingService>,
     connection_id: String,
     cursor: Option<String>,
-) -> Result<Page<WorkProject>, CommandError> {
+) -> Result<Page<RemoteProject>, CommandError> {
     Ok(state
         .list_projects(&connection_id, cursor.as_deref())
         .await?)
@@ -180,7 +180,7 @@ pub async fn work_tracking_list_groups(
     connection_id: String,
     project_id: String,
     cursor: Option<String>,
-) -> Result<Page<WorkItemGroup>, CommandError> {
+) -> Result<Page<TaskGroup>, CommandError> {
     Ok(state
         .list_groups(&connection_id, &project_id, cursor.as_deref())
         .await?)
@@ -193,7 +193,7 @@ pub async fn work_tracking_list_items(
     project_id: String,
     group_id: String,
     cursor: Option<String>,
-) -> Result<Page<WorkItem>, CommandError> {
+) -> Result<Page<Task>, CommandError> {
     Ok(state
         .list_items(&connection_id, &project_id, &group_id, cursor.as_deref())
         .await?)
@@ -205,7 +205,7 @@ pub async fn work_tracking_list_project_items(
     connection_id: String,
     project_id: String,
     cursor: Option<String>,
-) -> Result<Page<WorkItem>, CommandError> {
+) -> Result<Page<Task>, CommandError> {
     Ok(state
         .list_project_items(&connection_id, &project_id, cursor.as_deref())
         .await?)

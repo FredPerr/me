@@ -1,12 +1,12 @@
 use serde::Serialize;
 
-use super::identifiers::{WorkItemGroupId, WorkItemId, WorkProjectId};
+use super::identifiers::{RemoteProjectId, TaskGroupId, TaskId};
 use super::label::Label;
 use super::person::Person;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub enum WorkItemStatus {
+pub enum TaskStatus {
     Todo,
     InProgress,
     Done,
@@ -16,7 +16,7 @@ pub enum WorkItemStatus {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub enum WorkItemPriority {
+pub enum TaskPriority {
     None,
     Low,
     Medium,
@@ -29,19 +29,19 @@ pub enum WorkItemPriority {
 /// Read model of a remote task, issue or subtask.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct WorkItem {
-    pub id: WorkItemId,
-    pub project_id: WorkProjectId,
+pub struct Task {
+    pub id: TaskId,
+    pub project_id: RemoteProjectId,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub group_id: Option<WorkItemGroupId>,
+    pub group_id: Option<TaskGroupId>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub parent_id: Option<WorkItemId>,
+    pub parent_id: Option<TaskId>,
     pub title: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
-    pub status: WorkItemStatus,
+    pub status: TaskStatus,
     pub raw_status: String,
-    pub priority: WorkItemPriority,
+    pub priority: TaskPriority,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub raw_priority: Option<String>,
     pub assignees: Vec<Person>,

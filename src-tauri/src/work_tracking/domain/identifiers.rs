@@ -24,7 +24,7 @@ macro_rules! typed_id {
         pub struct $name(String);
 
         impl $name {
-            // WorkItemId and PersonId are only serialized, never read back in non-test code.
+            // TaskId and PersonId are only serialized, never read back in non-test code.
             #[allow(dead_code)]
             pub fn as_str(&self) -> &str {
                 &self.0
@@ -49,15 +49,15 @@ macro_rules! typed_id {
 
 typed_id!(ConnectionId);
 typed_id!(@parse ConnectionId);
-typed_id!(WorkProjectId);
-typed_id!(@parse WorkProjectId);
-typed_id!(@numeric WorkProjectId);
-typed_id!(WorkItemGroupId);
-typed_id!(@parse WorkItemGroupId);
-typed_id!(@numeric WorkItemGroupId);
-typed_id!(WorkItemId);
-typed_id!(@parse WorkItemId);
-typed_id!(@numeric WorkItemId);
+typed_id!(RemoteProjectId);
+typed_id!(@parse RemoteProjectId);
+typed_id!(@numeric RemoteProjectId);
+typed_id!(TaskGroupId);
+typed_id!(@parse TaskGroupId);
+typed_id!(@numeric TaskGroupId);
+typed_id!(TaskId);
+typed_id!(@parse TaskId);
+typed_id!(@numeric TaskId);
 typed_id!(PersonId);
 typed_id!(@numeric PersonId);
 
@@ -99,7 +99,7 @@ mod tests {
     use super::*;
 
     fn reason(raw: &str) -> InvalidInputReason {
-        match WorkProjectId::parse(raw, InputField::ProjectId) {
+        match RemoteProjectId::parse(raw, InputField::ProjectId) {
             Err(WorkTrackingError::InvalidInput {
                 field: InputField::ProjectId,
                 reason,
@@ -110,7 +110,7 @@ mod tests {
 
     #[test]
     fn parse_trims() {
-        let id = WorkProjectId::parse("  42 ", InputField::ProjectId).unwrap();
+        let id = RemoteProjectId::parse("  42 ", InputField::ProjectId).unwrap();
         assert_eq!(id.as_str(), "42");
     }
 
@@ -125,7 +125,7 @@ mod tests {
 
     #[test]
     fn parse_enforces_max_length() {
-        assert!(WorkProjectId::parse(&"a".repeat(MAX_ID_LENGTH), InputField::ProjectId).is_ok());
+        assert!(RemoteProjectId::parse(&"a".repeat(MAX_ID_LENGTH), InputField::ProjectId).is_ok());
         assert_eq!(
             reason(&"a".repeat(MAX_ID_LENGTH + 1)),
             InvalidInputReason::TooLong
@@ -142,7 +142,7 @@ mod tests {
             ))
         );
         assert_eq!(
-            WorkItemGroupId::parse("a/b", InputField::GroupId),
+            TaskGroupId::parse("a/b", InputField::GroupId),
             Err(WorkTrackingError::invalid_input(
                 InputField::GroupId,
                 InvalidInputReason::InvalidFormat
@@ -153,7 +153,7 @@ mod tests {
     #[test]
     fn from_numeric_handles_max_value() {
         assert_eq!(
-            WorkItemId::from_numeric(u64::MAX).as_str(),
+            TaskId::from_numeric(u64::MAX).as_str(),
             "18446744073709551615"
         );
         assert_eq!(PersonId::from_numeric(7).as_str(), "7");

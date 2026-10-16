@@ -7,14 +7,14 @@ use super::web_urls;
 use crate::work_tracking::domain::base_url::BaseUrl;
 use crate::work_tracking::domain::error::{InputField, InvalidInputReason, WorkTrackingError};
 use crate::work_tracking::domain::identifiers::{
-    ConnectionId, PersonId, WorkItemGroupId, WorkItemId, WorkProjectId,
+    ConnectionId, PersonId, RemoteProjectId, TaskGroupId, TaskId,
 };
 use crate::work_tracking::domain::label::Label;
 use crate::work_tracking::domain::page::{Cursor, Page};
 use crate::work_tracking::domain::person::Person;
-use crate::work_tracking::domain::work_item::{WorkItem, WorkItemPriority, WorkItemStatus};
-use crate::work_tracking::domain::work_item_group::{WorkItemGroup, WorkItemGroupKind};
-use crate::work_tracking::domain::work_project::{WorkProject, WorkProjectStatus};
+use crate::work_tracking::domain::remote_project::{RemoteProject, RemoteProjectStatus};
+use crate::work_tracking::domain::task::{Task, TaskPriority, TaskStatus};
+use crate::work_tracking::domain::task_group::{TaskGroup, TaskGroupKind};
 
 const MAX_NUMERIC_ID_DIGITS: usize = 20;
 const DATE_LENGTH: usize = 10;
@@ -65,34 +65,34 @@ fn next_cursor(page: u32, meta: Option<&MetaDto>) -> Option<Cursor> {
         .map(|next| Cursor::from_numeric(u64::from(next)))
 }
 
-fn project_status(raw: Option<&str>) -> WorkProjectStatus {
+fn project_status(raw: Option<&str>) -> RemoteProjectStatus {
     match raw {
-        Some("active") => WorkProjectStatus::Active,
+        Some("active") => RemoteProjectStatus::Active,
         // In v3 "inactive" is the archived state.
-        Some("inactive") => WorkProjectStatus::Archived,
-        _ => WorkProjectStatus::Other,
+        Some("inactive") => RemoteProjectStatus::Archived,
+        _ => RemoteProjectStatus::Other,
     }
 }
 
 /// v3 exposes "started" only through `progress`, so a new or reopened task
 /// with progress is reported as in progress.
-fn task_status(raw: Option<&str>, progress: Option<u32>) -> WorkItemStatus {
+fn task_status(raw: Option<&str>, progress: Option<u32>) -> TaskStatus {
     match raw {
-        Some("new") | Some("reopened") if progress.unwrap_or(0) > 0 => WorkItemStatus::InProgress,
-        Some("new") | Some("reopened") => WorkItemStatus::Todo,
-        Some("completed") => WorkItemStatus::Done,
-        Some("deleted") => WorkItemStatus::Cancelled,
-        _ => WorkItemStatus::Unknown,
+        Some("new") | Some("reopened") if progress.unwrap_or(0) > 0 => TaskStatus::InProgress,
+        Some("new") | Some("reopened") => TaskStatus::Todo,
+        Some("completed") => TaskStatus::Done,
+        Some("deleted") => TaskStatus::Cancelled,
+        _ => TaskStatus::Unknown,
     }
 }
 
-fn task_priority(raw: Option<&str>) -> WorkItemPriority {
+fn task_priority(raw: Option<&str>) -> TaskPriority {
     match raw.map(str::to_ascii_lowercase).as_deref() {
-        None | Some("") => WorkItemPriority::None,
-        Some("low") => WorkItemPriority::Low,
-        Some("medium") => WorkItemPriority::Medium,
-        Some("high") => WorkItemPriority::High,
-        Some(_) => WorkItemPriority::Unknown,
+        None | Some("") => TaskPriority::None,
+        Some("low") => TaskPriority::Low,
+        Some("medium") => TaskPriority::Medium,
+        Some("high") => TaskPriority::High,
+        Some(_) => TaskPriority::Unknown,
     }
 }
 
@@ -167,9 +167,9 @@ fn map_project(
     project: ProjectDto,
     connection_id: &ConnectionId,
     base_url: &BaseUrl,
-) -> WorkProject {
-    WorkProject {
-        id: WorkProjectId::from_numeric(project.id),
+) -> RemoteProject {
+    RemoteProject {
+        id: RemoteProjectId::from_numeric(project.id),
         connection_id: connection_id.clone(),
         name: project.name,
         description: project.description,
@@ -180,15 +180,15 @@ fn map_project(
 
 fn map_tasklist(
     tasklist: TasklistDto,
-    project_id: &WorkProjectId,
+    project_id: &RemoteProjectId,
     base_url: &BaseUrl,
-) -> WorkItemGroup {
-    WorkItemGroup {
-        id: WorkItemGroupId::from_numeric(tasklist.id),
+) -> TaskGroup {
+    TaskGroup {
+        id: TaskGroupId::from_numeric(tasklist.id),
         project_id: project_id.clone(),
         name: tasklist.name,
         description: tasklist.description,
-        kind: WorkItemGroupKind::TaskList,
+        kind: TaskGroupKind::TaskList,
         position: tasklist.display_order,
         url: Some(web_urls::tasklist_url(base_url, tasklist.id)),
     }
@@ -197,21 +197,21 @@ fn map_tasklist(
 fn map_task(
     task: TaskDto,
     included: &IncludedDto,
-    project_id: &WorkProjectId,
-    fallback_group_id: Option<&WorkItemGroupId>,
+    project_id: &RemoteProjectId,
+    fallback_group_id: Option<&TaskGroupId>,
     base_url: &BaseUrl,
-) -> WorkItem {
-    WorkItem {
-        id: WorkItemId::from_numeric(task.id),
+) -> Task {
+    Task {
+        id: TaskId::from_numeric(task.id),
         project_id: project_id.clone(),
         group_id: task
             .tasklist_id
-            .map(WorkItemGroupId::from_numeric)
+            .map(TaskGroupId::from_numeric)
             .or_else(|| fallback_group_id.cloned()),
         parent_id: task
             .parent_task_id
             .filter(|parent| *parent != 0)
-            .map(WorkItemId::from_numeric),
+            .map(TaskId::from_numeric),
         title: task.name,
         description: task.description,
         status: task_status(task.status.as_deref(), task.progress),
@@ -231,7 +231,7 @@ pub fn map_projects(
     connection_id: &ConnectionId,
     base_url: &BaseUrl,
     page: u32,
-) -> Page<WorkProject> {
+) -> Page<RemoteProject> {
     Page {
         next_cursor: next_cursor(page, response.meta.as_ref()),
         items: response
@@ -244,10 +244,10 @@ pub fn map_projects(
 
 pub fn map_tasklists(
     response: TasklistsResponse,
-    project_id: &WorkProjectId,
+    project_id: &RemoteProjectId,
     base_url: &BaseUrl,
     page: u32,
-) -> Page<WorkItemGroup> {
+) -> Page<TaskGroup> {
     Page {
         next_cursor: next_cursor(page, response.meta.as_ref()),
         items: response
@@ -260,11 +260,11 @@ pub fn map_tasklists(
 
 pub fn map_tasks(
     response: TasksResponse,
-    project_id: &WorkProjectId,
-    fallback_group_id: Option<&WorkItemGroupId>,
+    project_id: &RemoteProjectId,
+    fallback_group_id: Option<&TaskGroupId>,
     base_url: &BaseUrl,
     page: u32,
-) -> Page<WorkItem> {
+) -> Page<Task> {
     let included = response.included.unwrap_or_default();
     Page {
         next_cursor: next_cursor(page, response.meta.as_ref()),
@@ -301,15 +301,15 @@ mod tests {
         ConnectionId::parse("teamwork:acme.teamwork.com", InputField::ConnectionId).unwrap()
     }
 
-    fn project_id() -> WorkProjectId {
-        WorkProjectId::from_numeric(100)
+    fn project_id() -> RemoteProjectId {
+        RemoteProjectId::from_numeric(100)
     }
 
-    fn group_id() -> WorkItemGroupId {
-        WorkItemGroupId::from_numeric(200)
+    fn group_id() -> TaskGroupId {
+        TaskGroupId::from_numeric(200)
     }
 
-    fn tasks(json: &str, page: u32) -> Page<WorkItem> {
+    fn tasks(json: &str, page: u32) -> Page<Task> {
         map_tasks(
             parse(json),
             &project_id(),
@@ -319,8 +319,8 @@ mod tests {
         )
     }
 
-    fn task(page: &Page<WorkItem>, id: u64) -> &WorkItem {
-        let id = WorkItemId::from_numeric(id);
+    fn task(page: &Page<Task>, id: u64) -> &Task {
+        let id = TaskId::from_numeric(id);
         page.items
             .iter()
             .find(|item| item.id == id)
@@ -330,15 +330,15 @@ mod tests {
     #[test]
     fn maps_projects_and_statuses() {
         let page = map_projects(parse(PROJECTS_PAGE), &connection_id(), &base_url(), 1);
-        let statuses: Vec<WorkProjectStatus> =
+        let statuses: Vec<RemoteProjectStatus> =
             page.items.iter().map(|project| project.status).collect();
         assert_eq!(
             statuses,
             vec![
-                WorkProjectStatus::Active,
-                WorkProjectStatus::Archived,
-                WorkProjectStatus::Other,
-                WorkProjectStatus::Other,
+                RemoteProjectStatus::Active,
+                RemoteProjectStatus::Archived,
+                RemoteProjectStatus::Other,
+                RemoteProjectStatus::Other,
             ]
         );
         let first = &page.items[0];
@@ -358,7 +358,7 @@ mod tests {
         let first = &page.items[0];
         assert_eq!(first.id.as_str(), "201");
         assert_eq!(first.project_id, project_id());
-        assert_eq!(first.kind, WorkItemGroupKind::TaskList);
+        assert_eq!(first.kind, TaskGroupKind::TaskList);
         assert_eq!(first.position, Some(2));
         assert_eq!(
             first.url.as_deref(),
@@ -371,38 +371,38 @@ mod tests {
     #[test]
     fn maps_task_statuses() {
         let page = tasks(TASKS_PAGE, 1);
-        assert_eq!(task(&page, 1).status, WorkItemStatus::Todo);
-        assert_eq!(task(&page, 2).status, WorkItemStatus::InProgress);
-        assert_eq!(task(&page, 3).status, WorkItemStatus::Done);
-        assert_eq!(task(&page, 4).status, WorkItemStatus::Cancelled);
-        assert_eq!(task(&page, 5).status, WorkItemStatus::InProgress);
+        assert_eq!(task(&page, 1).status, TaskStatus::Todo);
+        assert_eq!(task(&page, 2).status, TaskStatus::InProgress);
+        assert_eq!(task(&page, 3).status, TaskStatus::Done);
+        assert_eq!(task(&page, 4).status, TaskStatus::Cancelled);
+        assert_eq!(task(&page, 5).status, TaskStatus::InProgress);
         assert_eq!(task(&page, 5).raw_status, "reopened");
-        assert_eq!(task(&page, 6).status, WorkItemStatus::Todo);
+        assert_eq!(task(&page, 6).status, TaskStatus::Todo);
     }
 
     #[test]
     fn maps_task_priorities() {
         let page = tasks(TASKS_PAGE, 1);
-        assert_eq!(task(&page, 1).priority, WorkItemPriority::High);
+        assert_eq!(task(&page, 1).priority, TaskPriority::High);
         assert_eq!(task(&page, 1).raw_priority.as_deref(), Some("high"));
-        assert_eq!(task(&page, 2).priority, WorkItemPriority::Medium);
-        assert_eq!(task(&page, 3).priority, WorkItemPriority::Low);
-        assert_eq!(task(&page, 4).priority, WorkItemPriority::None);
+        assert_eq!(task(&page, 2).priority, TaskPriority::Medium);
+        assert_eq!(task(&page, 3).priority, TaskPriority::Low);
+        assert_eq!(task(&page, 4).priority, TaskPriority::None);
         assert_eq!(task(&page, 4).raw_priority, None);
-        assert_eq!(task(&page, 5).priority, WorkItemPriority::None);
-        assert_eq!(task(&page, 6).priority, WorkItemPriority::High);
+        assert_eq!(task(&page, 5).priority, TaskPriority::None);
+        assert_eq!(task(&page, 6).priority, TaskPriority::High);
     }
 
     #[test]
     fn maps_unknown_values() {
         let page = tasks(TASKS_UNKNOWN_VALUES, 1);
         let unknown = task(&page, 10);
-        assert_eq!(unknown.status, WorkItemStatus::Unknown);
+        assert_eq!(unknown.status, TaskStatus::Unknown);
         assert_eq!(unknown.raw_status, "blocked");
-        assert_eq!(unknown.priority, WorkItemPriority::Unknown);
+        assert_eq!(unknown.priority, TaskPriority::Unknown);
         assert_eq!(unknown.raw_priority.as_deref(), Some("critical"));
         let missing = task(&page, 11);
-        assert_eq!(missing.status, WorkItemStatus::Unknown);
+        assert_eq!(missing.status, TaskStatus::Unknown);
         assert_eq!(missing.raw_status, "");
         assert_eq!(missing.due_date, None);
     }
@@ -465,7 +465,7 @@ mod tests {
         let page = tasks(TASKS_PAGE, 1);
         let parent = task(&page, 1);
         assert_eq!(parent.parent_id, None);
-        assert_eq!(parent.group_id, Some(WorkItemGroupId::from_numeric(201)));
+        assert_eq!(parent.group_id, Some(TaskGroupId::from_numeric(201)));
         assert_eq!(parent.project_id, project_id());
         assert_eq!(parent.due_date.as_deref(), Some("2024-01-15"));
         assert_eq!(parent.updated_at.as_deref(), Some("2024-01-10T12:00:00Z"));
@@ -474,7 +474,7 @@ mod tests {
         assert_eq!(parent.description.as_deref(), Some("Hero section"));
 
         let subtask = task(&page, 2);
-        assert_eq!(subtask.parent_id, Some(WorkItemId::from_numeric(1)));
+        assert_eq!(subtask.parent_id, Some(TaskId::from_numeric(1)));
         assert_eq!(subtask.due_date.as_deref(), Some("2024-02-01"));
 
         assert_eq!(task(&page, 3).parent_id, None);

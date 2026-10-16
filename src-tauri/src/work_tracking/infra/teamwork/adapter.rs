@@ -9,13 +9,13 @@ use super::mapper;
 use crate::work_tracking::domain::base_url::BaseUrl;
 use crate::work_tracking::domain::error::{InputField, WorkTrackingError};
 use crate::work_tracking::domain::identifiers::{
-    ConnectionId, PersonId, WorkItemGroupId, WorkItemId, WorkProjectId,
+    ConnectionId, PersonId, RemoteProjectId, TaskGroupId, TaskId,
 };
 use crate::work_tracking::domain::page::{Page, PageRequest};
 use crate::work_tracking::domain::ports::WorkTracker;
-use crate::work_tracking::domain::work_item::WorkItem;
-use crate::work_tracking::domain::work_item_group::WorkItemGroup;
-use crate::work_tracking::domain::work_project::WorkProject;
+use crate::work_tracking::domain::remote_project::RemoteProject;
+use crate::work_tracking::domain::task::Task;
+use crate::work_tracking::domain::task_group::TaskGroup;
 
 pub struct TeamworkWorkTracker {
     client: TeamworkClient,
@@ -47,7 +47,7 @@ impl WorkTracker for TeamworkWorkTracker {
 
     async fn assign_user_to_task(
         &self,
-        item_id: &WorkItemId,
+        item_id: &TaskId,
         user_id: &PersonId,
     ) -> Result<(), WorkTrackingError> {
         let item_segment = mapper::numeric_id(item_id.as_str(), InputField::ItemId)?;
@@ -63,7 +63,7 @@ impl WorkTracker for TeamworkWorkTracker {
     async fn list_projects(
         &self,
         page: PageRequest,
-    ) -> Result<Page<WorkProject>, WorkTrackingError> {
+    ) -> Result<Page<RemoteProject>, WorkTrackingError> {
         let page_number = mapper::page_number(page.cursor())?;
         let query = paged_query(PROJECTS_QUERY, page_number, page.page_size());
         let response: ProjectsResponse = self.client.get_json(PROJECTS_PATH, &query).await?;
@@ -77,9 +77,9 @@ impl WorkTracker for TeamworkWorkTracker {
 
     async fn list_groups(
         &self,
-        project_id: &WorkProjectId,
+        project_id: &RemoteProjectId,
         page: PageRequest,
-    ) -> Result<Page<WorkItemGroup>, WorkTrackingError> {
+    ) -> Result<Page<TaskGroup>, WorkTrackingError> {
         let project_segment = mapper::numeric_id(project_id.as_str(), InputField::ProjectId)?;
         let page_number = mapper::page_number(page.cursor())?;
         let query = paged_query(TASKLISTS_QUERY, page_number, page.page_size());
@@ -97,10 +97,10 @@ impl WorkTracker for TeamworkWorkTracker {
 
     async fn list_items(
         &self,
-        project_id: &WorkProjectId,
-        group_id: &WorkItemGroupId,
+        project_id: &RemoteProjectId,
+        group_id: &TaskGroupId,
         page: PageRequest,
-    ) -> Result<Page<WorkItem>, WorkTrackingError> {
+    ) -> Result<Page<Task>, WorkTrackingError> {
         mapper::numeric_id(project_id.as_str(), InputField::ProjectId)?;
         let group_segment = mapper::numeric_id(group_id.as_str(), InputField::GroupId)?;
         let page_number = mapper::page_number(page.cursor())?;
@@ -120,9 +120,9 @@ impl WorkTracker for TeamworkWorkTracker {
 
     async fn list_project_items(
         &self,
-        project_id: &WorkProjectId,
+        project_id: &RemoteProjectId,
         page: PageRequest,
-    ) -> Result<Page<WorkItem>, WorkTrackingError> {
+    ) -> Result<Page<Task>, WorkTrackingError> {
         let project_segment = mapper::numeric_id(project_id.as_str(), InputField::ProjectId)?;
         let page_number = mapper::page_number(page.cursor())?;
         let query = paged_query(TASKS_QUERY, page_number, page.page_size());
@@ -165,8 +165,8 @@ mod tests {
     #[test]
     fn rejects_non_digit_ids_before_requesting() {
         let tracker = tracker();
-        let project = WorkProjectId::parse("abc", InputField::ProjectId).unwrap();
-        let group = WorkItemGroupId::parse("12", InputField::GroupId).unwrap();
+        let project = RemoteProjectId::parse("abc", InputField::ProjectId).unwrap();
+        let group = TaskGroupId::parse("12", InputField::GroupId).unwrap();
         assert_eq!(
             block_on(tracker.list_groups(&project, first_page())),
             Err(WorkTrackingError::invalid_input(
@@ -188,8 +188,8 @@ mod tests {
                 InvalidInputReason::InvalidFormat
             ))
         );
-        let valid_project = WorkProjectId::parse("1", InputField::ProjectId).unwrap();
-        let bad_group = WorkItemGroupId::parse("x1", InputField::GroupId).unwrap();
+        let valid_project = RemoteProjectId::parse("1", InputField::ProjectId).unwrap();
+        let bad_group = TaskGroupId::parse("x1", InputField::GroupId).unwrap();
         assert_eq!(
             block_on(tracker.list_items(&valid_project, &bad_group, first_page())),
             Err(WorkTrackingError::invalid_input(
