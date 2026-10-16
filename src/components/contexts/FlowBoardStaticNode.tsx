@@ -2,7 +2,7 @@ import { Badge, Group, Paper, Stack, Text } from "@mantine/core";
 import { CubeIcon } from "@phosphor-icons/react";
 import { useTranslation } from "react-i18next";
 import type { ContextView, ProjectView } from "@/bindings";
-import type { PullRequestLookup } from "@/hooks/useContextPullRequestStatus";
+import type { PullRequestLookup } from "@/models/git-hosting/branchPullRequests";
 import { ContextCard } from "./ContextCard";
 
 export type FlowBoardStaticData = {

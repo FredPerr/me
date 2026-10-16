@@ -2,13 +2,13 @@ import { ActionIcon, Tooltip } from "@mantine/core";
 import { GitMergeIcon, GitPullRequestIcon } from "@phosphor-icons/react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useTranslation } from "react-i18next";
+import type { HostedPullRequestView } from "@/bindings";
 import {
-	type ProviderPullRequest,
-	type PullRequestStatus,
-	pullRequestStatus,
-} from "@/models/git-provider/GitProvider";
+	type PullRequestIconState,
+	pullRequestIconState,
+} from "@/models/git-hosting/pullRequestIconState";
 
-const STATUS_COLOR: Record<PullRequestStatus, string> = {
+const STATUS_COLOR: Record<PullRequestIconState, string> = {
 	merged: "var(--mantine-color-grape-5)",
 	open: "var(--mantine-color-green-5)",
 	draft: "var(--mantine-color-gray-5)",
@@ -16,7 +16,7 @@ const STATUS_COLOR: Record<PullRequestStatus, string> = {
 };
 
 type PullRequestStatusIconProps = {
-	pullRequest: ProviderPullRequest;
+	pullRequest: HostedPullRequestView;
 };
 
 /**
@@ -26,7 +26,7 @@ type PullRequestStatusIconProps = {
  */
 export function PullRequestStatusIcon({ pullRequest }: PullRequestStatusIconProps) {
 	const { t } = useTranslation();
-	const status = pullRequestStatus(pullRequest);
+	const status = pullRequestIconState(pullRequest);
 	const Icon = status === "merged" ? GitMergeIcon : GitPullRequestIcon;
 	const label = t(`contexts.pullRequestStatus.${status}`, { number: pullRequest.number });
 
@@ -37,7 +37,7 @@ export function PullRequestStatusIcon({ pullRequest }: PullRequestStatusIconProp
 				size="sm"
 				radius={2}
 				bg="transparent"
-				onClick={() => openUrl(pullRequest.htmlUrl)}
+				onClick={() => openUrl(pullRequest.url)}
 				aria-label={label}
 			>
 				<Icon size={12} color={STATUS_COLOR[status]} weight="fill" />

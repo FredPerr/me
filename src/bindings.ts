@@ -49,6 +49,11 @@ export const commands = {
 	gitHostingSignOut: (host: HostKindView) => __TAURI_INVOKE<null>("git_hosting_sign_out", { host }),
 	/**  The open pull requests of each repository of the Project, in its order. */
 	gitHostingProjectPullRequests: (projectTag: string) => __TAURI_INVOKE<RepositoryPullRequestsView[]>("git_hosting_project_pull_requests", { projectTag }),
+	/**
+	 *  The pull request of each branch the Project's contexts use, once per
+	 *  repository and branch: one call for the whole board.
+	 */
+	gitHostingContextPullRequests: (projectTag: string) => __TAURI_INVOKE<BranchPullRequestView[]>("git_hosting_context_pull_requests", { projectTag }),
 };
 
 /** Events */
@@ -77,6 +82,19 @@ export type BranchNamingView = {
 	prefixes: string[],
 	allowsNoPrefix: boolean,
 	defaultPrefix: string | null,
+};
+
+/**
+ *  What became of looking up the pull request of one context branch.
+ *  `pullRequest` is null when the branch has none.
+ */
+export type BranchPullRequestStatusView = { kind: "noRemote" } | { kind: "unsupportedHost" } | { kind: "notConnected" } | { kind: "failed"; error: GitHostingCommandError } | { kind: "ok"; pullRequest: HostedPullRequestView | null };
+
+export type BranchPullRequestView = {
+	repositoryId: string,
+	branch: string,
+	host: HostKindView | null,
+	status: BranchPullRequestStatusView,
 };
 
 export type BrowserSignInStepView = {

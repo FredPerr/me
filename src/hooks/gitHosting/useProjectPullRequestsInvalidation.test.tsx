@@ -4,6 +4,7 @@ import { renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ProjectChanged } from "@/bindings";
+import { contextPullRequestsQueryKey } from "./useContextPullRequests";
 import { projectPullRequestsQueryKey } from "./useProjectPullRequests";
 import { useProjectPullRequestsInvalidation } from "./useProjectPullRequestsInvalidation";
 
@@ -32,8 +33,14 @@ function announceProjectChanged(tag: string) {
 	for (const listener of projectChangedEvents.listeners) listener({ payload: { tag } });
 }
 
-function isInvalidated(queryClient: QueryClient, projectTag: string): boolean {
-	return queryClient.getQueryState(projectPullRequestsQueryKey(projectTag))?.isInvalidated ?? false;
+type ProjectQueryKey = (projectTag: string) => readonly string[];
+
+function isInvalidated(
+	queryClient: QueryClient,
+	projectTag: string,
+	queryKey: ProjectQueryKey = projectPullRequestsQueryKey,
+): boolean {
+	return queryClient.getQueryState(queryKey(projectTag))?.isInvalidated ?? false;
 }
 
 describe("useProjectPullRequestsInvalidation", () => {
@@ -54,6 +61,7 @@ describe("useProjectPullRequestsInvalidation", () => {
 		queryClient = new QueryClient();
 		for (const tag of [CHANGED_PROJECT_TAG, OTHER_PROJECT_TAG]) {
 			queryClient.setQueryData(projectPullRequestsQueryKey(tag), []);
+			queryClient.setQueryData(contextPullRequestsQueryKey(tag), []);
 		}
 	});
 
@@ -65,12 +73,21 @@ describe("useProjectPullRequestsInvalidation", () => {
 		expect(isInvalidated(queryClient, CHANGED_PROJECT_TAG)).toBe(true);
 	});
 
+	it("refetches the pull requests of the changed project's context branches", async () => {
+		await renderListening();
+
+		announceProjectChanged(CHANGED_PROJECT_TAG);
+
+		expect(isInvalidated(queryClient, CHANGED_PROJECT_TAG, contextPullRequestsQueryKey)).toBe(true);
+	});
+
 	it("leaves the pull requests of other projects as they are", async () => {
 		await renderListening();
 
 		announceProjectChanged(CHANGED_PROJECT_TAG);
 
 		expect(isInvalidated(queryClient, OTHER_PROJECT_TAG)).toBe(false);
+		expect(isInvalidated(queryClient, OTHER_PROJECT_TAG, contextPullRequestsQueryKey)).toBe(false);
 	});
 
 	it("stops listening once unmounted", async () => {

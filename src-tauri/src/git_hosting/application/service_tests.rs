@@ -2,11 +2,11 @@ use std::sync::{Arc, Mutex};
 
 use super::registry::GitHostRegistry;
 use super::service::GitHostingService;
-use super::test_support::FakeProjectRemotes;
 use super::test_support::{
     account, browser_step, BrowserScript, FakeHostTokens, HostScript, RecordingEvents,
     ScriptedBrowserSignIn, ScriptedPoll, BITBUCKET_LOGIN, DEVICE_CODE, GITHUB_LOGIN,
 };
+use super::test_support::{FakeClock, FakeProjectRemotes};
 use crate::git_hosting::domain::error::{GitHostingError, InputField};
 use crate::git_hosting::domain::host_kind::HostKind;
 use crate::git_hosting::domain::host_secret::HostSecret;
@@ -81,6 +81,7 @@ impl Harness {
             self.accounts.clone(),
             self.events.clone(),
             Arc::new(FakeProjectRemotes::default()),
+            Arc::new(FakeClock::default()),
         )
     }
 

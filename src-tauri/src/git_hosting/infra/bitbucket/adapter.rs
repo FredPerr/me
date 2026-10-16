@@ -68,4 +68,31 @@ impl GitHost for BitbucketHost {
         })
         .await
     }
+
+    async fn find_branch_pull_request(
+        &self,
+        repository: &HostedRepository,
+        branch: &str,
+    ) -> Result<Option<HostedPullRequest>, GitHostingError> {
+        let query = pull_request_mapping::branch_pull_requests_query(branch);
+        let query: Vec<(&str, &str)> = query
+            .iter()
+            .map(|(name, value)| (*name, value.as_str()))
+            .collect();
+        let url = api_url(
+            API_BASE,
+            &[
+                "repositories",
+                &repository.owner,
+                &repository.name,
+                "pullrequests",
+            ],
+            &query,
+        )?;
+        let page: PullRequestPage = self
+            .client
+            .get_json(&url, "find_branch_pull_request")
+            .await?;
+        Ok(pull_request_mapping::branch_pull_request(page.values))
+    }
 }

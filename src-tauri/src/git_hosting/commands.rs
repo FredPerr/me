@@ -11,7 +11,9 @@ use super::domain::error::{GitHostingError, InputField};
 use super::domain::host_kind::HostKind;
 use super::domain::hosted_account::{HostedAccount, SignedInHost};
 use super::domain::hosted_pull_request::{HostedPullRequest, PullRequestState};
-use super::domain::project_pull_requests::{PullRequestsStatus, RepositoryPullRequests};
+use super::domain::project_pull_requests::{
+    BranchPullRequest, BranchPullRequestStatus, PullRequestsStatus, RepositoryPullRequests,
+};
 use super::domain::sign_in::{BrowserSignInStep, SignInProgress};
 use super::GitHosting;
 
@@ -326,6 +328,59 @@ impl From<RepositoryPullRequests> for RepositoryPullRequestsView {
     }
 }
 
+/// What became of looking up the pull request of one context branch.
+/// `pullRequest` is null when the branch has none.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum BranchPullRequestStatusView {
+    NoRemote,
+    UnsupportedHost,
+    NotConnected,
+    Failed {
+        error: GitHostingCommandError,
+    },
+    Ok {
+        #[serde(rename = "pullRequest")]
+        pull_request: Option<HostedPullRequestView>,
+    },
+}
+
+impl From<BranchPullRequestStatus> for BranchPullRequestStatusView {
+    fn from(status: BranchPullRequestStatus) -> Self {
+        match status {
+            PullRequestsStatus::NoRemote => Self::NoRemote,
+            PullRequestsStatus::UnsupportedHost => Self::UnsupportedHost,
+            PullRequestsStatus::NotConnected => Self::NotConnected,
+            PullRequestsStatus::Failed(error) => Self::Failed {
+                error: error.into(),
+            },
+            PullRequestsStatus::Ok(pull_request) => Self::Ok {
+                pull_request: pull_request.map(Into::into),
+            },
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct BranchPullRequestView {
+    pub repository_id: String,
+    pub branch: String,
+    pub host: Option<HostKindView>,
+    pub status: BranchPullRequestStatusView,
+}
+
+impl From<BranchPullRequest> for BranchPullRequestView {
+    fn from(found: BranchPullRequest) -> Self {
+        Self {
+            repository_id: found.repository_id,
+            branch: found.branch,
+            host: found.host.map(HostKindView::from),
+            status: found.status.into(),
+        }
+    }
+}
+
 fn service(git_hosting: &State<'_, GitHosting>) -> Arc<GitHostingService> {
     git_hosting.service.clone()
 }
@@ -405,6 +460,20 @@ pub async fn git_hosting_project_pull_requests(
         .into_iter()
         .map(RepositoryPullRequestsView::from)
         .collect())
+}
+
+/// The pull request of each branch the Project's contexts use, once per
+/// repository and branch: one call for the whole board.
+#[tauri::command]
+#[specta::specta]
+pub async fn git_hosting_context_pull_requests(
+    git_hosting: State<'_, GitHosting>,
+    project_tag: String,
+) -> Result<Vec<BranchPullRequestView>, GitHostingCommandError> {
+    let found = service(&git_hosting)
+        .context_branch_pull_requests(&project_tag)
+        .await?;
+    Ok(found.into_iter().map(BranchPullRequestView::from).collect())
 }
 
 #[cfg(test)]
@@ -539,6 +608,47 @@ mod tests {
                     },
                 })
             );
+        }
+
+        #[test]
+        fn a_found_branch_pull_request_is_sent_with_it() {
+            let found = BranchPullRequestView::from(BranchPullRequest {
+                repository_id: REPOSITORY_ID.to_string(),
+                branch: HEAD_BRANCH.to_string(),
+                host: Some(HostKind::Bitbucket),
+                status: PullRequestsStatus::Ok(Some(merged_pull_request())),
+            });
+
+            let wire = serde_json::to_value(found).unwrap();
+
+            assert_eq!(wire["repositoryId"], REPOSITORY_ID);
+            assert_eq!(wire["branch"], HEAD_BRANCH);
+            assert_eq!(wire["host"], "bitbucket");
+            assert_eq!(wire["status"]["kind"], "ok");
+            assert_eq!(wire["status"]["pullRequest"]["number"], NUMBER);
+            assert_eq!(wire["status"]["pullRequest"]["state"], "merged");
+        }
+
+        #[test]
+        fn a_branch_without_pull_request_is_sent_with_null() {
+            let status = BranchPullRequestStatusView::from(PullRequestsStatus::Ok(None));
+
+            assert_eq!(
+                serde_json::to_value(status).unwrap(),
+                json!({ "kind": "ok", "pullRequest": null })
+            );
+        }
+
+        #[test]
+        fn a_failed_branch_carries_its_error() {
+            let status = BranchPullRequestStatusView::from(PullRequestsStatus::Failed(
+                GitHostingError::Timeout,
+            ));
+
+            let wire = serde_json::to_value(status).unwrap();
+
+            assert_eq!(wire["kind"], "failed");
+            assert_eq!(wire["error"]["kind"], "timeout");
         }
 
         #[test]

@@ -2,7 +2,7 @@ import { useDraggable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
 import { Box } from "@mantine/core";
 import type { ContextView, ProjectView } from "@/bindings";
-import type { PullRequestLookup } from "@/hooks/useContextPullRequestStatus";
+import type { PullRequestLookup } from "@/models/git-hosting/branchPullRequests";
 import { ContextCard } from "./ContextCard";
 import { ContextCardDragHandle } from "./ContextCardDragHandle";
 

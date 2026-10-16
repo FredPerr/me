@@ -88,20 +88,6 @@ export type ProviderPullRequest = {
 	updatedAt: string;
 };
 
-/**
- * The GitHub-style lifecycle status of a pull request, used to pick its icon
- * and color on cards.
- */
-export type PullRequestStatus = "draft" | "open" | "merged" | "closed";
-
-/** Derive the lifecycle status from a pull request's state flags. */
-export function pullRequestStatus(pullRequest: ProviderPullRequest): PullRequestStatus {
-	if (pullRequest.merged) return "merged";
-	if (pullRequest.state === "closed") return "closed";
-	if (pullRequest.draft) return "draft";
-	return "open";
-}
-
 /** The details needed to open a new pull request. */
 export type CreatePullRequestInput = {
 	title: string;
