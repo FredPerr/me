@@ -19,6 +19,7 @@ import {
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { commands } from "@/bindings";
 import { IconPicker } from "@/components/shared/IconPicker";
 import { RemoteProjectLinks } from "@/domain/work-tracking/RemoteProjectLinks";
 import { pickFolder } from "@/hooks/useFolderPicker";
@@ -80,7 +81,7 @@ export function ProjectForm({ initialProject, onSubmit, onCancel }: ProjectFormP
 	useEffect(() => {
 		if (path) {
 			resolvePath(path, {}).then((resolved) => {
-				invoke<boolean>("check_is_git_repository", { path: resolved }).then(setIsGitRoot);
+				commands.checkIsGitRepository(resolved).then(setIsGitRoot);
 			});
 		} else {
 			setIsGitRoot(null);

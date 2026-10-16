@@ -13,6 +13,58 @@ use super::{run_blocking, Git};
 
 const MAIN_CHECKOUT_NAME: &str = "default";
 
+/// The kind of a git failure, as the frontend sees it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub enum GitErrorKind {
+    NotARepository,
+    InvalidBranchName,
+    BranchNotFound,
+    BranchAlreadyExists,
+    BranchCheckedOut,
+    NoRemote,
+    NoUpstream,
+    DetachedHead,
+    NotFastForward,
+    AuthenticationFailed,
+    Network,
+    Io,
+    CommandFailed,
+}
+
+/// A failed git command on the wire. `message` is readable and may name local
+/// branches and repeat git's output: it only describes the user's own repositories.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct GitCommandError {
+    pub kind: GitErrorKind,
+    pub message: String,
+}
+
+impl From<GitError> for GitCommandError {
+    fn from(error: GitError) -> Self {
+        let kind = match &error {
+            GitError::NotARepository { .. } => GitErrorKind::NotARepository,
+            GitError::InvalidBranchName { .. } => GitErrorKind::InvalidBranchName,
+            GitError::BranchNotFound { .. } => GitErrorKind::BranchNotFound,
+            GitError::BranchAlreadyExists { .. } => GitErrorKind::BranchAlreadyExists,
+            GitError::BranchCheckedOut { .. } => GitErrorKind::BranchCheckedOut,
+            GitError::NoRemote => GitErrorKind::NoRemote,
+            GitError::NoUpstream => GitErrorKind::NoUpstream,
+            GitError::DetachedHead => GitErrorKind::DetachedHead,
+            GitError::NotFastForward { .. } => GitErrorKind::NotFastForward,
+            GitError::AuthenticationFailed { .. } => GitErrorKind::AuthenticationFailed,
+            GitError::Network { .. } => GitErrorKind::Network,
+            GitError::Io { .. } => GitErrorKind::Io,
+            GitError::CommandFailed { .. } => GitErrorKind::CommandFailed,
+        };
+        Self {
+            kind,
+            message: error.to_string(),
+        }
+    }
+}
+
 #[derive(Serialize)]
 pub struct WorktreeView {
     pub name: String,
@@ -151,7 +203,11 @@ pub async fn get_git_remote_url(
 }
 
 #[tauri::command]
-pub async fn check_is_git_repository(git: State<'_, Git>, path: String) -> Result<bool, String> {
+#[specta::specta]
+pub async fn check_is_git_repository(
+    git: State<'_, Git>,
+    path: String,
+) -> Result<bool, GitCommandError> {
     Ok(git.repositories().is_repository_root(Path::new(&path)))
 }
 
@@ -334,6 +390,113 @@ pub async fn fetch_pr_branch(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn wire(error: GitError) -> GitCommandError {
+        GitCommandError::from(error)
+    }
+
+    #[test]
+    fn every_git_error_maps_to_its_kind() {
+        let output = || "fatal: details".to_string();
+        let operation = || "push".to_string();
+        let cases = [
+            (
+                GitError::NotARepository {
+                    path: "/tmp/x".into(),
+                },
+                GitErrorKind::NotARepository,
+            ),
+            (
+                GitError::InvalidBranchName {
+                    name: "a..b".into(),
+                    reason: "contains \"..\"",
+                },
+                GitErrorKind::InvalidBranchName,
+            ),
+            (
+                GitError::BranchNotFound {
+                    name: "main".into(),
+                },
+                GitErrorKind::BranchNotFound,
+            ),
+            (
+                GitError::BranchAlreadyExists {
+                    name: "main".into(),
+                },
+                GitErrorKind::BranchAlreadyExists,
+            ),
+            (
+                GitError::BranchCheckedOut {
+                    name: "main".into(),
+                    worktree: "/w".into(),
+                },
+                GitErrorKind::BranchCheckedOut,
+            ),
+            (GitError::NoRemote, GitErrorKind::NoRemote),
+            (GitError::NoUpstream, GitErrorKind::NoUpstream),
+            (GitError::DetachedHead, GitErrorKind::DetachedHead),
+            (
+                GitError::NotFastForward {
+                    operation: operation(),
+                    output: output(),
+                },
+                GitErrorKind::NotFastForward,
+            ),
+            (
+                GitError::AuthenticationFailed {
+                    operation: operation(),
+                    output: output(),
+                },
+                GitErrorKind::AuthenticationFailed,
+            ),
+            (
+                GitError::Network {
+                    operation: operation(),
+                    output: output(),
+                },
+                GitErrorKind::Network,
+            ),
+            (
+                GitError::Io {
+                    action: "read".into(),
+                    detail: "denied".into(),
+                },
+                GitErrorKind::Io,
+            ),
+            (
+                GitError::CommandFailed {
+                    operation: operation(),
+                    output: output(),
+                },
+                GitErrorKind::CommandFailed,
+            ),
+        ];
+        for (error, kind) in cases {
+            let message = error.to_string();
+            let wire_error = wire(error);
+            assert_eq!(wire_error.kind, kind);
+            assert_eq!(wire_error.message, message);
+        }
+    }
+
+    #[test]
+    fn keeps_branch_names_and_git_output_in_the_message() {
+        let wire_error = wire(GitError::CommandFailed {
+            operation: "push".into(),
+            output: "rejected feature/login".into(),
+        });
+        assert_eq!(
+            wire_error.message,
+            "git push failed: rejected feature/login"
+        );
+    }
+
+    #[test]
+    fn serializes_kind_in_camel_case() {
+        let json = serde_json::to_value(wire(GitError::NoUpstream)).unwrap();
+        assert_eq!(json["kind"], "noUpstream");
+        assert_eq!(json["message"], "No upstream branch (not pushed yet)");
+    }
 
     #[test]
     fn worktree_names_follow_the_context_layout() {
