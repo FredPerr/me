@@ -1,6 +1,6 @@
 use std::fmt;
 
-use serde::Serialize;
+use serde::{Deserialize, Deserializer, Serialize};
 
 use super::error::GitError;
 
@@ -32,6 +32,13 @@ impl BranchName {
 impl fmt::Display for BranchName {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(&self.0)
+    }
+}
+
+impl<'de> Deserialize<'de> for BranchName {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let raw = String::deserialize(deserializer)?;
+        Self::parse(&raw).map_err(serde::de::Error::custom)
     }
 }
 
@@ -125,6 +132,13 @@ mod tests {
         ] {
             assert!(!is_valid(raw), "{raw} should be rejected");
         }
+    }
+
+    #[test]
+    fn deserializes_only_valid_names() {
+        let parsed: BranchName = serde_json::from_str("\"feature/login\"").unwrap();
+        assert_eq!(parsed.as_str(), "feature/login");
+        assert!(serde_json::from_str::<BranchName>("\"feature..login\"").is_err());
     }
 
     #[test]

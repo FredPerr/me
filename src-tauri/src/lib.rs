@@ -10,6 +10,8 @@ mod pull_request_template;
 mod secret_store;
 mod shortcuts;
 mod work_tracking;
+#[allow(dead_code)] // used by the workspace commands in later tickets
+mod workspace;
 mod workspace_detector;
 
 #[tauri::command]
