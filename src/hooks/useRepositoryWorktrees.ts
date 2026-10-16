@@ -1,20 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useState } from "react";
+import { commands, type WorktreeView } from "@/bindings";
 import type { Project, Repository } from "@/models/Project";
 
-export type Worktree = {
-	name: string;
-	path: string;
-	branch: string | null;
-	isDefault: boolean;
-};
-
-type WorktreeDto = {
-	name: string;
-	path: string;
-	branch: string | null;
-	is_default: boolean;
-};
+export type Worktree = WorktreeView;
 
 export type RepositoryWorktrees = {
 	repository: Repository;
@@ -32,15 +21,6 @@ export type WorktreeDeletionFailure = {
 	message: string;
 };
 
-function toWorktree(dto: WorktreeDto): Worktree {
-	return {
-		name: dto.name,
-		path: dto.path,
-		branch: dto.branch,
-		isDefault: dto.is_default,
-	};
-}
-
 export function useRepositoryWorktrees(project: Project, enabled: boolean) {
 	const [repositoryWorktrees, setRepositoryWorktrees] = useState<RepositoryWorktrees[]>([]);
 	const [loading, setLoading] = useState(false);
@@ -52,10 +32,8 @@ export function useRepositoryWorktrees(project: Project, enabled: boolean) {
 				project.repositories.map(async (repository) => {
 					try {
 						const resolvedPath = await repository.resolveAbsolutePath(project.path);
-						const dtos = await invoke<WorktreeDto[]>("list_worktrees", {
-							path: resolvedPath,
-						});
-						return { repository, resolvedPath, worktrees: dtos.map(toWorktree) };
+						const worktrees = await commands.listWorktrees(resolvedPath);
+						return { repository, resolvedPath, worktrees };
 					} catch {
 						return { repository, resolvedPath: "", worktrees: [] };
 					}

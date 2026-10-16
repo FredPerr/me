@@ -11,9 +11,9 @@ import {
 	Text,
 	TextInput,
 } from "@mantine/core";
-import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { commands } from "@/bindings";
 import type {
 	CreateContextFromPullRequestsParams,
 	PullRequestBranchConfig,
@@ -32,8 +32,6 @@ type CreateFromPullRequestsModalProps = {
 	project: Project;
 	onCreate: (params: CreateContextFromPullRequestsParams) => Promise<void>;
 };
-
-type Worktree = { branch: string | null; path: string };
 
 /** Build the Select option list for a repository's open pull requests, keyed by head branch. */
 function pullRequestOptions(pullRequests: ProviderPullRequest[]) {
@@ -118,7 +116,7 @@ export function CreateFromPullRequestsModal({
 
 			try {
 				const resolvedPath = await repo.resolveAbsolutePath(project.path);
-				const worktrees = await invoke<Worktree[]>("list_worktrees", { path: resolvedPath });
+				const worktrees = await commands.listWorktrees(resolvedPath);
 				const conflicting = worktrees.find((worktree) => worktree.branch === branch);
 				if (conflicting) {
 					errors[repo.id] = t("contexts.branchAlreadyInUse", {

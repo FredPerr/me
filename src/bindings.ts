@@ -5,6 +5,14 @@ import { invoke as __TAURI_INVOKE } from "@tauri-apps/api/core";
 /** Commands */
 export const commands = {
 	checkIsGitRepository: (path: string) => __TAURI_INVOKE<boolean>("check_is_git_repository", { path }),
+	getGitRemoteUrl: (path: string) => __TAURI_INVOKE<string | null>("get_git_remote_url", { path }),
+	listWorktrees: (path: string) => __TAURI_INVOKE<WorktreeView[]>("list_worktrees", { path }),
+	getWorktreeStatus: (path: string, baseBranch: string | null) => __TAURI_INVOKE<WorktreeStatusView>("get_worktree_status", { path, baseBranch }),
+	getWorktreeDiff: (path: string, baseBranch: string) => __TAURI_INVOKE<string>("get_worktree_diff", { path, baseBranch }),
+	/**  The pull request template of the worktree at `path`, or `None` when it has none. */
+	readPullRequestTemplate: (path: string) => __TAURI_INVOKE<string | null>("read_pull_request_template", { path }),
+	listBranches: (path: string) => __TAURI_INVOKE<string[]>("list_branches", { path }),
+	listLocalBranches: (path: string) => __TAURI_INVOKE<LocalBranchView[]>("list_local_branches", { path }),
 };
 
 /* Types */
@@ -19,4 +27,30 @@ export type GitCommandError = {
 
 /**  The kind of a git failure, as the frontend sees it. */
 export type GitErrorKind = "notARepository" | "invalidBranchName" | "branchNotFound" | "branchAlreadyExists" | "branchCheckedOut" | "noRemote" | "noUpstream" | "detachedHead" | "notFastForward" | "authenticationFailed" | "network" | "io" | "commandFailed";
+
+export type LocalBranchView = {
+	name: string,
+	isCurrent: boolean,
+	isCheckedOut: boolean,
+	hasUpstream: boolean,
+	upstreamGone: boolean,
+	isMerged: boolean,
+};
+
+export type WorktreeStatusView = {
+	filesAdded: number,
+	filesModified: number,
+	filesDeleted: number,
+	filesRenamed: number,
+	insertions: number,
+	deletions: number,
+	prUrl: string | null,
+};
+
+export type WorktreeView = {
+	name: string,
+	path: string,
+	branch: string | null,
+	isDefault: boolean,
+};
 

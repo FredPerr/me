@@ -1,6 +1,7 @@
 import { notifications } from "@mantine/notifications";
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { commands } from "@/bindings";
 import type { ContextStatus } from "@/models/ContextStatus";
 import {
 	Context,
@@ -583,7 +584,7 @@ async function resolveDefaultBranchesFor(
 	for (const repo of repositories) {
 		try {
 			const resolvedPath = await repo.resolveAbsolutePath(project.path);
-			const branchList = await invoke<string[]>("list_branches", { path: resolvedPath });
+			const branchList = await commands.listBranches(resolvedPath);
 			const defaultBranch =
 				branchList.find((b) => b === "main") ??
 				branchList.find((b) => b === "master") ??
@@ -682,7 +683,7 @@ async function buildRepoInputs(project: Project, repoConfigs: RepositoryBranchCo
 async function resolveDefaultBranch(project: Project, repo: Repository): Promise<string> {
 	try {
 		const resolvedPath = await repo.resolveAbsolutePath(project.path);
-		const branchList = await invoke<string[]>("list_branches", { path: resolvedPath });
+		const branchList = await commands.listBranches(resolvedPath);
 		return (
 			branchList.find((b) => b === "main") ??
 			branchList.find((b) => b === "master") ??

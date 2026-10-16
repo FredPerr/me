@@ -65,7 +65,8 @@ impl From<GitError> for GitCommandError {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
 pub struct WorktreeView {
     pub name: String,
     pub path: String,
@@ -73,18 +74,20 @@ pub struct WorktreeView {
     pub is_default: bool,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
 pub struct WorktreeStatusView {
-    pub files_added: usize,
-    pub files_modified: usize,
-    pub files_deleted: usize,
-    pub files_renamed: usize,
-    pub insertions: usize,
-    pub deletions: usize,
+    pub files_added: u32,
+    pub files_modified: u32,
+    pub files_deleted: u32,
+    pub files_renamed: u32,
+    pub insertions: u32,
+    pub deletions: u32,
     pub pr_url: Option<String>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
 pub struct LocalBranchView {
     pub name: String,
     pub is_current: bool,
@@ -140,15 +143,20 @@ impl From<Checkout> for WorktreeView {
 impl WorktreeStatusView {
     fn new(stats: DiffStats, pr_url: Option<String>) -> Self {
         Self {
-            files_added: stats.files_added,
-            files_modified: stats.files_modified,
-            files_deleted: stats.files_deleted,
-            files_renamed: stats.files_renamed,
-            insertions: stats.insertions,
-            deletions: stats.deletions,
+            files_added: saturate(stats.files_added),
+            files_modified: saturate(stats.files_modified),
+            files_deleted: saturate(stats.files_deleted),
+            files_renamed: saturate(stats.files_renamed),
+            insertions: saturate(stats.insertions),
+            deletions: saturate(stats.deletions),
             pr_url,
         }
     }
+}
+
+/// Counts beyond `u32` (over four billion) are shown as the maximum.
+fn saturate(count: usize) -> u32 {
+    u32::try_from(count).unwrap_or(u32::MAX)
 }
 
 /// git's internal worktree name is not meaningful; the app's layout
@@ -185,10 +193,11 @@ fn failure_detail(error: &GitError) -> String {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn get_git_remote_url(
     git: State<'_, Git>,
     path: String,
-) -> Result<Option<String>, String> {
+) -> Result<Option<String>, GitCommandError> {
     let git = git.inner().clone();
     run_blocking(move || {
         if !git.repositories().is_repository_root(Path::new(&path)) {
@@ -212,10 +221,11 @@ pub async fn check_is_git_repository(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn list_worktrees(
     git: State<'_, Git>,
     path: String,
-) -> Result<Vec<WorktreeView>, String> {
+) -> Result<Vec<WorktreeView>, GitCommandError> {
     let git = git.inner().clone();
     run_blocking(move || {
         let worktrees = open(&git, &path)?.worktrees()?;
@@ -225,11 +235,12 @@ pub async fn list_worktrees(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn get_worktree_status(
     git: State<'_, Git>,
     path: String,
     base_branch: Option<String>,
-) -> Result<WorktreeStatusView, String> {
+) -> Result<WorktreeStatusView, GitCommandError> {
     let git = git.inner().clone();
     run_blocking(move || {
         let repository = open(&git, &path)?;
@@ -244,11 +255,12 @@ pub async fn get_worktree_status(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn get_worktree_diff(
     git: State<'_, Git>,
     path: String,
     base_branch: String,
-) -> Result<String, String> {
+) -> Result<String, GitCommandError> {
     let git = git.inner().clone();
     run_blocking(move || {
         let base = BranchName::parse(&base_branch)?;
@@ -258,7 +270,11 @@ pub async fn get_worktree_diff(
 }
 
 #[tauri::command]
-pub async fn list_branches(git: State<'_, Git>, path: String) -> Result<Vec<String>, String> {
+#[specta::specta]
+pub async fn list_branches(
+    git: State<'_, Git>,
+    path: String,
+) -> Result<Vec<String>, GitCommandError> {
     let git = git.inner().clone();
     run_blocking(move || {
         let names = open(&git, &path)?.branch_names()?;
@@ -268,10 +284,11 @@ pub async fn list_branches(git: State<'_, Git>, path: String) -> Result<Vec<Stri
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn list_local_branches(
     git: State<'_, Git>,
     path: String,
-) -> Result<Vec<LocalBranchView>, String> {
+) -> Result<Vec<LocalBranchView>, GitCommandError> {
     let git = git.inner().clone();
     run_blocking(move || {
         let branches = open(&git, &path)?.branches()?;

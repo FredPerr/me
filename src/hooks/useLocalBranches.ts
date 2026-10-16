@@ -1,24 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useState } from "react";
+import { commands, type LocalBranchView } from "@/bindings";
 import type { Project, Repository } from "@/models/Project";
 
-export type LocalBranch = {
-	name: string;
-	isCurrent: boolean;
-	isCheckedOut: boolean;
-	hasUpstream: boolean;
-	upstreamGone: boolean;
-	isMerged: boolean;
-};
-
-type LocalBranchDto = {
-	name: string;
-	is_current: boolean;
-	is_checked_out: boolean;
-	has_upstream: boolean;
-	upstream_gone: boolean;
-	is_merged: boolean;
-};
+export type LocalBranch = LocalBranchView;
 
 export type RepositoryBranches = {
 	repository: Repository;
@@ -36,17 +21,6 @@ export type BranchDeletionFailure = {
 	message: string;
 };
 
-function toLocalBranch(dto: LocalBranchDto): LocalBranch {
-	return {
-		name: dto.name,
-		isCurrent: dto.is_current,
-		isCheckedOut: dto.is_checked_out,
-		hasUpstream: dto.has_upstream,
-		upstreamGone: dto.upstream_gone,
-		isMerged: dto.is_merged,
-	};
-}
-
 export function useLocalBranches(project: Project, enabled: boolean) {
 	const [repositoryBranches, setRepositoryBranches] = useState<RepositoryBranches[]>([]);
 	const [loading, setLoading] = useState(false);
@@ -58,10 +32,8 @@ export function useLocalBranches(project: Project, enabled: boolean) {
 				project.repositories.map(async (repository) => {
 					try {
 						const resolvedPath = await repository.resolveAbsolutePath(project.path);
-						const dtos = await invoke<LocalBranchDto[]>("list_local_branches", {
-							path: resolvedPath,
-						});
-						return { repository, resolvedPath, branches: dtos.map(toLocalBranch) };
+						const branches = await commands.listLocalBranches(resolvedPath);
+						return { repository, resolvedPath, branches };
 					} catch {
 						return { repository, resolvedPath: "", branches: [] };
 					}

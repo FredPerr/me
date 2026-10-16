@@ -31,7 +31,16 @@ async fn check_path_exists(path: String) -> bool {
 /// routes these to the typed handler and every other command to the old
 /// `generate_handler!`. Delete this list, the dispatcher and the old handler
 /// once the last command has moved. Names are the Rust function names.
-const TYPED_COMMANDS: &[&str] = &["check_is_git_repository"];
+const TYPED_COMMANDS: &[&str] = &[
+    "check_is_git_repository",
+    "get_git_remote_url",
+    "list_worktrees",
+    "get_worktree_status",
+    "get_worktree_diff",
+    "read_pull_request_template",
+    "list_branches",
+    "list_local_branches",
+];
 
 /// The typed commands, exported with their types to `src/bindings.ts`.
 fn typed_commands() -> tauri_specta::Builder<tauri::Wry> {
@@ -39,6 +48,13 @@ fn typed_commands() -> tauri_specta::Builder<tauri::Wry> {
         .error_handling(tauri_specta::ErrorHandlingMode::Throw)
         .commands(tauri_specta::collect_commands![
             git::commands::check_is_git_repository,
+            git::commands::get_git_remote_url,
+            git::commands::list_worktrees,
+            git::commands::get_worktree_status,
+            git::commands::get_worktree_diff,
+            pull_request_template::read_pull_request_template,
+            git::commands::list_branches,
+            git::commands::list_local_branches,
         ])
 }
 
@@ -50,13 +66,6 @@ pub fn run() {
         greet,
         open_in_ide,
         check_path_exists,
-        git::commands::get_git_remote_url,
-        git::commands::list_worktrees,
-        git::commands::get_worktree_status,
-        git::commands::get_worktree_diff,
-        pull_request_template::read_pull_request_template,
-        git::commands::list_branches,
-        git::commands::list_local_branches,
         git::commands::delete_local_branch,
         git::commands::delete_worktree,
         git::commands::prune_worktrees,

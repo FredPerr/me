@@ -1,5 +1,5 @@
-import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useState } from "react";
+import { commands } from "@/bindings";
 
 export function useBranches(repositoryPath: string | undefined) {
 	const [branches, setBranches] = useState<string[]>([]);
@@ -11,7 +11,7 @@ export function useBranches(repositoryPath: string | undefined) {
 		}
 
 		try {
-			const result = await invoke<string[]>("list_branches", { path: repositoryPath });
+			const result = await commands.listBranches(repositoryPath);
 			setBranches(result);
 		} catch {
 			setBranches([]);
