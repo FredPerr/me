@@ -2,8 +2,8 @@
  * Frontend types for AI CLI session orchestration.
  *
  * These mirror the Rust wire types in `src-tauri/src/ai_session` (serialized as
- * camelCase). They are kept in sync by hand, matching the repo convention of
- * hand-mirroring Rust structs (see `usePushWorktree`'s `PushResult`).
+ * camelCase). They are kept in sync by hand until `ai_session` moves to typed
+ * commands.
  */
 
 /** Lifecycle state of a session; mirrors Rust `SessionStatus`. */

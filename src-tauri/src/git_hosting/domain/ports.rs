@@ -3,13 +3,14 @@ use std::time::Instant;
 use async_trait::async_trait;
 
 use super::capped::Capped;
-use super::error::GitHostingError;
+use super::error::{GitHostingError, PushFailureReason};
 use super::host_kind::HostKind;
 use super::host_secret::HostSecret;
 use super::hosted_account::HostedAccount;
 use super::hosted_pull_request::HostedPullRequest;
 use super::hosted_repository::HostedRepository;
-use super::project_pull_requests::ProjectRepositoryRemote;
+use super::new_pull_request::{CreatedPullRequest, NewPullRequest};
+use super::project_pull_requests::{ProjectRepositoryRemote, RepositoryBranchCheckout};
 use super::sign_in::{BrowserSignInStep, SignInPoll};
 
 /// The secret store could not be used. Platform details are dropped so they
@@ -42,6 +43,13 @@ pub trait GitHost: Send + Sync {
         repository: &HostedRepository,
         branch: &str,
     ) -> Result<Option<HostedPullRequest>, GitHostingError>;
+
+    /// Opens `pull_request`, whose head branch is already pushed.
+    async fn create_pull_request(
+        &self,
+        repository: &HostedRepository,
+        pull_request: &NewPullRequest,
+    ) -> Result<CreatedPullRequest, GitHostingError>;
 }
 
 /// The repositories of a Project, their remotes and the branches its contexts
@@ -53,6 +61,31 @@ pub trait ProjectRemotes: Send + Sync {
         &self,
         project_tag: &str,
     ) -> Result<Vec<ProjectRepositoryRemote>, GitHostingError>;
+
+    /// The remote of one repository of the Project and the checkout of the
+    /// context using `branch` in it. `NotFound` when no Project has this tag,
+    /// the Project has no such repository, or no context uses the branch there.
+    async fn branch_checkout(
+        &self,
+        project_tag: &str,
+        repository_id: &str,
+        branch: &str,
+    ) -> Result<RepositoryBranchCheckout, GitHostingError>;
+}
+
+/// Why a checkout's branch was not pushed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PushFailure {
+    /// There is no remote branch to push to.
+    Skipped,
+    Failed(PushFailureReason),
+}
+
+/// Pushes the branch checked out in a worktree to its remote branch, through
+/// `git` and the signed-in Git host's credentials.
+#[async_trait]
+pub trait WorktreePushes: Send + Sync {
+    async fn push(&self, worktree_path: &str) -> Result<(), PushFailure>;
 }
 
 /// Signing in by entering a code in the browser.

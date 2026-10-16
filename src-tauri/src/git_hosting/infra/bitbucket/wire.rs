@@ -1,6 +1,34 @@
-//! Bitbucket Cloud's JSON answers, as sent.
+//! Bitbucket Cloud's JSON requests and answers, as sent.
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+
+/// `POST https://api.bitbucket.org/2.0/repositories/{workspace}/{slug}/pullrequests`
+#[derive(Debug, Serialize)]
+pub struct CreatePullRequestRequest<'a> {
+    pub title: &'a str,
+    pub description: &'a str,
+    pub source: BranchEndpointRequest<'a>,
+    pub destination: BranchEndpointRequest<'a>,
+    pub close_source_branch: bool,
+    pub draft: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub struct BranchEndpointRequest<'a> {
+    pub branch: BranchNameRequest<'a>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct BranchNameRequest<'a> {
+    pub name: &'a str,
+}
+
+/// The answer to [`CreatePullRequestRequest`].
+#[derive(Debug, Deserialize)]
+pub struct CreatedPullRequestResponse {
+    pub id: u32,
+    pub links: Option<PullRequestLinks>,
+}
 
 /// `GET https://api.bitbucket.org/2.0/user`
 #[derive(Debug, Deserialize)]

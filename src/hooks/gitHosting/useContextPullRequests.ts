@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { type BranchPullRequestView, commands } from "@/bindings";
 import {
+	branchHostProblemLookup,
 	branchPullRequestLookup,
 	isAnyBranchHostConnected,
 } from "@/models/git-hosting/branchPullRequests";
@@ -21,5 +22,6 @@ export function useContextPullRequests(projectTag: string) {
 	});
 	const found = query.data ?? NO_BRANCHES;
 	const lookup = useMemo(() => branchPullRequestLookup(found), [found]);
-	return { connected: isAnyBranchHostConnected(found), lookup };
+	const hostProblem = useMemo(() => branchHostProblemLookup(found), [found]);
+	return { connected: isAnyBranchHostConnected(found), lookup, hostProblem };
 }

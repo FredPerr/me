@@ -1,14 +1,18 @@
 use async_trait::async_trait;
 
 use super::client::{GithubClient, ACCESS_TOKEN_URL, API_BASE, DEVICE_CODE_URL, USER_URL};
-use super::wire::{AccessTokenResponse, DeviceCodeResponse, PullRequestResponse, UserResponse};
-use super::{mapping, pull_request_mapping};
+use super::wire::{
+    AccessTokenResponse, CreatedPullRequestResponse, DeviceCodeResponse, PullRequestResponse,
+    UserResponse,
+};
+use super::{mapping, new_pull_request_mapping, pull_request_mapping};
 use crate::git_hosting::domain::capped::Capped;
 use crate::git_hosting::domain::error::GitHostingError;
 use crate::git_hosting::domain::host_secret::HostSecret;
 use crate::git_hosting::domain::hosted_account::HostedAccount;
 use crate::git_hosting::domain::hosted_pull_request::HostedPullRequest;
 use crate::git_hosting::domain::hosted_repository::HostedRepository;
+use crate::git_hosting::domain::new_pull_request::{CreatedPullRequest, NewPullRequest};
 use crate::git_hosting::domain::ports::{BrowserSignIn, GitHost};
 use crate::git_hosting::domain::sign_in::{BrowserSignInStep, SignInPoll};
 use crate::git_hosting::infra::paging::{api_url, follow_pages, Page};
@@ -90,6 +94,28 @@ impl GitHost for GithubHost {
             .get_json(&url, &self.token, "find_branch_pull_request")
             .await?;
         Ok(pull_request_mapping::branch_pull_request(pull_requests))
+    }
+
+    async fn create_pull_request(
+        &self,
+        repository: &HostedRepository,
+        pull_request: &NewPullRequest,
+    ) -> Result<CreatedPullRequest, GitHostingError> {
+        let url = api_url(
+            API_BASE,
+            &["repos", &repository.owner, &repository.name, "pulls"],
+            &[],
+        )?;
+        let created: CreatedPullRequestResponse = self
+            .client
+            .post_json(
+                &url,
+                &self.token,
+                &new_pull_request_mapping::create_pull_request_request(pull_request),
+                "create_pull_request",
+            )
+            .await?;
+        Ok(new_pull_request_mapping::created_pull_request(created))
     }
 }
 

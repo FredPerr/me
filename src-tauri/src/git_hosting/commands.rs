@@ -7,10 +7,11 @@ use serde::{Deserialize, Serialize};
 use tauri::State;
 
 use super::application::service::GitHostingService;
-use super::domain::error::{GitHostingError, InputField};
+use super::domain::error::{GitHostingError, InputField, PushFailureReason};
 use super::domain::host_kind::HostKind;
 use super::domain::hosted_account::{HostedAccount, SignedInHost};
 use super::domain::hosted_pull_request::{HostedPullRequest, PullRequestState};
+use super::domain::new_pull_request::{CreatedPullRequest, NewPullRequest};
 use super::domain::project_pull_requests::{
     BranchPullRequest, BranchPullRequestStatus, PullRequestsStatus, RepositoryPullRequests,
 };
@@ -56,6 +57,10 @@ pub enum GitHostingErrorKind {
     ProviderError,
     InvalidResponse,
     Storage,
+    NoRemote,
+    UnsupportedHost,
+    PushSkipped,
+    PushFailed,
 }
 
 /// A failed Git Hosting command on the wire. `message` is a fixed English
@@ -86,6 +91,21 @@ fn invalid_input_message(field: InputField) -> &'static str {
         InputField::Username => "Enter a username.",
         InputField::Token => "Enter a token.",
         InputField::DeviceCode => "The sign-in code is missing or unknown. Start again.",
+        InputField::Title => "Enter a title.",
+        InputField::BaseBranch => "Choose a base branch other than the branch to merge.",
+    }
+}
+
+fn push_failed_message(reason: PushFailureReason) -> &'static str {
+    match reason {
+        PushFailureReason::Rejected => {
+            "The branch could not be pushed: the remote branch has changes it does not have. Pull them first."
+        }
+        PushFailureReason::Unauthorized => {
+            "The branch could not be pushed: the remote rejected the credentials."
+        }
+        PushFailureReason::Network => "The branch could not be pushed: the remote could not be reached.",
+        PushFailureReason::Other => "The branch could not be pushed.",
     }
 }
 
@@ -135,6 +155,20 @@ impl From<GitHostingError> for GitHostingCommandError {
             ),
             GitHostingError::Storage => {
                 Self::new(Kind::Storage, "Local storage could not be accessed.")
+            }
+            GitHostingError::NoRemote => {
+                Self::new(Kind::NoRemote, "This repository has no remote.")
+            }
+            GitHostingError::UnsupportedHost => Self::new(
+                Kind::UnsupportedHost,
+                "This repository's remote is not on a supported Git host.",
+            ),
+            GitHostingError::PushSkipped => Self::new(
+                Kind::PushSkipped,
+                "The branch could not be pushed: it has no remote branch to push to.",
+            ),
+            GitHostingError::PushFailed { reason } => {
+                Self::new(Kind::PushFailed, push_failed_message(reason))
             }
         }
     }
@@ -381,6 +415,45 @@ impl From<BranchPullRequest> for BranchPullRequestView {
     }
 }
 
+/// A pull request to open from the context branch `head` into `base`.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct NewPullRequestInput {
+    pub title: String,
+    pub body: String,
+    pub head: String,
+    pub base: String,
+    pub draft: bool,
+}
+
+impl From<NewPullRequestInput> for NewPullRequest {
+    fn from(input: NewPullRequestInput) -> Self {
+        Self {
+            title: input.title,
+            body: input.body,
+            head: input.head,
+            base: input.base,
+            draft: input.draft,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct CreatedPullRequestView {
+    pub number: u32,
+    pub url: String,
+}
+
+impl From<CreatedPullRequest> for CreatedPullRequestView {
+    fn from(created: CreatedPullRequest) -> Self {
+        Self {
+            number: created.number,
+            url: created.url,
+        }
+    }
+}
+
 fn service(git_hosting: &State<'_, GitHosting>) -> Arc<GitHostingService> {
     git_hosting.service.clone()
 }
@@ -476,6 +549,22 @@ pub async fn git_hosting_context_pull_requests(
     Ok(found.into_iter().map(BranchPullRequestView::from).collect())
 }
 
+/// Pushes the context branch `input.head` of the repository, then opens its
+/// pull request on the Git host of the repository's remote.
+#[tauri::command]
+#[specta::specta]
+pub async fn git_hosting_create_pull_request(
+    git_hosting: State<'_, GitHosting>,
+    project_tag: String,
+    repository_id: String,
+    input: NewPullRequestInput,
+) -> Result<CreatedPullRequestView, GitHostingCommandError> {
+    let created = service(&git_hosting)
+        .create_pull_request(&project_tag, &repository_id, input.into())
+        .await?;
+    Ok(created.into())
+}
+
 #[cfg(test)]
 mod tests {
     use serde_json::json;
@@ -530,6 +619,74 @@ mod tests {
 
         assert_eq!(error["kind"], "invalidInput");
         assert_eq!(error["message"], "Enter a token.");
+    }
+
+    #[test]
+    fn a_failed_push_says_why_without_git_output() {
+        let error = wire(GitHostingError::PushFailed {
+            reason: PushFailureReason::Rejected,
+        });
+
+        assert_eq!(error["kind"], "pushFailed");
+        assert_eq!(
+            error["message"],
+            "The branch could not be pushed: the remote branch has changes it does not have. Pull them first."
+        );
+    }
+
+    #[test]
+    fn repositories_without_a_usable_remote_are_sent_by_kind() {
+        for (error, kind) in [
+            (GitHostingError::NoRemote, "noRemote"),
+            (GitHostingError::UnsupportedHost, "unsupportedHost"),
+            (GitHostingError::PushSkipped, "pushSkipped"),
+        ] {
+            assert_eq!(wire(error)["kind"], kind);
+        }
+    }
+
+    #[test]
+    fn a_new_pull_request_is_read_in_camel_case() {
+        const TITLE: &str = "Add the login page";
+        const BODY: &str = "Adds a login page.";
+        const HEAD: &str = "feature/login";
+        const BASE: &str = "main";
+
+        let input: NewPullRequestInput = serde_json::from_value(json!({
+            "title": TITLE,
+            "body": BODY,
+            "head": HEAD,
+            "base": BASE,
+            "draft": true,
+        }))
+        .unwrap();
+
+        assert_eq!(
+            NewPullRequest::from(input),
+            NewPullRequest {
+                title: TITLE.to_string(),
+                body: BODY.to_string(),
+                head: HEAD.to_string(),
+                base: BASE.to_string(),
+                draft: true,
+            }
+        );
+    }
+
+    #[test]
+    fn a_created_pull_request_is_sent_with_its_number_and_link() {
+        const NUMBER: u32 = 7;
+        const URL: &str = "https://github.com/acme/api/pull/7";
+
+        let created = CreatedPullRequestView::from(CreatedPullRequest {
+            number: NUMBER,
+            url: URL.to_string(),
+        });
+
+        assert_eq!(
+            serde_json::to_value(created).unwrap(),
+            json!({ "number": NUMBER, "url": URL })
+        );
     }
 
     #[test]

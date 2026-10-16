@@ -4,7 +4,11 @@ import type {
 	BranchPullRequestView,
 	HostedPullRequestView,
 } from "@/bindings";
-import { branchPullRequestLookup, isAnyBranchHostConnected } from "./branchPullRequests";
+import {
+	branchHostProblemLookup,
+	branchPullRequestLookup,
+	isAnyBranchHostConnected,
+} from "./branchPullRequests";
 
 const API_ID = "api-id";
 const WEB_ID = "web-id";
@@ -105,5 +109,35 @@ describe("isAnyBranchHostConnected", () => {
 				buildBranch({ kind: "noRemote" }, { host: null, branch: SEARCH_BRANCH }),
 			]),
 		).toBe(false);
+	});
+});
+
+describe("branchHostProblemLookup", () => {
+	it("says a branch of a repository without remote has no remote", () => {
+		const lookup = branchHostProblemLookup([buildBranch({ kind: "noRemote" }, { host: null })]);
+
+		expect(lookup(API_ID, LOGIN_BRANCH)).toEqual({ kind: "noRemote" });
+	});
+
+	it("says a branch on another Git host is unsupported", () => {
+		const lookup = branchHostProblemLookup([
+			buildBranch({ kind: "unsupportedHost" }, { host: null }),
+		]);
+
+		expect(lookup(API_ID, LOGIN_BRANCH)).toEqual({ kind: "unsupportedHost" });
+	});
+
+	it("names the Git host a branch is not connected to", () => {
+		const lookup = branchHostProblemLookup([
+			buildBranch({ kind: "notConnected" }, { host: "bitbucket" }),
+		]);
+
+		expect(lookup(API_ID, LOGIN_BRANCH)).toEqual({ kind: "notConnected", host: "bitbucket" });
+	});
+
+	it("returns null for a branch that was looked up", () => {
+		const lookup = branchHostProblemLookup([buildBranch(found(null)), buildBranch(FAILED)]);
+
+		expect(lookup(API_ID, LOGIN_BRANCH)).toBeNull();
 	});
 });

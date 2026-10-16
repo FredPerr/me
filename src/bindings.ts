@@ -18,6 +18,7 @@ export const commands = {
 	deleteWorktree: (repoPath: string, worktreePath: string) => __TAURI_INVOKE<null>("delete_worktree", { repoPath, worktreePath }),
 	pruneWorktrees: (path: string) => __TAURI_INVOKE<null>("prune_worktrees", { path }),
 	pullWorktree: (path: string) => __TAURI_INVOKE<PullResult>("pull_worktree", { path }),
+	/**  Pushes the checkout's current branch to its upstream. */
 	pushWorktree: (path: string) => __TAURI_INVOKE<PushResult>("push_worktree", { path }),
 	fetchPrBranch: (path: string, branch: string) => __TAURI_INVOKE<null>("fetch_pr_branch", { path, branch }),
 	workspaceListProjects: () => __TAURI_INVOKE<ProjectListView>("workspace_list_projects"),
@@ -54,6 +55,11 @@ export const commands = {
 	 *  repository and branch: one call for the whole board.
 	 */
 	gitHostingContextPullRequests: (projectTag: string) => __TAURI_INVOKE<BranchPullRequestView[]>("git_hosting_context_pull_requests", { projectTag }),
+	/**
+	 *  Pushes the context branch `input.head` of the repository, then opens its
+	 *  pull request on the Git host of the repository's remote.
+	 */
+	gitHostingCreatePullRequest: (projectTag: string, repositoryId: string, input: NewPullRequestInput) => __TAURI_INVOKE<CreatedPullRequestView>("git_hosting_create_pull_request", { projectTag, repositoryId, input }),
 };
 
 /** Events */
@@ -151,6 +157,11 @@ export type CreateContextInput = {
 	branches: RepositoryBranchInput[],
 };
 
+export type CreatedPullRequestView = {
+	number: number,
+	url: string,
+};
+
 /**
  *  A failed git command on the wire. `message` is readable and may name local
  *  branches and repeat git's output: it only describes the user's own repositories.
@@ -182,7 +193,7 @@ export type GitHostingCommandError = {
 	status: number | null,
 };
 
-export type GitHostingErrorKind = "notConnected" | "invalidInput" | "unauthorized" | "forbidden" | "notFound" | "rateLimited" | "network" | "timeout" | "providerError" | "invalidResponse" | "storage";
+export type GitHostingErrorKind = "notConnected" | "invalidInput" | "unauthorized" | "forbidden" | "notFound" | "rateLimited" | "network" | "timeout" | "providerError" | "invalidResponse" | "storage" | "noRemote" | "unsupportedHost" | "pushSkipped" | "pushFailed";
 
 export type HostKindView = "github" | "bitbucket";
 
@@ -212,6 +223,15 @@ export type LocalBranchView = {
 	hasUpstream: boolean,
 	upstreamGone: boolean,
 	isMerged: boolean,
+};
+
+/**  A pull request to open from the context branch `head` into `base`. */
+export type NewPullRequestInput = {
+	title: string,
+	body: string,
+	head: string,
+	base: string,
+	draft: boolean,
 };
 
 /**

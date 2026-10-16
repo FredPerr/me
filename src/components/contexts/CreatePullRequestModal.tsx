@@ -18,23 +18,20 @@ import "@uiw/react-md-editor/markdown-editor.css";
 import "./CreatePullRequestModal.css";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import {
-	type ContextView,
-	commands,
-	type ProjectView,
-	type PullRequestDraftView,
-	type RepositoryView,
+import type {
+	ContextView,
+	CreatedPullRequestView,
+	ProjectView,
+	PullRequestDraftView,
+	RepositoryView,
 } from "@/bindings";
+import { useContextPullRequests } from "@/hooks/gitHosting/useContextPullRequests";
+import { useCreatePullRequest } from "@/hooks/gitHosting/useGitHostingMutations";
 import { usePullRequestDescriptionDraft } from "@/hooks/usePullRequestDescriptionDraft";
-import { usePushWorktree } from "@/hooks/usePushWorktree";
 import { useSavePullRequestDraft } from "@/hooks/workspace/useContextMutations";
 import { describeError } from "@/infra/commandError";
-import type {
-	CreatedPullRequest,
-	GitProvider,
-	RepositoryRef,
-} from "@/models/git-provider/GitProvider";
-import { resolveProviderForRemote } from "@/models/git-provider/GitProviderRegistry";
+import type { BranchHostProblem } from "@/models/git-hosting/branchPullRequests";
+import { GIT_HOSTS } from "@/models/git-hosting/gitHosts";
 import {
 	findBaseContext,
 	findContextBranch,
@@ -42,23 +39,15 @@ import {
 	findEffectiveRepository,
 } from "@/models/projectView";
 
-/** The provider that owns a repository's remote, with its parsed ref. */
-type ResolvedProvider = {
-	provider: GitProvider;
-	ref: RepositoryRef;
-};
-
 /** Everything needed to open a pull request for one subrepository. */
 type RepositoryTarget = {
 	repository: RepositoryView;
-	/** The context's checkout of this repository. */
+	/** The context's checkout of this repository, read to generate a description. */
 	worktreePath: string;
 	/** Branch holding the context's changes (the PR head). */
 	headBranch: string;
 	/** Branch the PR merges into: the base context's branch, else the default branch. */
 	baseBranch: string | null;
-	/** Provider + ref resolved from the remote, or null if unsupported. */
-	resolved: ResolvedProvider | null;
 };
 
 type CreatePullRequestModalProps = {
@@ -69,15 +58,6 @@ type CreatePullRequestModalProps = {
 };
 
 const EMPTY_DRAFT: PullRequestDraftView = { title: "", description: "" };
-
-async function resolveProvider(repository: RepositoryView): Promise<ResolvedProvider | null> {
-	try {
-		const remoteUrl = await commands.getGitRemoteUrl(repository.path);
-		return remoteUrl ? resolveProviderForRemote(remoteUrl) : null;
-	} catch {
-		return null;
-	}
-}
 
 function savedDrafts(context: ContextView): Record<string, PullRequestDraftView> {
 	return Object.fromEntries(
@@ -98,64 +78,49 @@ export function CreatePullRequestModal({
 	context,
 }: CreatePullRequestModalProps) {
 	const { t } = useTranslation();
-	const { push } = usePushWorktree();
 	const { stateFor, generate } = usePullRequestDescriptionDraft();
 	const { mutateAsync: savePullRequestDraft } = useSavePullRequestDraft(project.tag);
+	const { mutateAsync: createPullRequest } = useCreatePullRequest(project.tag);
+	const { hostProblem } = useContextPullRequests(project.tag);
 
-	const [targets, setTargets] = useState<RepositoryTarget[] | null>(null);
 	const [drafts, setDrafts] = useState<Record<string, PullRequestDraftView>>(() =>
 		savedDrafts(context),
 	);
 	const [creatingRepositoryId, setCreatingRepositoryId] = useState<string | null>(null);
 	const [draftByRepository, setDraftByRepository] = useState<Record<string, boolean>>({});
 	const [createdByRepository, setCreatedByRepository] = useState<
-		Record<string, CreatedPullRequest>
+		Record<string, CreatedPullRequestView>
 	>({});
 
 	const baseContext = useMemo(() => findBaseContext(project, context), [project, context]);
 
-	// Resolve each subrepo's GitHub ref and base branch once the modal opens.
-	useEffect(() => {
-		if (!opened) return;
-		let cancelled = false;
-
-		async function resolveTargets() {
-			const resolved = await Promise.all(
-				context.branches.map(async (branch) => {
-					const repository = findEffectiveRepository(project, branch.repositoryId);
-					if (!repository || !branch.worktreePath) return null;
-					const resolved = await resolveProvider(repository);
-					// Prefer the base context's branch; fall back to the repository's
-					// default branch so a context whose base has no recorded branch for
-					// this repo (e.g. a mono-repo default saved with empty branches)
-					// still has something to open the pull request against.
-					const baseBranch =
-						(baseContext && findContextBranch(baseContext, branch.repositoryId)?.branch) ??
-						findDefaultBranch(project, branch.repositoryId) ??
-						null;
-					return {
+	const targets = useMemo(
+		() =>
+			context.branches.flatMap((branch): RepositoryTarget[] => {
+				const repository = findEffectiveRepository(project, branch.repositoryId);
+				if (!repository || !branch.worktreePath) return [];
+				// Prefer the base context's branch; fall back to the repository's
+				// default branch so a context whose base has no recorded branch for
+				// this repo (e.g. a mono-repo default saved with empty branches)
+				// still has something to open the pull request against.
+				const baseBranch =
+					(baseContext && findContextBranch(baseContext, branch.repositoryId)?.branch) ??
+					findDefaultBranch(project, branch.repositoryId) ??
+					null;
+				return [
+					{
 						repository,
 						worktreePath: branch.worktreePath,
 						headBranch: branch.branch,
 						baseBranch,
-						resolved,
-					} satisfies RepositoryTarget;
-				}),
-			);
-			if (!cancelled) {
-				setTargets(resolved.filter((target): target is RepositoryTarget => target !== null));
-			}
-		}
-
-		resolveTargets();
-		return () => {
-			cancelled = true;
-		};
-	}, [opened, context.branches, project, baseContext]);
+					},
+				];
+			}),
+		[context.branches, project, baseContext],
+	);
 
 	// Fold a freshly generated description into the editable draft.
 	useEffect(() => {
-		if (!targets) return;
 		for (const target of targets) {
 			const generated = stateFor(target.repository.id);
 			if (generated.status === "ready" && generated.description) {
@@ -193,8 +158,23 @@ export function CreatePullRequestModal({
 		onClose();
 	}
 
+	function describeHostProblem(problem: BranchHostProblem): string {
+		switch (problem.kind) {
+			case "noRemote":
+				return t("contexts.createPr.noRemote");
+			case "unsupportedHost":
+				return t("contexts.createPr.unsupportedRemote");
+			case "notConnected":
+				return t("contexts.createPr.notConnected", {
+					host: problem.host
+						? t(GIT_HOSTS[problem.host].displayNameKey)
+						: t("contexts.createPr.unknownGitHost"),
+				});
+		}
+	}
+
 	async function handleCreate(target: RepositoryTarget) {
-		if (!target.resolved || !target.baseBranch) return;
+		if (!target.baseBranch) return;
 		const draft = draftFor(target.repository.id);
 		if (!draft.title.trim()) {
 			notifications.show({
@@ -207,22 +187,15 @@ export function CreatePullRequestModal({
 
 		setCreatingRepositoryId(target.repository.id);
 		try {
-			const pushResult = await push(target.worktreePath);
-			if (!pushResult.pushed) {
-				notifications.show({
-					color: "red",
-					title: t("contexts.createPr.pushFailed"),
-					message: pushResult.message ?? t("contexts.createPr.pushFailed"),
-				});
-				return;
-			}
-
-			const created = await target.resolved.provider.createPullRequest(target.resolved.ref, {
-				title: draft.title.trim(),
-				body: draft.description,
-				head: target.headBranch,
-				base: target.baseBranch,
-				draft: draftByRepository[target.repository.id] ?? false,
+			const created = await createPullRequest({
+				repositoryId: target.repository.id,
+				input: {
+					title: draft.title.trim(),
+					body: draft.description,
+					head: target.headBranch,
+					base: target.baseBranch,
+					draft: draftByRepository[target.repository.id] ?? false,
+				},
 			});
 
 			setCreatedByRepository((current) => ({ ...current, [target.repository.id]: created }));
@@ -248,23 +221,24 @@ export function CreatePullRequestModal({
 		const draft = draftFor(repositoryId);
 		const generation = stateFor(repositoryId);
 		const created = createdByRepository[repositoryId];
+		const problem = hostProblem(repositoryId, target.headBranch);
 		const sameBranch = target.baseBranch === target.headBranch;
-		const canCreate = Boolean(target.resolved) && Boolean(target.baseBranch) && !sameBranch;
+		const canCreate = !problem && Boolean(target.baseBranch) && !sameBranch;
 
 		return (
 			<Tabs.Panel key={repositoryId} value={repositoryId} pt="md">
 				<Stack gap="sm">
-					{!target.resolved && (
+					{problem && (
 						<Alert color="orange" icon={<WarningIcon size={16} />}>
-							{t("contexts.createPr.unsupportedRemote")}
+							{describeHostProblem(problem)}
 						</Alert>
 					)}
-					{target.resolved && !target.baseBranch && (
+					{!problem && !target.baseBranch && (
 						<Alert color="orange" icon={<WarningIcon size={16} />}>
 							{t("contexts.createPr.noBaseBranch")}
 						</Alert>
 					)}
-					{target.resolved && target.baseBranch && sameBranch && (
+					{!problem && target.baseBranch && sameBranch && (
 						<Alert color="orange" icon={<WarningIcon size={16} />}>
 							{t("contexts.createPr.sameBranch", { branch: target.headBranch })}
 						</Alert>
@@ -347,7 +321,7 @@ export function CreatePullRequestModal({
 							}
 						/>
 						{created ? (
-							<Anchor href={created.htmlUrl} target="_blank" rel="noreferrer">
+							<Anchor href={created.url} target="_blank" rel="noreferrer">
 								<Group gap={6}>
 									<ArrowSquareOutIcon size={16} />
 									{t("contexts.createPr.viewPr", { number: created.number })}
@@ -372,11 +346,7 @@ export function CreatePullRequestModal({
 
 	return (
 		<Modal opened={opened} onClose={handleClose} title={t("contexts.createPr.title")} size="xl">
-			{targets === null ? (
-				<Group justify="center" py="xl">
-					<Loader />
-				</Group>
-			) : targets.length === 0 ? (
+			{targets.length === 0 ? (
 				<Text size="sm" c="dimmed">
 					{t("contexts.noRepositories")}
 				</Text>

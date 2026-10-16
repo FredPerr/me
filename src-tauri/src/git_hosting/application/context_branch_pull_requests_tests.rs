@@ -6,7 +6,8 @@ use super::registry::GitHostRegistry;
 use super::service::GitHostingService;
 use super::test_support::{
     account, open_pull_request, repository_remote, FakeClock, FakeHostTokens, FakeProjectRemotes,
-    HostScript, RecordingEvents, RepositoryBranch, BITBUCKET_LOGIN, GITHUB_LOGIN,
+    FakeWorktreePushes, HostScript, RecordingEvents, RepositoryBranch, BITBUCKET_LOGIN,
+    GITHUB_LOGIN,
 };
 use crate::git_hosting::domain::error::GitHostingError;
 use crate::git_hosting::domain::host_kind::HostKind;
@@ -90,6 +91,7 @@ impl Harness {
             Arc::new(InMemoryHostedAccounts::default()),
             Arc::new(RecordingEvents::default()),
             Arc::new(FakeProjectRemotes::project(PROJECT_TAG, repositories)),
+            Arc::new(FakeWorktreePushes::default()),
             clock.clone(),
         );
         Self {

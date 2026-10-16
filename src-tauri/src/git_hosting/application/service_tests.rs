@@ -6,7 +6,7 @@ use super::test_support::{
     account, browser_step, BrowserScript, FakeHostTokens, HostScript, RecordingEvents,
     ScriptedBrowserSignIn, ScriptedPoll, BITBUCKET_LOGIN, DEVICE_CODE, GITHUB_LOGIN,
 };
-use super::test_support::{FakeClock, FakeProjectRemotes};
+use super::test_support::{FakeClock, FakeProjectRemotes, FakeWorktreePushes};
 use crate::git_hosting::domain::error::{GitHostingError, InputField};
 use crate::git_hosting::domain::host_kind::HostKind;
 use crate::git_hosting::domain::host_secret::HostSecret;
@@ -81,6 +81,7 @@ impl Harness {
             self.accounts.clone(),
             self.events.clone(),
             Arc::new(FakeProjectRemotes::default()),
+            Arc::new(FakeWorktreePushes::default()),
             Arc::new(FakeClock::default()),
         )
     }

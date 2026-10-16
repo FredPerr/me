@@ -1,6 +1,23 @@
-//! GitHub's JSON answers, as sent. No `Debug` where a token can appear.
+//! GitHub's JSON requests and answers, as sent. No `Debug` where a token can appear.
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+
+/// `POST https://api.github.com/repos/{owner}/{name}/pulls`
+#[derive(Debug, Serialize)]
+pub struct CreatePullRequestRequest<'a> {
+    pub title: &'a str,
+    pub body: &'a str,
+    pub head: &'a str,
+    pub base: &'a str,
+    pub draft: bool,
+}
+
+/// The answer to [`CreatePullRequestRequest`].
+#[derive(Debug, Deserialize)]
+pub struct CreatedPullRequestResponse {
+    pub number: u32,
+    pub html_url: String,
+}
 
 /// `POST https://github.com/login/device/code`
 #[derive(Debug, Deserialize)]

@@ -9,7 +9,7 @@ pub mod infra;
 
 use std::sync::Arc;
 
-use domain::ports::{GitRepositories, RemoteCredentials};
+use domain::ports::{BranchPushListener, GitRepositories, RemoteCredentials};
 use infra::git2_cli::Git2CliRepositories;
 
 /// Shared access to repositories, held in Tauri state.
@@ -19,6 +19,17 @@ pub struct Git(Arc<dyn GitRepositories>);
 impl Git {
     pub fn repositories(&self) -> Arc<dyn GitRepositories> {
         self.0.clone()
+    }
+}
+
+/// Who hears about pushed branches, held in Tauri state. Managed apart from
+/// [`Git`] because the listener is built from contexts that need `Git` first.
+#[derive(Clone)]
+pub struct PushListener(Arc<dyn BranchPushListener>);
+
+impl PushListener {
+    pub fn new(listener: Arc<dyn BranchPushListener>) -> Self {
+        Self(listener)
     }
 }
 

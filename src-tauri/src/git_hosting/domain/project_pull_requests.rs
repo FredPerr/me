@@ -15,6 +15,14 @@ pub struct ProjectRepositoryRemote {
     pub context_branches: Vec<String>,
 }
 
+/// The remote of a repository of a Project, and where a context of the
+/// Project checks one of its branches out.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RepositoryBranchCheckout {
+    pub remote: Option<RemoteUrl>,
+    pub worktree_path: String,
+}
+
 /// What became of asking a repository's Git host for pull requests. `Found`
 /// is what an answer holds: the open pull requests of the repository by
 /// default, or the pull request of one branch.
