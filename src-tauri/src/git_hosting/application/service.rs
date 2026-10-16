@@ -1,13 +1,19 @@
 use std::sync::Arc;
 
+use futures_util::future::join_all;
+
 use super::registry::GitHostRegistry;
 use crate::git_hosting::domain::error::{GitHostingError, InputField};
 use crate::git_hosting::domain::host_kind::HostKind;
 use crate::git_hosting::domain::host_secret::HostSecret;
 use crate::git_hosting::domain::hosted_account::{HostedAccount, SignedInHost};
+use crate::git_hosting::domain::hosted_repository::HostedRepository;
 use crate::git_hosting::domain::ports::{
     GitHost, GitHostingEvents, HostTokens, HostTokensUnavailable, HostedAccounts,
-    HostedAccountsUnavailable,
+    HostedAccountsUnavailable, ProjectRemotes,
+};
+use crate::git_hosting::domain::project_pull_requests::{
+    ProjectRepositoryRemote, PullRequestsStatus, RepositoryPullRequests,
 };
 use crate::git_hosting::domain::sign_in::{
     BrowserSignInStep, SignInMethod, SignInPoll, SignInProgress,
@@ -30,6 +36,7 @@ pub struct GitHostingService {
     host_tokens: Arc<dyn HostTokens>,
     accounts: Arc<dyn HostedAccounts>,
     events: Arc<dyn GitHostingEvents>,
+    project_remotes: Arc<dyn ProjectRemotes>,
 }
 
 impl GitHostingService {
@@ -38,12 +45,14 @@ impl GitHostingService {
         host_tokens: Arc<dyn HostTokens>,
         accounts: Arc<dyn HostedAccounts>,
         events: Arc<dyn GitHostingEvents>,
+        project_remotes: Arc<dyn ProjectRemotes>,
     ) -> Self {
         Self {
             registry,
             host_tokens,
             accounts,
             events,
+            project_remotes,
         }
     }
 
@@ -148,6 +157,61 @@ impl GitHostingService {
             .read(host)?
             .ok_or(GitHostingError::NotConnected)?;
         self.registry.create(host, &secret)
+    }
+
+    /// The open pull requests of every repository of the Project, in the
+    /// Project's order. Repositories load at the same time and each gets its
+    /// own status, so one failing repository never hides the others.
+    pub async fn project_open_pull_requests(
+        &self,
+        project_tag: &str,
+    ) -> Result<Vec<RepositoryPullRequests>, GitHostingError> {
+        let repositories = self.project_remotes.repositories(project_tag).await?;
+        let loads = repositories
+            .into_iter()
+            .map(|repository| self.repository_pull_requests(repository));
+        Ok(join_all(loads).await)
+    }
+
+    async fn repository_pull_requests(
+        &self,
+        repository: ProjectRepositoryRemote,
+    ) -> RepositoryPullRequests {
+        let (host, status) = match repository
+            .remote
+            .as_ref()
+            .map(HostedRepository::from_remote)
+        {
+            None => (None, PullRequestsStatus::NoRemote),
+            Some(Err(_)) => (None, PullRequestsStatus::UnsupportedHost),
+            Some(Ok(hosted)) => (Some(hosted.host), self.open_pull_requests(&hosted).await),
+        };
+        RepositoryPullRequests {
+            repository_id: repository.repository_id,
+            repository_name: repository.repository_name,
+            host,
+            status,
+        }
+    }
+
+    async fn open_pull_requests(&self, repository: &HostedRepository) -> PullRequestsStatus {
+        let listed = match self.connected_host(repository.host) {
+            Ok(git_host) => git_host.list_open_pull_requests(repository).await,
+            Err(error) => Err(error),
+        };
+        match listed {
+            Ok(pull_requests) => PullRequestsStatus::Ok(pull_requests),
+            Err(GitHostingError::NotConnected) => PullRequestsStatus::NotConnected,
+            Err(error) => {
+                eprintln!(
+                    "[git_hosting] pull requests of {}/{} on {} not listed: {error:?}",
+                    repository.owner,
+                    repository.name,
+                    repository.host.as_str()
+                );
+                PullRequestsStatus::Failed(error)
+            }
+        }
     }
 
     fn require_sign_in_method(

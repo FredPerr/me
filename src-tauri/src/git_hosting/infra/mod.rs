@@ -12,5 +12,6 @@ mod http;
 #[cfg(test)]
 pub mod in_memory_hosted_accounts;
 pub mod keychain_host_tokens;
+mod paging;
 pub mod redb_hosted_accounts;
 pub mod tauri_git_hosting_events;

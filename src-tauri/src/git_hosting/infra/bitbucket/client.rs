@@ -12,6 +12,7 @@ const HOST_LABEL: &str = "bitbucket";
 const JSON: &str = "application/json";
 const RETRY_AFTER: &str = "retry-after";
 
+pub const API_BASE: &str = "https://api.bitbucket.org/2.0";
 pub const USER_URL: &str = "https://api.bitbucket.org/2.0/user";
 
 pub struct BitbucketClient {

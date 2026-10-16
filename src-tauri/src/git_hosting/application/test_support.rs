@@ -7,13 +7,18 @@ use std::sync::{Arc, Mutex};
 use async_trait::async_trait;
 
 use super::registry::GitHostFactory;
+use crate::git::domain::remote_url::RemoteUrl;
+use crate::git_hosting::domain::capped::Capped;
 use crate::git_hosting::domain::error::GitHostingError;
 use crate::git_hosting::domain::host_kind::HostKind;
 use crate::git_hosting::domain::host_secret::HostSecret;
 use crate::git_hosting::domain::hosted_account::HostedAccount;
+use crate::git_hosting::domain::hosted_pull_request::{HostedPullRequest, PullRequestState};
+use crate::git_hosting::domain::hosted_repository::HostedRepository;
 use crate::git_hosting::domain::ports::{
-    BrowserSignIn, GitHost, GitHostingEvents, HostTokens, HostTokensUnavailable,
+    BrowserSignIn, GitHost, GitHostingEvents, HostTokens, HostTokensUnavailable, ProjectRemotes,
 };
+use crate::git_hosting::domain::project_pull_requests::ProjectRepositoryRemote;
 use crate::git_hosting::domain::sign_in::{BrowserSignInStep, SignInPoll};
 
 pub const GITHUB_LOGIN: &str = "octocat";
@@ -25,6 +30,11 @@ pub const VERIFICATION_URL: &str = "https://github.com/login/device";
 pub const DEVICE_CODE: &str = "device-code-1";
 pub const INTERVAL_SECONDS: u32 = 5;
 pub const EXPIRES_IN_SECONDS: u32 = 900;
+pub const PULL_REQUEST_TITLE: &str = "Add the login page";
+pub const PULL_REQUEST_AUTHOR: &str = "octocat";
+pub const HEAD_BRANCH: &str = "feature/login";
+pub const BASE_BRANCH: &str = "main";
+pub const UPDATED_AT: &str = "2024-05-01T12:00:00Z";
 
 pub fn account(host: HostKind, login: &str) -> HostedAccount {
     HostedAccount {
@@ -42,6 +52,20 @@ pub fn browser_step() -> BrowserSignInStep {
         device_code: DEVICE_CODE.to_string(),
         interval_seconds: INTERVAL_SECONDS,
         expires_in_seconds: EXPIRES_IN_SECONDS,
+    }
+}
+
+pub fn open_pull_request(number: u32) -> HostedPullRequest {
+    HostedPullRequest {
+        number,
+        title: PULL_REQUEST_TITLE.to_string(),
+        url: format!("https://github.com/acme/api/pull/{number}"),
+        author: Some(PULL_REQUEST_AUTHOR.to_string()),
+        head_branch: HEAD_BRANCH.to_string(),
+        base_branch: BASE_BRANCH.to_string(),
+        draft: false,
+        state: PullRequestState::Open,
+        updated_at: UPDATED_AT.to_string(),
     }
 }
 
@@ -105,10 +129,13 @@ impl HostTokens for FakeHostTokens {
     }
 }
 
-/// Scripted `current_account` answer of one Git host, plus a log of the
-/// secrets its adapters were built with and of the account fetches.
+/// Scripted answers of one Git host, plus a log of the secrets its adapters
+/// were built with and of the account fetches. A repository without a
+/// scripted pull request answer has no open pull requests.
 pub struct HostScript {
     pub account_result: Result<HostedAccount, GitHostingError>,
+    pub pull_requests_by_repository:
+        HashMap<String, Result<Capped<HostedPullRequest>, GitHostingError>>,
     pub created_with_secrets: Vec<String>,
     pub account_fetches: usize,
 }
@@ -117,6 +144,7 @@ impl HostScript {
     pub fn shared(account_result: Result<HostedAccount, GitHostingError>) -> Arc<Mutex<Self>> {
         Arc::new(Mutex::new(Self {
             account_result,
+            pull_requests_by_repository: HashMap::new(),
             created_with_secrets: Vec::new(),
             account_fetches: 0,
         }))
@@ -147,6 +175,22 @@ impl GitHost for ScriptedGitHost {
         let mut script = self.script.lock().unwrap();
         script.account_fetches += 1;
         script.account_result.clone()
+    }
+
+    async fn list_open_pull_requests(
+        &self,
+        repository: &HostedRepository,
+    ) -> Result<Capped<HostedPullRequest>, GitHostingError> {
+        self.script
+            .lock()
+            .unwrap()
+            .pull_requests_by_repository
+            .get(&repository.name)
+            .cloned()
+            .unwrap_or(Ok(Capped {
+                items: Vec::new(),
+                truncated: false,
+            }))
     }
 }
 
@@ -217,5 +261,43 @@ impl RecordingEvents {
 impl GitHostingEvents for RecordingEvents {
     fn changed(&self, host: HostKind) {
         self.changed.lock().unwrap().push(host);
+    }
+}
+
+/// The repositories of one Project; every other tag is an unknown Project.
+#[derive(Default)]
+pub struct FakeProjectRemotes {
+    project_tag: String,
+    repositories: Vec<ProjectRepositoryRemote>,
+}
+
+impl FakeProjectRemotes {
+    pub fn project(project_tag: &str, repositories: Vec<ProjectRepositoryRemote>) -> Self {
+        Self {
+            project_tag: project_tag.to_string(),
+            repositories,
+        }
+    }
+}
+
+pub fn repository_remote(name: &str, remote: Option<&str>) -> ProjectRepositoryRemote {
+    ProjectRepositoryRemote {
+        repository_id: format!("{name}-id"),
+        repository_name: name.to_string(),
+        remote: remote.map(RemoteUrl::new),
+    }
+}
+
+#[async_trait]
+impl ProjectRemotes for FakeProjectRemotes {
+    async fn repositories(
+        &self,
+        project_tag: &str,
+    ) -> Result<Vec<ProjectRepositoryRemote>, GitHostingError> {
+        if project_tag == self.project_tag {
+            Ok(self.repositories.clone())
+        } else {
+            Err(GitHostingError::NotFound)
+        }
     }
 }

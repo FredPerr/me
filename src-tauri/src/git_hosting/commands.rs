@@ -10,6 +10,8 @@ use super::application::service::GitHostingService;
 use super::domain::error::{GitHostingError, InputField};
 use super::domain::host_kind::HostKind;
 use super::domain::hosted_account::{HostedAccount, SignedInHost};
+use super::domain::hosted_pull_request::{HostedPullRequest, PullRequestState};
+use super::domain::project_pull_requests::{PullRequestsStatus, RepositoryPullRequests};
 use super::domain::sign_in::{BrowserSignInStep, SignInProgress};
 use super::GitHosting;
 
@@ -221,6 +223,109 @@ impl From<SignInProgress> for SignInProgressView {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub enum PullRequestStateView {
+    Open,
+    Merged,
+    Closed,
+}
+
+impl From<PullRequestState> for PullRequestStateView {
+    fn from(state: PullRequestState) -> Self {
+        match state {
+            PullRequestState::Open => Self::Open,
+            PullRequestState::Merged => Self::Merged,
+            PullRequestState::Closed => Self::Closed,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct HostedPullRequestView {
+    pub number: u32,
+    pub title: String,
+    pub url: String,
+    pub author: Option<String>,
+    pub head_branch: String,
+    pub base_branch: String,
+    pub draft: bool,
+    pub state: PullRequestStateView,
+    pub updated_at: String,
+}
+
+impl From<HostedPullRequest> for HostedPullRequestView {
+    fn from(pull_request: HostedPullRequest) -> Self {
+        Self {
+            number: pull_request.number,
+            title: pull_request.title,
+            url: pull_request.url,
+            author: pull_request.author,
+            head_branch: pull_request.head_branch,
+            base_branch: pull_request.base_branch,
+            draft: pull_request.draft,
+            state: pull_request.state.into(),
+            updated_at: pull_request.updated_at,
+        }
+    }
+}
+
+/// What became of loading one repository's open pull requests. `truncated`
+/// says the list was cut short after the page limit.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum PullRequestsStatusView {
+    NoRemote,
+    UnsupportedHost,
+    NotConnected,
+    Failed {
+        error: GitHostingCommandError,
+    },
+    Ok {
+        #[serde(rename = "pullRequests")]
+        pull_requests: Vec<HostedPullRequestView>,
+        truncated: bool,
+    },
+}
+
+impl From<PullRequestsStatus> for PullRequestsStatusView {
+    fn from(status: PullRequestsStatus) -> Self {
+        match status {
+            PullRequestsStatus::NoRemote => Self::NoRemote,
+            PullRequestsStatus::UnsupportedHost => Self::UnsupportedHost,
+            PullRequestsStatus::NotConnected => Self::NotConnected,
+            PullRequestsStatus::Failed(error) => Self::Failed {
+                error: error.into(),
+            },
+            PullRequestsStatus::Ok(capped) => Self::Ok {
+                pull_requests: capped.items.into_iter().map(Into::into).collect(),
+                truncated: capped.truncated,
+            },
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryPullRequestsView {
+    pub repository_id: String,
+    pub repository_name: String,
+    pub host: Option<HostKindView>,
+    pub status: PullRequestsStatusView,
+}
+
+impl From<RepositoryPullRequests> for RepositoryPullRequestsView {
+    fn from(repository: RepositoryPullRequests) -> Self {
+        Self {
+            repository_id: repository.repository_id,
+            repository_name: repository.repository_name,
+            host: repository.host.map(HostKindView::from),
+            status: repository.status.into(),
+        }
+    }
+}
+
 fn service(git_hosting: &State<'_, GitHosting>) -> Arc<GitHostingService> {
     git_hosting.service.clone()
 }
@@ -286,11 +391,28 @@ pub async fn git_hosting_sign_out(
     Ok(())
 }
 
+/// The open pull requests of each repository of the Project, in its order.
+#[tauri::command]
+#[specta::specta]
+pub async fn git_hosting_project_pull_requests(
+    git_hosting: State<'_, GitHosting>,
+    project_tag: String,
+) -> Result<Vec<RepositoryPullRequestsView>, GitHostingCommandError> {
+    let repositories = service(&git_hosting)
+        .project_open_pull_requests(&project_tag)
+        .await?;
+    Ok(repositories
+        .into_iter()
+        .map(RepositoryPullRequestsView::from)
+        .collect())
+}
+
 #[cfg(test)]
 mod tests {
     use serde_json::json;
 
     use super::*;
+    use crate::git_hosting::domain::capped::Capped;
 
     const RETRY_AFTER_SECONDS: u32 = 30;
     const SERVER_ERROR_STATUS: u16 = 502;
@@ -348,6 +470,94 @@ mod tests {
                 serde_json::to_value(HostKindView::from(host)).unwrap(),
                 json!(host.as_str())
             );
+        }
+    }
+
+    mod pull_requests {
+        use super::*;
+
+        const NUMBER: u32 = 7;
+        const TITLE: &str = "Add the login page";
+        const URL: &str = "https://github.com/acme/api/pull/7";
+        const AUTHOR: &str = "octocat";
+        const HEAD_BRANCH: &str = "feature/login";
+        const BASE_BRANCH: &str = "main";
+        const UPDATED_AT: &str = "2024-05-01T12:00:00Z";
+        const REPOSITORY_ID: &str = "api-id";
+        const REPOSITORY_NAME: &str = "api";
+
+        fn merged_pull_request() -> HostedPullRequest {
+            HostedPullRequest {
+                number: NUMBER,
+                title: TITLE.to_string(),
+                url: URL.to_string(),
+                author: Some(AUTHOR.to_string()),
+                head_branch: HEAD_BRANCH.to_string(),
+                base_branch: BASE_BRANCH.to_string(),
+                draft: false,
+                state: PullRequestState::Merged,
+                updated_at: UPDATED_AT.to_string(),
+            }
+        }
+
+        fn status_wire(status: PullRequestsStatus) -> serde_json::Value {
+            serde_json::to_value(PullRequestsStatusView::from(status)).unwrap()
+        }
+
+        #[test]
+        fn a_listed_repository_is_sent_with_its_pull_requests() {
+            let repository = RepositoryPullRequestsView::from(RepositoryPullRequests {
+                repository_id: REPOSITORY_ID.to_string(),
+                repository_name: REPOSITORY_NAME.to_string(),
+                host: Some(HostKind::Github),
+                status: PullRequestsStatus::Ok(Capped {
+                    items: vec![merged_pull_request()],
+                    truncated: true,
+                }),
+            });
+
+            assert_eq!(
+                serde_json::to_value(repository).unwrap(),
+                json!({
+                    "repositoryId": REPOSITORY_ID,
+                    "repositoryName": REPOSITORY_NAME,
+                    "host": "github",
+                    "status": {
+                        "kind": "ok",
+                        "truncated": true,
+                        "pullRequests": [{
+                            "number": NUMBER,
+                            "title": TITLE,
+                            "url": URL,
+                            "author": AUTHOR,
+                            "headBranch": HEAD_BRANCH,
+                            "baseBranch": BASE_BRANCH,
+                            "draft": false,
+                            "state": "merged",
+                            "updatedAt": UPDATED_AT,
+                        }],
+                    },
+                })
+            );
+        }
+
+        #[test]
+        fn statuses_without_pull_requests_are_sent_by_kind() {
+            for (status, kind) in [
+                (PullRequestsStatus::NoRemote, "noRemote"),
+                (PullRequestsStatus::UnsupportedHost, "unsupportedHost"),
+                (PullRequestsStatus::NotConnected, "notConnected"),
+            ] {
+                assert_eq!(status_wire(status), json!({ "kind": kind }));
+            }
+        }
+
+        #[test]
+        fn a_failed_repository_carries_its_error() {
+            let status = status_wire(PullRequestsStatus::Failed(GitHostingError::Forbidden));
+
+            assert_eq!(status["kind"], "failed");
+            assert_eq!(status["error"]["kind"], "forbidden");
         }
     }
 

@@ -14,9 +14,11 @@ const GITHUB_JSON: &str = "application/vnd.github+json";
 const RETRY_AFTER: &str = "retry-after";
 const RATE_LIMIT_REMAINING: &str = "x-ratelimit-remaining";
 const RATE_LIMIT_RESET: &str = "x-ratelimit-reset";
+const LINK: &str = "link";
 
 pub const DEVICE_CODE_URL: &str = "https://github.com/login/device/code";
 pub const ACCESS_TOKEN_URL: &str = "https://github.com/login/oauth/access_token";
+pub const API_BASE: &str = "https://api.github.com";
 pub const USER_URL: &str = "https://api.github.com/user";
 
 pub struct GithubClient {
@@ -47,12 +49,28 @@ impl GithubClient {
         token: &HostSecret,
         context: &str,
     ) -> Result<T, GitHostingError> {
+        read(self.get(url, token).await?, context)
+    }
+
+    /// A page of a list and its `Link` header, which links to the next page.
+    pub async fn get_page<T: DeserializeOwned>(
+        &self,
+        url: &str,
+        token: &HostSecret,
+        context: &str,
+    ) -> Result<(T, Option<String>), GitHostingError> {
+        let answer = self.get(url, token).await?;
+        let link_header = answer.header(LINK).map(str::to_string);
+        Ok((read(answer, context)?, link_header))
+    }
+
+    async fn get(&self, url: &str, token: &HostSecret) -> Result<Answer, GitHostingError> {
         let request = self
             .http
             .get(url)
             .bearer_auth(token.expose())
             .header(ACCEPT, GITHUB_JSON);
-        read(http::send(request).await?, context)
+        http::send(request).await
     }
 }
 
