@@ -3,8 +3,8 @@ import { useTranslation } from "react-i18next";
 import type { HostKindView, SignedInHostView } from "@/bindings";
 import { useHostedAccounts } from "@/hooks/gitHosting/useHostedAccounts";
 import { describeError } from "@/infra/commandError";
+import { GIT_HOST_KINDS, GIT_HOSTS } from "@/models/git-hosting/gitHosts";
 import { BrowserSignInCard } from "./BrowserSignInCard";
-import { GIT_HOST_KINDS, GIT_HOSTS } from "./gitHosts";
 import { SignedInCard } from "./SignedInCard";
 import { TokenSignInCard } from "./TokenSignInCard";
 

@@ -11,10 +11,6 @@ const PROVIDERS: Record<GitProviderId, GitProvider> = {
 	bitbucket: new BitbucketProvider(),
 };
 
-export function getGitProvider(id: GitProviderId): GitProvider {
-	return PROVIDERS[id];
-}
-
 export function listGitProviders(): GitProvider[] {
 	return Object.values(PROVIDERS);
 }

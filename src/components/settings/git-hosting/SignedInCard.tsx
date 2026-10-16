@@ -3,8 +3,8 @@ import { notifications } from "@mantine/notifications";
 import { useTranslation } from "react-i18next";
 import type { SignedInHostView } from "@/bindings";
 import { useSignOut } from "@/hooks/gitHosting/useGitHostingMutations";
+import { GIT_HOSTS } from "@/models/git-hosting/gitHosts";
 import { GitHostCardLayout } from "./GitHostCardLayout";
-import { GIT_HOSTS } from "./gitHosts";
 
 /** A signed-in Git host. A failed sign-out is shown by the app-wide notification. */
 export function SignedInCard({ signedIn }: { signedIn: SignedInHostView }) {

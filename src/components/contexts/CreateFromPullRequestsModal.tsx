@@ -13,15 +13,22 @@ import {
 } from "@mantine/core";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { commands, type ProjectView, type RepositoryBranchInput } from "@/bindings";
 import {
-	type RepositoryPullRequests,
-	useProjectPullRequests,
-} from "@/hooks/useProjectPullRequests";
+	commands,
+	type HostedPullRequestView,
+	type ProjectView,
+	type RepositoryBranchInput,
+} from "@/bindings";
+import { PullRequestsNotices } from "@/components/shared/PullRequestsNotices";
+import { useProjectPullRequests } from "@/hooks/gitHosting/useProjectPullRequests";
 import { useBranchNameSuggestion } from "@/hooks/workspace/useBranchNameSuggestion";
 import { useCreateContext } from "@/hooks/workspace/useContextMutations";
 import { describeError } from "@/infra/commandError";
-import type { ProviderPullRequest } from "@/models/git-provider/GitProvider";
+import {
+	labeledByRepositoryName,
+	listedPullRequests,
+	pullRequestsNotices,
+} from "@/models/git-hosting/repositoryPullRequests";
 import { findDefaultBranch } from "@/models/projectView";
 import { fuzzySelectFilter } from "@/utils/fuzzySelectFilter";
 
@@ -32,7 +39,7 @@ type CreateFromPullRequestsModalProps = {
 };
 
 /** Build the Select option list for a repository's open pull requests, keyed by head branch. */
-function pullRequestOptions(pullRequests: ProviderPullRequest[]) {
+function pullRequestOptions(pullRequests: HostedPullRequestView[]) {
 	return pullRequests.map((pullRequest) => ({
 		value: pullRequest.headBranch,
 		label: `#${pullRequest.number} ${pullRequest.title}`,
@@ -53,13 +60,8 @@ export function CreateFromPullRequestsModal({
 	const { t } = useTranslation();
 	const createContext = useCreateContext();
 	const repositories = project.effectiveRepositories;
-	const projects = useMemo(() => [project], [project]);
-	const {
-		connected,
-		loading: loadingPullRequests,
-		groups,
-		error,
-	} = useProjectPullRequests(projects);
+	const projectPullRequests = useProjectPullRequests(project.tag);
+	const pullRequestRepositories = projectPullRequests.data;
 
 	const [contextName, setContextName] = useState("");
 	const [nameEditedManually, setNameEditedManually] = useState(false);
@@ -73,16 +75,20 @@ export function CreateFromPullRequestsModal({
 		project.branchNaming.defaultPrefix,
 	);
 
-	const groupByRepositoryId = useMemo(() => {
-		const map: Record<string, RepositoryPullRequests> = {};
-		for (const group of groups) {
-			map[group.repository.id] = group;
+	const pullRequestsByRepositoryId = useMemo(() => {
+		const map: Record<string, HostedPullRequestView[]> = {};
+		for (const repository of pullRequestRepositories ?? []) {
+			map[repository.repositoryId] = listedPullRequests(repository);
 		}
 		return map;
-	}, [groups]);
+	}, [pullRequestRepositories]);
+	const notices = useMemo(
+		() => pullRequestsNotices(labeledByRepositoryName(pullRequestRepositories ?? [])),
+		[pullRequestRepositories],
+	);
 
 	function findBaseBranch(repositoryId: string, headBranch: string): string | null {
-		const pullRequest = groupByRepositoryId[repositoryId]?.pullRequests.find(
+		const pullRequest = pullRequestsByRepositoryId[repositoryId]?.find(
 			(candidate) => candidate.headBranch === headBranch,
 		);
 		return pullRequest?.baseBranch ?? null;
@@ -178,21 +184,19 @@ export function CreateFromPullRequestsModal({
 					{t("contexts.createFromPullRequestsDescription")}
 				</Text>
 
-				{!connected ? (
-					<Alert color="yellow">{t("contexts.pullRequestsNotConnected")}</Alert>
-				) : loadingPullRequests ? (
+				{projectPullRequests.isPending ? (
 					<Group justify="center" py="md">
 						<Loader size="sm" />
 					</Group>
-				) : error ? (
+				) : projectPullRequests.isError ? (
 					<Alert color="red" title={t("common.error")}>
-						{t("contexts.pullRequestsLoadError")}
+						{t("contexts.pullRequestsLoadError")} {describeError(projectPullRequests.error)}
 					</Alert>
 				) : (
 					<>
+						<PullRequestsNotices notices={notices} />
 						{repositories.map((repo) => {
-							const group = groupByRepositoryId[repo.id];
-							const pullRequests = group?.pullRequests ?? [];
+							const pullRequests = pullRequestsByRepositoryId[repo.id] ?? [];
 							const branch = selectedBranches[repo.id] ?? null;
 
 							return (

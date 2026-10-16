@@ -4,15 +4,25 @@ import { ArrowSquareOutIcon, GitPullRequestIcon, PlugsIcon } from "@phosphor-ico
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
-import type { ContextView, ProjectView, PullRequestDraftView } from "@/bindings";
+import type {
+	ContextView,
+	HostedPullRequestView,
+	HostKindView,
+	ProjectView,
+	PullRequestDraftView,
+	RepositoryPullRequestsView,
+} from "@/bindings";
 import { CreatePullRequestModal } from "@/components/contexts/CreatePullRequestModal";
 import { ProviderBadge } from "@/components/shared/ProviderBadge";
-import {
-	type RepositoryPullRequests,
-	useProjectPullRequests,
-} from "@/hooks/useProjectPullRequests";
+import { PullRequestsNotices } from "@/components/shared/PullRequestsNotices";
+import { useProjectsPullRequests } from "@/hooks/gitHosting/useProjectPullRequests";
 import { useProjects } from "@/hooks/workspace/useProjects";
-import type { GitProviderId, ProviderPullRequest } from "@/models/git-provider/GitProvider";
+import { describeError } from "@/infra/commandError";
+import {
+	isEveryHostNotConnected,
+	listedPullRequests,
+	pullRequestsNotices,
+} from "@/models/git-hosting/repositoryPullRequests";
 import { findEffectiveRepository } from "@/models/projectView";
 import { SettingsTab, settingsPath } from "./settingsTabs";
 
@@ -122,18 +132,17 @@ function NotConnected() {
 
 function PullRequestCard({
 	pullRequest,
-	providerId,
+	host,
 }: {
-	pullRequest: ProviderPullRequest;
-	providerId: GitProviderId;
+	pullRequest: HostedPullRequestView;
+	host: HostKindView | null;
 }) {
 	const { t } = useTranslation();
-
 	return (
 		<Card
 			withBorder
 			padding="sm"
-			onClick={() => openUrl(pullRequest.htmlUrl)}
+			onClick={() => openUrl(pullRequest.url)}
 			style={{ cursor: "pointer" }}
 		>
 			<Group justify="space-between" gap="xs" wrap="nowrap">
@@ -142,7 +151,7 @@ function PullRequestCard({
 						<Text fw={600} size="sm" truncate>
 							{pullRequest.title}
 						</Text>
-						<ProviderBadge providerId={providerId} />
+						{host && <ProviderBadge host={host} />}
 						{pullRequest.draft && (
 							<Badge variant="light" color="gray" size="sm">
 								{t("pullRequests.draftBadge")}
@@ -163,9 +172,12 @@ function PullRequestCard({
 	);
 }
 
-function RepositoryGroup({ group }: { group: RepositoryPullRequests }) {
-	const { t } = useTranslation();
+type ProjectRepositoryPullRequests = {
+	project: ProjectView;
+	repository: RepositoryPullRequestsView;
+};
 
+function RepositoryGroup({ group }: { group: ProjectRepositoryPullRequests }) {
 	return (
 		<Stack gap="xs">
 			<Group gap="xs">
@@ -173,76 +185,81 @@ function RepositoryGroup({ group }: { group: RepositoryPullRequests }) {
 					{group.project.name}
 				</Text>
 				<Badge variant="light" size="sm">
-					{group.repository.name}
+					{group.repository.repositoryName}
 				</Badge>
 			</Group>
-			{group.pullRequests.length === 0 ? (
-				<Text size="xs" c="dimmed">
-					{t("pullRequests.noOpenForRepo")}
-				</Text>
-			) : (
-				group.pullRequests.map((pullRequest) => (
-					<PullRequestCard
-						key={pullRequest.number}
-						pullRequest={pullRequest}
-						providerId={group.providerId}
-					/>
-				))
-			)}
+			{listedPullRequests(group.repository).map((pullRequest) => (
+				<PullRequestCard
+					key={pullRequest.number}
+					pullRequest={pullRequest}
+					host={group.repository.host}
+				/>
+			))}
 		</Stack>
 	);
 }
 
 function ActiveSection({ projects }: { projects: ProjectView[] }) {
 	const { t } = useTranslation();
-	const { connected, loading, groups, error } = useProjectPullRequests(projects);
-
-	if (loading) {
+	const projectQueries = useProjectsPullRequests(projects.map((project) => project.tag));
+	if (projectQueries.some((query) => query.isPending)) {
 		return (
 			<Group justify="center" py="xl">
 				<Loader size="sm" />
 			</Group>
 		);
 	}
-
-	if (!connected) {
+	const groups: ProjectRepositoryPullRequests[] = projects.flatMap((project, index) =>
+		(projectQueries[index]?.data ?? []).map((repository) => ({ project, repository })),
+	);
+	const queryErrors = projectQueries.flatMap((query) => (query.error ? [query.error] : []));
+	if (
+		queryErrors.length === 0 &&
+		isEveryHostNotConnected(groups.map((group) => group.repository))
+	) {
 		return <NotConnected />;
 	}
-
-	const groupsWithPullRequests = groups.filter((group) => group.pullRequests.length > 0);
-
-	// A load error is non-blocking: show it above whatever did load, so a
-	// failure for one provider/repository never hides the others' PRs.
-	const errorAlert = error ? (
-		<Alert color="red" title={t("common.error")}>
-			<Stack gap={4}>
-				<Text size="sm">{t("pullRequests.loadError")}</Text>
-				<Text size="xs" c="dimmed" style={{ wordBreak: "break-word" }}>
-					{error}
-				</Text>
-			</Stack>
-		</Alert>
-	) : null;
-
-	if (groupsWithPullRequests.length === 0) {
-		return (
-			<Stack gap="lg">
-				{errorAlert}
-				{!error && (
-					<Text size="sm" c="dimmed" ta="center" py="xl">
-						{t("pullRequests.noOpen")}
-					</Text>
-				)}
-			</Stack>
-		);
-	}
-
+	const notices = pullRequestsNotices(
+		groups.map(({ project, repository }) => ({
+			label: `${project.name} / ${repository.repositoryName}`,
+			repository,
+		})),
+	);
+	const groupsWithPullRequests = groups.filter(
+		(group) => listedPullRequests(group.repository).length > 0,
+	);
 	return (
 		<Stack gap="lg">
-			{errorAlert}
-			{groupsWithPullRequests.map((group) => (
-				<RepositoryGroup key={`${group.project.tag}-${group.repository.id}`} group={group} />
-			))}
+			{queryErrors.length > 0 && (
+				<Alert color="red" title={t("common.error")}>
+					<Stack gap={4}>
+						<Text size="sm">{t("pullRequests.loadError")}</Text>
+						{queryErrors.map((error) => (
+							<Text
+								key={describeError(error)}
+								size="xs"
+								c="dimmed"
+								style={{ wordBreak: "break-word" }}
+							>
+								{describeError(error)}
+							</Text>
+						))}
+					</Stack>
+				</Alert>
+			)}
+			<PullRequestsNotices notices={notices} />
+			{groupsWithPullRequests.length === 0 ? (
+				<Text size="sm" c="dimmed" ta="center" py="xl">
+					{t("pullRequests.noOpen")}
+				</Text>
+			) : (
+				groupsWithPullRequests.map((group) => (
+					<RepositoryGroup
+						key={`${group.project.tag}-${group.repository.repositoryId}`}
+						group={group}
+					/>
+				))
+			)}
 		</Stack>
 	);
 }
