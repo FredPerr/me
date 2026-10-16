@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
-import { commands, type WorktreeView } from "@/bindings";
+import { commands, type ProjectView, type RepositoryView, type WorktreeView } from "@/bindings";
 import { describeError } from "@/infra/commandError";
-import type { Project, Repository } from "@/models/Project";
 
 export type Worktree = WorktreeView;
 
 export type RepositoryWorktrees = {
-	repository: Repository;
+	repository: RepositoryView;
 	resolvedPath: string;
 	worktrees: Worktree[];
 };
@@ -21,7 +20,7 @@ export type WorktreeDeletionFailure = {
 	message: string;
 };
 
-export function useRepositoryWorktrees(project: Project, enabled: boolean) {
+export function useRepositoryWorktrees(project: ProjectView, enabled: boolean) {
 	const [repositoryWorktrees, setRepositoryWorktrees] = useState<RepositoryWorktrees[]>([]);
 	const [loading, setLoading] = useState(false);
 
@@ -29,11 +28,10 @@ export function useRepositoryWorktrees(project: Project, enabled: boolean) {
 		setLoading(true);
 		try {
 			const entries = await Promise.all(
-				project.repositories.map(async (repository) => {
+				project.effectiveRepositories.map(async (repository) => {
 					try {
-						const resolvedPath = await repository.resolveAbsolutePath(project.path);
-						const worktrees = await commands.listWorktrees(resolvedPath);
-						return { repository, resolvedPath, worktrees };
+						const worktrees = await commands.listWorktrees(repository.path);
+						return { repository, resolvedPath: repository.path, worktrees };
 					} catch {
 						return { repository, resolvedPath: "", worktrees: [] };
 					}
@@ -43,7 +41,7 @@ export function useRepositoryWorktrees(project: Project, enabled: boolean) {
 		} finally {
 			setLoading(false);
 		}
-	}, [project]);
+	}, [project.effectiveRepositories]);
 
 	useEffect(() => {
 		if (enabled) {

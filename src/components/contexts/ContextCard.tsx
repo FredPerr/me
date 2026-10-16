@@ -23,33 +23,26 @@ import {
 	TrashIcon,
 } from "@phosphor-icons/react";
 import type { ReactNode } from "react";
-import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import type { ContextView, ProjectView } from "@/bindings";
 import { useActiveWorkspaces } from "@/hooks/useActiveWorkspaces";
 import { useContextDiffStats } from "@/hooks/useContextDiffStats";
 import type { PullRequestLookup } from "@/hooks/useContextPullRequestStatus";
-import { type CreateContextParams, useContexts } from "@/hooks/useContexts";
 import { useOpenInIde } from "@/hooks/useOpenInIde";
-import type { Context, Project } from "@/models/Project";
+import { useDeleteContext, useSetContextStatic } from "@/hooks/workspace/useContextMutations";
+import { findBaseContext, findEffectiveRepository } from "@/models/projectView";
 import "./ContextCard.css";
 import { CreateFromContextModal } from "./CreateFromContextModal";
 import { CreatePullRequestModal } from "./CreatePullRequestModal";
 import { PullRequestStatusIcon } from "./PullRequestStatusIcon";
 
 type ContextCardProps = {
-	context: Context;
-	project: Project;
-	allContexts: Context[];
-	onDelete: (contextId: string) => Promise<void> | void;
-	onCreate: (params: CreateContextParams) => Promise<void>;
+	context: ContextView;
+	project: ProjectView;
 	/** Looks up the pull request status for a sub-repo branch, when connected. */
 	pullRequestLookup?: PullRequestLookup;
-	/** Persists the expanded/collapsed state for this context. */
-	onExpandedChange?: (contextId: string, expanded: boolean) => void;
-	/** Marks the context as a static environment, excluding it from the status columns. */
-	onStaticChange?: (contextId: string, isStatic: boolean) => void;
 	/** Opens the shared Kiro conversation modal for this context. */
-	onOpenKiro?: (context: Context) => void;
+	onOpenKiro?: (context: ContextView) => void;
 	isKiroRunning?: boolean;
 	hasKiroHistory?: boolean;
 	dragHandle?: ReactNode;
@@ -58,34 +51,30 @@ type ContextCardProps = {
 export function ContextCard({
 	context,
 	project,
-	allContexts,
-	onDelete,
-	onCreate,
 	pullRequestLookup,
-	onStaticChange,
 	onOpenKiro,
 	isKiroRunning = false,
 	hasKiroHistory = false,
 	dragHandle,
 }: ContextCardProps) {
 	const { t } = useTranslation();
-	const { openFirstExisting, isAvailable } = useOpenInIde();
+	const { open: openInIde, isAvailable } = useOpenInIde();
 	const { isActive } = useActiveWorkspaces();
-	const { savePullRequestDrafts } = useContexts(project);
-	const { statsByRepository, hasBaseContext } = useContextDiffStats(context, project, allContexts);
+	const deleteContext = useDeleteContext(project.tag);
+	const { mutate: setContextStatic } = useSetContextStatic(project.tag);
+	const { statsByRepository, hasBaseContext } = useContextDiffStats(context, project);
 	const [opened, { open: openModal, close: closeModal }] = useDisclosure(false);
 	const [createOpened, { open: openCreateModal, close: closeCreateModal }] = useDisclosure(false);
 	const [prOpened, { open: openPrModal, close: closePrModal }] = useDisclosure(false);
-	const [deleting, setDeleting] = useState(false);
 
 	const branchName = context.branches[0]?.branch ?? context.name;
-	const contextFolderPath = context.getContextFolderPath(project.path);
-	const isContextActive = isActive(contextFolderPath);
+	const isContextActive = isActive(context.folderPath);
+	const baseContext = findBaseContext(project, context);
 	const canDraftPullRequests = context.status === "needsHuman" || context.status === "review";
 	const canRunKiro = Boolean(onOpenKiro) && !context.isDefault;
 
 	async function handleOpenInIDE() {
-		await openFirstExisting(project.resolveContextIdePathCandidates(context));
+		await openInIde(context.idePath);
 	}
 
 	function handleOpenKiro() {
@@ -96,11 +85,8 @@ export function ContextCard({
 		openPrModal();
 	}
 
-	async function handleDelete() {
-		setDeleting(true);
-		await onDelete(context.id);
-		setDeleting(false);
-		closeModal();
+	function handleDelete() {
+		deleteContext.mutate(context.id, { onSuccess: closeModal });
 	}
 
 	return (
@@ -124,17 +110,18 @@ export function ContextCard({
 							</Text>
 						</Flex>
 						<Stack gap="xs">
-							{context.baseContextName && (
+							{baseContext && (
 								<Flex align="center" gap={6}>
 									<InfoIcon size={12} />
 									<Text size="xs" c="dimmed">
-										{t("contexts.baseContext")}: {context.baseContextName}
+										{t("contexts.baseContext")}:{" "}
+										{baseContext.isDefault ? t("common.default") : baseContext.name}
 									</Text>
 								</Flex>
 							)}
 							<Stack gap={0}>
 								{context.branches.map((cb, index) => {
-									const repo = project.findEffectiveRepository(cb.repositoryId);
+									const repo = findEffectiveRepository(project, cb.repositoryId);
 									const stats = statsByRepository[cb.repositoryId];
 									const isLast = index === context.branches.length - 1;
 									const hasChanges =
@@ -151,7 +138,7 @@ export function ContextCard({
 												<Text size="xs" c="dark.1" style={{ fontFamily: "monospace" }}>
 													{isLast ? "└─ " : "├─ "}
 													{repo?.name ?? "?"} (
-													{cb.linked ? (
+													{cb.checkout === "linked" ? (
 														<LockIcon size={10} />
 													) : (
 														<GitBranchIcon color="var(--mantine-color-primary-1)" size={10} />
@@ -258,7 +245,7 @@ export function ContextCard({
 								<AppWindowIcon size={16} />
 							</ActionIcon>
 						</Tooltip>
-						{!context.isDefault && onStaticChange && (
+						{!context.isDefault && (
 							<Tooltip
 								label={context.isStatic ? t("contexts.static.unmark") : t("contexts.static.mark")}
 							>
@@ -267,7 +254,9 @@ export function ContextCard({
 									color={context.isStatic ? "teal" : "gray"}
 									size="sm"
 									radius={2}
-									onClick={() => onStaticChange(context.id, !context.isStatic)}
+									onClick={() =>
+										setContextStatic({ contextId: context.id, isStatic: !context.isStatic })
+									}
 									aria-label={
 										context.isStatic ? t("contexts.static.unmark") : t("contexts.static.mark")
 									}
@@ -319,7 +308,7 @@ export function ContextCard({
 						<Button variant="subtle" onClick={closeModal}>
 							{t("common.cancel")}
 						</Button>
-						<Button color="red" onClick={handleDelete} loading={deleting}>
+						<Button color="red" onClick={handleDelete} loading={deleteContext.isPending}>
 							{t("common.delete")}
 						</Button>
 					</Group>
@@ -331,7 +320,6 @@ export function ContextCard({
 				onClose={closeCreateModal}
 				sourceContext={context}
 				project={project}
-				onCreate={onCreate}
 			/>
 
 			<CreatePullRequestModal
@@ -339,8 +327,6 @@ export function ContextCard({
 				onClose={closePrModal}
 				project={project}
 				context={context}
-				allContexts={allContexts}
-				onSaveDrafts={savePullRequestDrafts}
 			/>
 		</>
 	);

@@ -9,7 +9,6 @@ export const CONTEXT_STATUSES = [
 
 export type ContextStatus = (typeof CONTEXT_STATUSES)[number];
 
-export const DEFAULT_CONTEXT_STATUS: ContextStatus = "ready";
 export const IDLE_CONTEXT_STATUS: ContextStatus = "idle";
 
 export const CONTEXT_STATUS_COLORS: Record<ContextStatus, string> = {

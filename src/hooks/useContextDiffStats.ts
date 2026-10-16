@@ -1,42 +1,35 @@
 import { useEffect, useState } from "react";
-import { commands, type WorktreeStatusView } from "@/bindings";
-import type { Context, Project } from "@/models/Project";
+import { type ContextView, commands, type ProjectView, type WorktreeStatusView } from "@/bindings";
+import { findBaseContext, findContextBranch } from "@/models/projectView";
 
 export type RepositoryDiffStats = Omit<WorktreeStatusView, "prUrl">;
 
-export function useContextDiffStats(context: Context, project: Project, allContexts: Context[]) {
+export function useContextDiffStats(context: ContextView, project: ProjectView) {
 	const [statsByRepository, setStatsByRepository] = useState<
 		Record<string, RepositoryDiffStats | null>
 	>({});
-
-	const hasBaseContext = !!context.baseContextName;
+	const baseContext = findBaseContext(project, context);
+	const hasBaseContext = baseContext !== undefined;
 
 	useEffect(() => {
-		if (context.isDefault || !hasBaseContext) return;
+		if (context.isDefault || !baseContext) return;
 
 		let cancelled = false;
 
-		async function fetchStats() {
+		async function fetchStats(base: ContextView) {
 			const results: Record<string, RepositoryDiffStats | null> = {};
 
-			const baseContext = allContexts.find((c) => c.name === context.baseContextName);
-
 			for (const branch of context.branches) {
-				const repository = project.findRepository(branch.repositoryId);
-				if (!repository) continue;
-
-				const path = context.getWorktreePath(project.path, repository);
-				const baseBranch = baseContext?.getBranchForRepository(branch.repositoryId) ?? null;
-
-				if (!baseBranch) {
+				const baseBranch = findContextBranch(base, branch.repositoryId)?.branch;
+				if (!branch.worktreePath || !baseBranch) {
 					results[branch.repositoryId] = null;
 					continue;
 				}
-
 				try {
-					const status = await commands.getWorktreeStatus(path, baseBranch);
-
-					const { prUrl: _prUrl, ...stats } = status;
+					const { prUrl: _prUrl, ...stats } = await commands.getWorktreeStatus(
+						branch.worktreePath,
+						baseBranch,
+					);
 					results[branch.repositoryId] = stats;
 				} catch {
 					results[branch.repositoryId] = null;
@@ -48,12 +41,11 @@ export function useContextDiffStats(context: Context, project: Project, allConte
 			}
 		}
 
-		fetchStats();
-
+		fetchStats(baseContext);
 		return () => {
 			cancelled = true;
 		};
-	}, [context, project, allContexts, hasBaseContext]);
+	}, [context, baseContext]);
 
 	return { statsByRepository, hasBaseContext };
 }

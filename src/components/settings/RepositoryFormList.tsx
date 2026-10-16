@@ -2,14 +2,13 @@ import { ActionIcon, Alert, Button, Group, Stack, Switch, TextInput, Tooltip } f
 import { FolderIcon, GitBranchIcon, PlusIcon, TrashIcon, WarningIcon } from "@phosphor-icons/react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { commands } from "@/bindings";
+import { commands, type RepositoryInput } from "@/bindings";
 import { pickRepositoryFolder } from "@/hooks/useFolderPicker";
-import type { RepositoryData } from "@/models/Project";
 import { resolvePath } from "@/utils/resolvePath";
 
 type RepositoryFormListProps = {
-	repositories: RepositoryData[];
-	onChange: (repositories: RepositoryData[]) => void;
+	repositories: RepositoryInput[];
+	onChange: (repositories: RepositoryInput[]) => void;
 	projectName: string;
 	projectPath: string;
 	onValidityChange?: (allValid: boolean) => void;
@@ -24,7 +23,7 @@ export function RepositoryFormList({
 }: RepositoryFormListProps) {
 	const { t } = useTranslation();
 	const [multiRepo, setMultiRepo] = useState(
-		repositories.length > 1 || (repositories.length === 1 && repositories[0].relPath !== "."),
+		repositories.length > 1 || (repositories.length === 1 && repositories[0].relativePath !== "."),
 	);
 	const [gitStatus, setGitStatus] = useState<Record<string, boolean>>({});
 
@@ -35,9 +34,9 @@ export function RepositoryFormList({
 	}, [repositories.length]);
 
 	const resolveAndCheckGit = useCallback(
-		async (repoId: string, relPath: string) => {
+		async (repoId: string, relativePath: string) => {
 			try {
-				const resolved = await resolvePath(relPath, { basePath: projectPath });
+				const resolved = await resolvePath(relativePath, { basePath: projectPath });
 				const isGit = await commands.checkIsGitRepository(resolved);
 				setGitStatus((prev) => ({ ...prev, [repoId]: isGit }));
 			} catch {
@@ -50,8 +49,8 @@ export function RepositoryFormList({
 	useEffect(() => {
 		if (!multiRepo) return;
 		for (const repo of repositories) {
-			if (repo.relPath) {
-				resolveAndCheckGit(repo.id, repo.relPath);
+			if (repo.relativePath) {
+				resolveAndCheckGit(repo.id, repo.relativePath);
 			}
 		}
 	}, [multiRepo, repositories, resolveAndCheckGit]);
@@ -62,7 +61,7 @@ export function RepositoryFormList({
 			onValidityChange(true);
 			return;
 		}
-		const allHavePath = repositories.every((r) => r.relPath);
+		const allHavePath = repositories.every((r) => r.relativePath);
 		const allValid =
 			allHavePath && repositories.length > 0 && repositories.every((r) => gitStatus[r.id] === true);
 		onValidityChange(allValid);
@@ -72,20 +71,24 @@ export function RepositoryFormList({
 		setMultiRepo(checked);
 		if (checked) {
 			if (repositories.length === 0) {
-				onChange([{ id: crypto.randomUUID(), name: "", relPath: "." }]);
-			} else if (repositories.length === 1 && repositories[0].relPath === ".") {
-				onChange([{ ...repositories[0], relPath: "" }]);
+				onChange([newRepository(".")]);
+			} else if (repositories.length === 1 && repositories[0].relativePath === ".") {
+				onChange([{ ...repositories[0], relativePath: "" }]);
 			}
 		}
 		if (!checked) {
 			onChange([
-				{ id: repositories[0]?.id ?? crypto.randomUUID(), name: projectName, relPath: "." },
+				{
+					...newRepository("."),
+					id: repositories[0]?.id ?? crypto.randomUUID(),
+					name: projectName,
+				},
 			]);
 		}
 	}
 
 	function handleAdd() {
-		onChange([...repositories, { id: crypto.randomUUID(), name: "", relPath: "" }]);
+		onChange([...repositories, newRepository("")]);
 	}
 
 	function handleRemove(index: number) {
@@ -93,7 +96,11 @@ export function RepositoryFormList({
 		onChange(repositories.filter((_, i) => i !== index));
 	}
 
-	function handleUpdate(index: number, field: keyof RepositoryData, value: string) {
+	function handleUpdate(
+		index: number,
+		field: "name" | "relativePath" | "postCheckoutCommand",
+		value: string,
+	) {
 		const updated = repositories.map((repo, i) =>
 			i === index ? { ...repo, [field]: value } : repo,
 		);
@@ -107,7 +114,7 @@ export function RepositoryFormList({
 				if (i !== index) return repo;
 				return {
 					...repo,
-					relPath: result.path,
+					relativePath: result.path,
 					name: repo.name || result.suggestedName,
 				};
 			});
@@ -162,14 +169,14 @@ export function RepositoryFormList({
 									label={t("settings.repositories.path")}
 									placeholder="./backend"
 									required
-									value={repository.relPath}
-									onChange={(e) => handleUpdate(index, "relPath", e.currentTarget.value)}
+									value={repository.relativePath}
+									onChange={(e) => handleUpdate(index, "relativePath", e.currentTarget.value)}
 									style={{ flex: 2 }}
 									size="xs"
 									rightSectionWidth={75}
 									rightSection={
 										<Group gap={4} wrap="nowrap">
-											{repository.relPath && gitStatus[repository.id] !== undefined && (
+											{repository.relativePath && gitStatus[repository.id] !== undefined && (
 												<Tooltip
 													label={
 														gitStatus[repository.id]
@@ -227,8 +234,12 @@ export function RepositoryFormList({
 	);
 }
 
-function checkReposShareParent(repositories: RepositoryData[]): boolean {
-	const paths = repositories.map((r) => r.relPath).filter((p) => p && p !== ".");
+function newRepository(relativePath: string): RepositoryInput {
+	return { id: crypto.randomUUID(), name: "", relativePath, postCheckoutCommand: null };
+}
+
+function checkReposShareParent(repositories: RepositoryInput[]): boolean {
+	const paths = repositories.map((r) => r.relativePath).filter((p) => p && p !== ".");
 
 	if (paths.length <= 1) return true;
 

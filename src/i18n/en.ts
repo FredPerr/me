@@ -111,9 +111,7 @@ export const en = {
 				nameDescription: "Display name in Me UI",
 				tag: "Tag",
 				tagDescription: "Used in the UI to filter quickly",
-				configPath: "Config path",
 				browseFolderPath: "Browse folder",
-				copyConfigPath: "Copy config path",
 				remoteProjects: "Linked task projects",
 				remoteProjectsDescription:
 					"Tasks from these projects can be shown on the board to start contexts from them.",
@@ -136,8 +134,6 @@ export const en = {
 				addPrefix: "Add prefix",
 				removePrefix: "Remove prefix",
 				allowNoPrefix: "Allow branches without a prefix",
-				invalidPrefix: 'Invalid prefix. Avoid spaces, ".." and ~ ^ : ? * [ \\',
-				prefixRequired: "Add at least one prefix or allow branches without a prefix.",
 			},
 			repositories: {
 				multipleRepos: "Configure multiple repositories",
@@ -169,10 +165,9 @@ export const en = {
 			contextBranch: "Branch",
 			branchExistsHint: "Existing branch — it will be checked out.",
 			branchNewHint: "New branch — created from the base branch.",
-			createNewBranch: "Create branch",
-			repoWillBeLinkedToBase: "No branch — linked to the base context's checkout.",
+			repoGetsNewBranch: "No branch selected — gets a new branch {{branch}} from {{base}}.",
+			branchFromContextName: "named after the context",
 			linked: "linked",
-			branchAlreadyInUse: '"{{branch}}" is already checked out in {{worktree}}',
 			contextName: "Context name",
 			copyNameToBranches: "Copy to branch names",
 			syncBranchNames: "Sync branch names with context name",
@@ -237,7 +232,6 @@ export const en = {
 				nothingSelected: "Select at least one context",
 				createdTitle: "Contexts created",
 				createdMessage: "Created {{count}} context(s)",
-				createFailed: "Failed to create contexts",
 				errorNoJson: "Kiro did not return a usable list. Try rephrasing the instruction.",
 				errorInvalidJson: "Kiro returned malformed output. Try regenerating.",
 				errorNotArray: "Kiro did not return a list of contexts. Try regenerating.",
@@ -246,7 +240,6 @@ export const en = {
 			},
 			selectExistingBranch: "Select an existing branch",
 			copyBranchToName: "Use this branch as the context name",
-			repoWillBeLinked: "No branch selected — its default branch will be used.",
 			loadingBranches: "Loading branches…",
 			noBranchesFound: "No branches found",
 			draftPullRequest: "Create pull requests",
@@ -285,8 +278,6 @@ export const en = {
 			deleted: "Context deleted",
 			deleteFailed: "Failed to delete context",
 			noBaseBranch: "No base branch available",
-			expand: "Show details",
-			collapse: "Hide details",
 			kanban: {
 				columnEmpty: "Nothing here yet",
 				dragHandle: "Drag to move",
@@ -316,7 +307,6 @@ export const en = {
 				createButton: "Create {{count}} contexts",
 				createdTitle: "Contexts created",
 				createdMessage: "Created {{count}} contexts from tasks.",
-				createFailed: "Failed to create contexts",
 				assignMeLabel: "Assign me to these tasks",
 				assignMeHint: "Adds you as an assignee on the work tracker, keeping existing assignees.",
 				assignMeFailedTitle: "Could not assign you to every task",
@@ -324,9 +314,7 @@ export const en = {
 					"Assigning you failed for {{count}} task(s). The contexts were still created.",
 				issues: {
 					nameRequired: "A context name is required.",
-					invalidBranch: "This name does not produce a valid branch name.",
 					duplicateName: "Another context already uses this name.",
-					duplicateBranch: "Another context in this batch produces the same branch.",
 				},
 			},
 			kiro: {
@@ -399,6 +387,15 @@ export const en = {
 			draftBadge: "Draft",
 			unknownAuthor: "unknown",
 			prMeta: "#{{number}} by {{author}} · {{branch}}",
+		},
+		workspace: {
+			changeFailed: "Could not save the change",
+			loadFailed: "Could not load projects",
+			unreadable: {
+				title: "{{count}} project(s) could not be read",
+				description:
+					"Their stored data was left untouched and they are hidden until it can be read.",
+			},
 		},
 		project: {
 			openInIde: "Open root in IDE",
@@ -549,11 +546,10 @@ export const en = {
 					"Branch the new contexts off this context's branches instead of each repository's default branch.",
 				baseContextDefault: "Default branches",
 				previewTitle: "Contexts to create",
-				noValidTasks: "None of the selected tasks produce a valid branch name.",
+				noValidTasks: "None of the selected tasks has a title.",
 				createButton: "Create {{count}} contexts",
 				createdTitle: "Contexts created",
 				createdMessage: "Created {{count}} contexts from tasks.",
-				createFailed: "Failed to create contexts",
 			},
 			status: {
 				todo: "To do",

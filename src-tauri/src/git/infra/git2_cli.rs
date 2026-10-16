@@ -465,6 +465,16 @@ impl GitRepository for Git2CliRepository {
             .map(|_| ())
     }
 
+    fn has_commits_beyond(&self, branch: &BranchName, base: &BranchName) -> Result<bool, GitError> {
+        let branch_commit = self.resolve_commit(branch)?.id();
+        let base_commit = self.resolve_commit(base)?.id();
+        let (ahead, _behind) = self
+            .repository
+            .graph_ahead_behind(branch_commit, base_commit)
+            .map_err(|error| GitError::io(format!("compare '{branch}' with '{base}'"), error))?;
+        Ok(ahead > 0)
+    }
+
     fn add_worktree(
         &self,
         path: &WorktreePath,

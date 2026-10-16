@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
 	type LinkedTask,
 	listLinkedProjectTasks,
 } from "@/application/work-tracking/listLinkedProjectTasks";
-import type { RemoteProjectLinks } from "@/domain/work-tracking/RemoteProjectLinks";
+import type { RemoteProjectLinkView } from "@/bindings";
+import { RemoteProjectLinks } from "@/domain/work-tracking/RemoteProjectLinks";
 import { WorkTrackingError } from "@/domain/work-tracking/WorkTrackingError";
 import { workTrackingGateway } from "@/infra/work-tracking/workTracking";
 import { ConnectionsStatus, useWorkTrackingConnections } from "./useWorkTrackingConnections";
@@ -16,9 +17,13 @@ export type LinkedProjectTasks = {
 };
 
 export function useLinkedProjectTasks(
-	remoteProjectLinks: RemoteProjectLinks,
+	remoteProjectLinkViews: readonly RemoteProjectLinkView[],
 	enabled: boolean,
 ): LinkedProjectTasks {
+	const remoteProjectLinks = useMemo(
+		() => RemoteProjectLinks.fromJSON(remoteProjectLinkViews),
+		[remoteProjectLinkViews],
+	);
 	const { connections, status: connectionsStatus } = useWorkTrackingConnections();
 	const [tasks, setTasks] = useState<readonly LinkedTask[]>([]);
 	const [loading, setLoading] = useState(false);

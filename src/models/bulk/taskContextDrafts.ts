@@ -1,8 +1,7 @@
 import type { LinkedTask } from "@/application/work-tracking/listLinkedProjectTasks";
-import { workItemRefOf } from "@/application/work-tracking/selectPendingTasks";
-import type { BulkContextSpec } from "@/hooks/useContexts";
-import type { BranchNamingPolicy } from "@/models/BranchNaming";
-import type { Context } from "@/models/Project";
+import { taskRefOf } from "@/application/work-tracking/selectPendingTasks";
+import type { ContextView } from "@/bindings";
+import type { BulkContextSpec } from "./BulkContextSpec";
 import { buildTaskPreprompt, DEFAULT_TASKS_PREAMBLE } from "./tasksToContextSpecs";
 
 export type TaskContextDraft = {
@@ -11,11 +10,10 @@ export type TaskContextDraft = {
 	readonly prompt: string;
 };
 
-type TaskContextDraftIssue = "nameRequired" | "invalidBranch" | "duplicateName" | "duplicateBranch";
+type TaskContextDraftIssue = "nameRequired" | "duplicateName";
 
 export type ValidatedTaskContextDraft = {
 	readonly draft: TaskContextDraft;
-	readonly branchName: string;
 	readonly issue?: TaskContextDraftIssue;
 };
 
@@ -45,45 +43,30 @@ function countOccurrences(values: readonly string[]): Map<string, number> {
 }
 
 /**
- * Derives each draft's branch and flags the issues that would make its creation fail: an empty
- * name, a name that slugifies to no branch, or a name/branch clashing with another draft or an
- * existing context (worktree folders are compared case-insensitively).
+ * Flags the drafts that can't all be created in one go: an empty name, or a
+ * name used twice in the batch or by an existing context. The backend still
+ * checks every context it creates.
  */
 export function validateTaskContextDrafts(
 	drafts: readonly TaskContextDraft[],
-	branchNaming: BranchNamingPolicy,
-	existingContexts: readonly Context[],
+	existingContexts: readonly ContextView[],
 ): ValidatedTaskContextDraft[] {
-	const branchNames = drafts.map((draft) => {
-		const name = draft.contextName.trim();
-		return name ? branchNaming.composeBranchName(name, branchNaming.defaultPrefix) : "";
-	});
 	const existingNames = new Set(existingContexts.map((context) => normalizeName(context.name)));
 	const nameCounts = countOccurrences(drafts.map((draft) => normalizeName(draft.contextName)));
-	const branchCounts = countOccurrences(branchNames);
 
-	function issueOf(name: string, branchName: string): TaskContextDraftIssue | undefined {
+	function issueOf(name: string): TaskContextDraftIssue | undefined {
 		if (!name) return "nameRequired";
-		if (!branchName) return "invalidBranch";
 		if (existingNames.has(name) || (nameCounts.get(name) ?? 0) > 1) return "duplicateName";
-		if ((branchCounts.get(branchName) ?? 0) > 1) return "duplicateBranch";
 		return undefined;
 	}
 
-	return drafts.map((draft, index) => {
-		const branchName = branchNames[index];
-		return { draft, branchName, issue: issueOf(normalizeName(draft.contextName), branchName) };
-	});
+	return drafts.map((draft) => ({ draft, issue: issueOf(normalizeName(draft.contextName)) }));
 }
 
-export function toBulkContextSpec({
-	draft,
-	branchName,
-}: ValidatedTaskContextDraft): BulkContextSpec {
+export function toBulkContextSpec({ draft }: ValidatedTaskContextDraft): BulkContextSpec {
 	return {
 		contextName: draft.contextName.trim(),
-		branchName,
-		preprompt: draft.prompt.trim() || undefined,
-		workItemRef: workItemRefOf(draft.task),
+		agentPrompt: draft.prompt.trim() || undefined,
+		task: taskRefOf(draft.task),
 	};
 }

@@ -3,12 +3,12 @@ import { useDisclosure } from "@mantine/hooks";
 import { GithubLogoIcon } from "@phosphor-icons/react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useTranslation } from "react-i18next";
+import type { ProjectView } from "@/bindings";
 import { RepositoryRemotesModal } from "@/components/shared/RepositoryRemotesModal";
 import { useProjectRemotes } from "@/hooks/useProjectRemotes";
-import type { Project } from "@/models/Project";
 
 type GitRemoteLinkProps = {
-	project: Project;
+	project: ProjectView;
 };
 
 export function GitRemoteLink({ project }: GitRemoteLinkProps) {

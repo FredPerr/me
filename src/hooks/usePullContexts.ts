@@ -1,31 +1,17 @@
 import { notifications } from "@mantine/notifications";
 import { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { commands } from "@/bindings";
+import { commands, type ProjectView } from "@/bindings";
 import { useErrorModal } from "@/components/shared/ErrorModalProvider";
 import { describeError } from "@/infra/commandError";
-import type { Project } from "@/models/Project";
-
-function collectWorktreePaths(project: Project): string[] {
-	const paths = new Set<string>();
-
-	for (const context of project.contexts) {
-		for (const branch of context.branches) {
-			const repository = project.findRepository(branch.repositoryId);
-			if (!repository) continue;
-			paths.add(context.getWorktreePath(project.path, repository));
-		}
-	}
-
-	return [...paths];
-}
+import { collectWorktreePaths } from "@/models/projectView";
 
 function describeFailure(path: string, reason: unknown): string {
 	const message = describeError(reason);
 	return `• ${path}: ${message}`;
 }
 
-export function usePullContexts(project: Project) {
+export function usePullContexts(project: ProjectView) {
 	const { t } = useTranslation();
 	const { showError } = useErrorModal();
 	const [pulling, setPulling] = useState(false);

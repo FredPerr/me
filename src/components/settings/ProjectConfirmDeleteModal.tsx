@@ -1,9 +1,9 @@
 import { Button, Group, Modal } from "@mantine/core";
-import type { Project } from "@/models/Project";
+import type { ProjectView } from "@/bindings";
 
 type ProjectConfirmDeleteModalProps = {
-	project: Project;
-	onDelete: (project: Project) => void;
+	project: ProjectView;
+	onDelete: (project: ProjectView) => void;
 	onCancel: () => void;
 	opened: boolean;
 };

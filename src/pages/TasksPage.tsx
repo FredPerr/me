@@ -30,12 +30,12 @@ import { DEFAULT_PROVIDER_KIND } from "@/domain/work-tracking/ProviderKind";
 import type { WorkItem } from "@/domain/work-tracking/WorkItem";
 import type { WorkItemGroup } from "@/domain/work-tracking/WorkItemGroup";
 import type { WorkProject } from "@/domain/work-tracking/WorkProject";
-import { useProjects } from "@/hooks/useProjects";
 import { usePagedRemoteList } from "@/hooks/work-tracking/usePagedRemoteList";
 import {
 	ConnectionsStatus,
 	useWorkTrackingConnections,
 } from "@/hooks/work-tracking/useWorkTrackingConnections";
+import { useProjects } from "@/hooks/workspace/useProjects";
 import { workTrackingGateway } from "@/infra/work-tracking/workTracking";
 import { SettingsTab, settingsPath } from "./settingsTabs";
 
@@ -219,11 +219,12 @@ export function TasksPage() {
 					</Grid.Col>
 				</Grid>
 			)}
-			{selectedProject && (
+			{selectedProject && connectionId && (
 				<BulkCreateFromTasksModal
 					opened={bulkOpened}
 					onClose={closeBulk}
 					project={selectedProject}
+					connectionId={connectionId}
 					tasks={selectedTasks}
 					onCreated={clearSelection}
 				/>

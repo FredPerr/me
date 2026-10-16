@@ -2,7 +2,6 @@ use tauri::Manager;
 
 mod ai_session;
 mod binary_resolver;
-mod context_checkout;
 mod git;
 mod git_provider;
 mod ide_launcher;
@@ -10,6 +9,7 @@ mod pull_request_template;
 mod secret_store;
 mod shortcuts;
 mod work_tracking;
+mod workspace;
 mod workspace_detector;
 
 #[tauri::command]
@@ -43,11 +43,22 @@ const TYPED_COMMANDS: &[&str] = &[
     "delete_local_branch",
     "delete_worktree",
     "prune_worktrees",
-    "create_context",
-    "delete_context",
     "pull_worktree",
     "push_worktree",
     "fetch_pr_branch",
+    "workspace_list_projects",
+    "workspace_get_project",
+    "workspace_create_context",
+    "workspace_delete_context",
+    "workspace_set_context_status",
+    "workspace_set_context_static",
+    "workspace_save_pull_request_draft",
+    "workspace_set_agent_prompt",
+    "workspace_record_agent_conversation",
+    "workspace_update_project_settings",
+    "workspace_add_project",
+    "workspace_delete_project",
+    "workspace_suggest_branch_name",
 ];
 
 /// The typed commands, exported with their types to `src/bindings.ts`.
@@ -66,17 +77,32 @@ fn typed_commands() -> tauri_specta::Builder<tauri::Wry> {
             git::commands::delete_local_branch,
             git::commands::delete_worktree,
             git::commands::prune_worktrees,
-            context_checkout::create_context,
-            context_checkout::delete_context,
             git::commands::pull_worktree,
             git::commands::push_worktree,
             git::commands::fetch_pr_branch,
+            workspace::commands::workspace_list_projects,
+            workspace::commands::workspace_get_project,
+            workspace::commands::workspace_create_context,
+            workspace::commands::workspace_delete_context,
+            workspace::commands::workspace_set_context_status,
+            workspace::commands::workspace_set_context_static,
+            workspace::commands::workspace_save_pull_request_draft,
+            workspace::commands::workspace_set_agent_prompt,
+            workspace::commands::workspace_record_agent_conversation,
+            workspace::commands::workspace_update_project_settings,
+            workspace::commands::workspace_add_project,
+            workspace::commands::workspace_delete_project,
+            workspace::commands::workspace_suggest_branch_name,
+        ])
+        .events(tauri_specta::collect_events![
+            workspace::infra::tauri_project_events::ProjectChanged
         ])
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let typed_handler = typed_commands().invoke_handler();
+    let typed_builder = typed_commands();
+    let typed_handler = typed_builder.invoke_handler();
     // TEMPORARY: see TYPED_COMMANDS.
     let legacy_handler: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool = tauri::generate_handler![
         greet,
@@ -139,10 +165,18 @@ pub fn run() {
                 legacy_handler(invoke)
             }
         })
-        .setup(|app| {
+        .setup(move |app| {
+            typed_builder.mount_events(app);
             tauri::Manager::manage(app, work_tracking::build_service(app.handle().clone()));
             app.manage(ai_session::registry::SessionRegistry::new());
-            app.manage(git::build());
+            let git = git::build();
+            let workspace = workspace::build(
+                app.handle().clone(),
+                &app.path().app_data_dir()?,
+                git.repositories(),
+            )?;
+            app.manage(git);
+            app.manage(workspace);
             shortcuts::register(app.handle())?;
             Ok(())
         })

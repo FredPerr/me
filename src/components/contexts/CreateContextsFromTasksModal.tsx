@@ -13,10 +13,10 @@ import { notifications } from "@mantine/notifications";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { selectPendingTasks } from "@/application/work-tracking/selectPendingTasks";
+import type { ProjectView } from "@/bindings";
 import { toWorkItemId } from "@/domain/work-tracking/identifiers";
-import type { BulkContextSpec } from "@/hooks/useContexts";
 import { useLinkedProjectTasks } from "@/hooks/work-tracking/useLinkedProjectTasks";
-import { describeError } from "@/infra/commandError";
+import { useCreateContexts } from "@/hooks/workspace/useCreateContexts";
 import { workTrackingGateway } from "@/infra/work-tracking/workTracking";
 import {
 	draftTaskContext,
@@ -26,27 +26,24 @@ import {
 	validateTaskContextDrafts,
 } from "@/models/bulk/taskContextDrafts";
 import { buildTaskPreprompt, DEFAULT_TASKS_PREAMBLE } from "@/models/bulk/tasksToContextSpecs";
-import type { Context, Project } from "@/models/Project";
+import { findContext, findDefaultContext } from "@/models/projectView";
 import { TaskContextDraftCard } from "./TaskContextDraftCard";
 import { TaskSelectionStep } from "./TaskSelectionStep";
 
 type Step = "select" | "configure";
 
 type CreateContextsFromTasksModalProps = {
-	project: Project;
-	contexts: readonly Context[];
+	project: ProjectView;
 	onClose: () => void;
-	onCreate: (specs: BulkContextSpec[], baseContext: Context) => Promise<void>;
 };
 
 export function CreateContextsFromTasksModal({
 	project,
-	contexts,
 	onClose,
-	onCreate,
 }: CreateContextsFromTasksModalProps) {
 	const { t } = useTranslation();
-	const hasLinkedProjects = project.remoteProjectLinks.toArray().length > 0;
+	const { contexts } = project;
+	const hasLinkedProjects = project.remoteProjectLinks.length > 0;
 	const linkedTasks = useLinkedProjectTasks(project.remoteProjectLinks, hasLinkedProjects);
 	const [step, setStep] = useState<Step>("select");
 	const [selectedKeys, setSelectedKeys] = useState<ReadonlySet<string>>(new Set());
@@ -54,21 +51,21 @@ export function CreateContextsFromTasksModal({
 	const [instruction, setInstruction] = useState(DEFAULT_TASKS_PREAMBLE);
 	const [assignMe, setAssignMe] = useState(false);
 	const [selectedBaseContextId, setSelectedBaseContextId] = useState<string | null>(null);
-	const [creating, setCreating] = useState(false);
+	const { createContexts, creating } = useCreateContexts(project);
 
 	const pendingTasks = useMemo(
 		() => selectPendingTasks(linkedTasks.tasks, contexts),
 		[linkedTasks.tasks, contexts],
 	);
 
-	const defaultBaseContext = contexts.find((context) => context.isDefault) ?? contexts[0];
+	const defaultBaseContext = findDefaultContext(project) ?? contexts[0];
 	const baseContextId = selectedBaseContextId ?? defaultBaseContext?.id ?? null;
-	const baseContext = contexts.find((context) => context.id === baseContextId);
+	const baseContext = baseContextId ? findContext(project, baseContextId) : undefined;
 
 	const validatedDrafts = useMemo(() => {
 		const drafts = pendingTasks.flatMap((task) => draftsByKey.get(taskKeyOf(task)) ?? []);
-		return validateTaskContextDrafts(drafts, project.branchNaming, contexts);
-	}, [pendingTasks, draftsByKey, project.branchNaming, contexts]);
+		return validateTaskContextDrafts(drafts, contexts);
+	}, [pendingTasks, draftsByKey, contexts]);
 
 	const canCreate =
 		Boolean(baseContext) &&
@@ -132,27 +129,20 @@ export function CreateContextsFromTasksModal({
 
 	async function handleCreate() {
 		if (!baseContext || !canCreate) return;
-		setCreating(true);
 		try {
-			await onCreate(validatedDrafts.map(toBulkContextSpec), baseContext);
-			notifications.show({
-				title: t("contexts.fromTasks.createdTitle"),
-				message: t("contexts.fromTasks.createdMessage", { count: validatedDrafts.length }),
-				color: "green",
-			});
-			if (assignMe) {
-				await assignMeToSelectedTasks();
-			}
-			onClose();
-		} catch (error) {
-			notifications.show({
-				title: t("contexts.fromTasks.createFailed"),
-				message: describeError(error),
-				color: "red",
-			});
-		} finally {
-			setCreating(false);
+			await createContexts(validatedDrafts.map(toBulkContextSpec), baseContext);
+		} catch {
+			return;
 		}
+		notifications.show({
+			title: t("contexts.fromTasks.createdTitle"),
+			message: t("contexts.fromTasks.createdMessage", { count: validatedDrafts.length }),
+			color: "green",
+		});
+		if (assignMe) {
+			await assignMeToSelectedTasks();
+		}
+		onClose();
 	}
 
 	return (
@@ -214,6 +204,7 @@ export function CreateContextsFromTasksModal({
 							{validatedDrafts.map((validatedDraft) => (
 								<TaskContextDraftCard
 									key={taskKeyOf(validatedDraft.draft.task)}
+									project={project}
 									validatedDraft={validatedDraft}
 									disabled={creating}
 									onChange={updateDraft}

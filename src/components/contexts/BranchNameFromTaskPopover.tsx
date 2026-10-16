@@ -11,24 +11,26 @@ import {
 import { MagicWandIcon } from "@phosphor-icons/react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { BranchNamingPolicy } from "@/models/BranchNaming";
+import type { ProjectView } from "@/bindings";
+import { useBranchNameSuggestion } from "@/hooks/workspace/useBranchNameSuggestion";
 
 const NO_PREFIX_VALUE = "~none";
 
 type BranchNameFromTaskPopoverProps = {
-	branchNaming: BranchNamingPolicy;
+	project: ProjectView;
 	opened: boolean;
 	onOpenedChange: (opened: boolean) => void;
 	onApply: (branchName: string) => void;
 };
 
 export function BranchNameFromTaskPopover({
-	branchNaming,
+	project,
 	opened,
 	onOpenedChange,
 	onApply,
 }: BranchNameFromTaskPopoverProps) {
 	const { t } = useTranslation();
+	const { branchNaming } = project;
 	const defaultPrefixValue = branchNaming.defaultPrefix ?? NO_PREFIX_VALUE;
 	const [taskName, setTaskName] = useState("");
 	const [selectedPrefixValue, setSelectedPrefixValue] = useState(defaultPrefixValue);
@@ -43,7 +45,8 @@ export function BranchNameFromTaskPopover({
 		(option) => option.value === selectedPrefixValue,
 	);
 	const effectivePrefixValue = isSelectedPrefixAvailable ? selectedPrefixValue : defaultPrefixValue;
-	const generatedBranchName = branchNaming.composeBranchName(
+	const generatedBranchName = useBranchNameSuggestion(
+		project.tag,
 		taskName,
 		effectivePrefixValue === NO_PREFIX_VALUE ? null : effectivePrefixValue,
 	);

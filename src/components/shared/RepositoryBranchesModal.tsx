@@ -17,6 +17,7 @@ import { notifications } from "@mantine/notifications";
 import { ArrowClockwiseIcon, BroomIcon, CloudArrowDownIcon } from "@phosphor-icons/react";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import type { ProjectView } from "@/bindings";
 import { useErrorModal } from "@/components/shared/ErrorModalProvider";
 import { type BranchSelection, type LocalBranch, useLocalBranches } from "@/hooks/useLocalBranches";
 import { usePullContexts } from "@/hooks/usePullContexts";
@@ -25,12 +26,11 @@ import {
 	type Worktree,
 	type WorktreeSelection,
 } from "@/hooks/useRepositoryWorktrees";
-import type { Project } from "@/models/Project";
 
 type RepositoryBranchesModalProps = {
 	opened: boolean;
 	onClose: () => void;
-	project: Project;
+	project: ProjectView;
 };
 
 function branchKey(resolvedPath: string, branchName: string): string {

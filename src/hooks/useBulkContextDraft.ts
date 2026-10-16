@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { commands, type ProjectView } from "@/bindings";
 import { useAppSettings } from "@/hooks/useAppSettings";
 import { isTerminalStatus } from "@/models/ai-session/AiSession";
 import { extractAgentText } from "@/models/ai-session/acp/acpEvents";
@@ -10,7 +11,6 @@ import {
 	parseBulkContextDrafts,
 } from "@/models/bulk/BulkContextDraft";
 import { buildBulkContextPrompt } from "@/models/bulk/bulkContextPrompt";
-import type { Project } from "@/models/Project";
 import { aiSessionService } from "@/services/aiSessionService";
 
 /** The Kiro adapter id registered in the Rust backend. */
@@ -33,17 +33,39 @@ type UseBulkContextDraftResult = {
 	reset: () => void;
 };
 
+/** Names each draft's branch under the project's naming; drafts it can't name are dropped. */
+async function nameDraftBranches(
+	project: ProjectView,
+	drafts: readonly BulkContextDraft[],
+): Promise<BulkContextDraft[]> {
+	const named = await Promise.all(
+		drafts.map(async (draft) => {
+			try {
+				const branchName = await commands.workspaceSuggestBranchName(
+					project.tag,
+					draft.branchName,
+					project.branchNaming.defaultPrefix,
+				);
+				return [{ ...draft, branchName }];
+			} catch {
+				return [];
+			}
+		}),
+	);
+	return named.flat();
+}
+
 /**
  * Drives a single headless Kiro run that expands one high-level instruction
  * into a list of context drafts. Unlike `useContextKiroSessions`, this run is
  * not tied to a context and nothing is persisted: it runs at the project root,
- * buffers stdout, and on terminal status parses the output into validated
- * drafts (branch names forced through the project's naming policy).
+ * buffers stdout, and on terminal status parses the output into drafts whose
+ * branch names the project then names (rows it can't name are dropped).
  *
  * Output and status subscriptions live for the hook's lifetime; the active
  * session id is held in a ref so the handlers only react to the current run.
  */
-export function useBulkContextDraft(project: Project): UseBulkContextDraftResult {
+export function useBulkContextDraft(project: ProjectView): UseBulkContextDraftResult {
 	const { settings } = useAppSettings();
 
 	const [status, setStatus] = useState<BulkDraftStatus>("idle");
@@ -54,9 +76,9 @@ export function useBulkContextDraft(project: Project): UseBulkContextDraftResult
 	const activeSessionId = useRef<string | null>(null);
 	// Buffered stdout for the active run, joined and parsed on terminal status.
 	const outputBuffer = useRef<string[]>([]);
-	// Latest naming policy, read inside the status handler without resubscribing.
-	const branchNamingRef = useRef(project.branchNaming);
-	branchNamingRef.current = project.branchNaming;
+	// Latest project, read inside the status handler without resubscribing.
+	const projectRef = useRef(project);
+	projectRef.current = project;
 
 	useEffect(() => {
 		let disposed = false;
@@ -93,15 +115,22 @@ export function useBulkContextDraft(project: Project): UseBulkContextDraftResult
 				// (falling back to the raw buffer if the output was plain text).
 				const lines = outputBuffer.current;
 				const agentText = looksLikeAcpStream(lines) ? extractAgentText(lines) : lines.join("\n");
-				const result = parseBulkContextDrafts(agentText, branchNamingRef.current);
+				const result = parseBulkContextDrafts(agentText);
 				if (!result.ok) {
 					setStatus("error");
 					setError({ kind: "parse", reason: result.error });
 					return;
 				}
 
-				setDrafts(result.drafts);
-				setStatus("ready");
+				nameDraftBranches(projectRef.current, result.drafts).then((namedDrafts) => {
+					if (namedDrafts.length === 0) {
+						setStatus("error");
+						setError({ kind: "parse", reason: "no-valid-rows" });
+						return;
+					}
+					setDrafts(namedDrafts);
+					setStatus("ready");
+				});
 			})
 			.then(track);
 
@@ -118,8 +147,7 @@ export function useBulkContextDraft(project: Project): UseBulkContextDraftResult
 			setDrafts([]);
 			outputBuffer.current = [];
 
-			const candidates = await project.resolveRootIdePathCandidates();
-			const workingDirectory = candidates[candidates.length - 1];
+			const workingDirectory = project.path;
 
 			try {
 				await ensurePermissionFloor(workingDirectory);

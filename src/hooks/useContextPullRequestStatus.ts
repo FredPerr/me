@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
-import { commands } from "@/bindings";
+import { commands, type ProjectView, type RepositoryView } from "@/bindings";
 import type { ProviderPullRequest } from "@/models/git-provider/GitProvider";
 import {
 	listGitProviders,
 	resolveProviderForRemote,
 } from "@/models/git-provider/GitProviderRegistry";
-import { type Project, Repository } from "@/models/Project";
 
 /**
  * Looks up the pull request matching a repository branch within a project.
@@ -24,16 +23,9 @@ type UseContextPullRequestStatusResult = {
 /** Pull requests for one repository, keyed by head branch. */
 type RepositoryPullRequestIndex = Map<string, ProviderPullRequest>;
 
-function projectRepositories(project: Project): Repository[] {
-	return project.repositories.length > 0
-		? project.repositories
-		: [new Repository(project.tag, project.name, ".")];
-}
-
-async function resolveRemoteUrl(project: Project, repository: Repository): Promise<string | null> {
+async function resolveRemoteUrl(repository: RepositoryView): Promise<string | null> {
 	try {
-		const resolvedPath = await repository.resolveAbsolutePath(project.path);
-		return await commands.getGitRemoteUrl(resolvedPath);
+		return await commands.getGitRemoteUrl(repository.path);
 	} catch {
 		return null;
 	}
@@ -55,10 +47,9 @@ function indexByHeadBranch(pullRequests: ProviderPullRequest[]): RepositoryPullR
 }
 
 async function loadRepositoryIndex(
-	project: Project,
-	repository: Repository,
+	repository: RepositoryView,
 ): Promise<[string, RepositoryPullRequestIndex] | null> {
-	const remoteUrl = await resolveRemoteUrl(project, repository);
+	const remoteUrl = await resolveRemoteUrl(repository);
 	if (!remoteUrl) return null;
 
 	const resolved = resolveProviderForRemote(remoteUrl);
@@ -76,7 +67,9 @@ async function loadRepositoryIndex(
  * cards can show a provider status icon per sub-repo branch. Fetches once per
  * repository and only when the owning provider is connected.
  */
-export function useContextPullRequestStatus(project: Project): UseContextPullRequestStatusResult {
+export function useContextPullRequestStatus(
+	project: ProjectView,
+): UseContextPullRequestStatusResult {
 	const [connected, setConnected] = useState(false);
 	const [indexes, setIndexes] = useState<Map<string, RepositoryPullRequestIndex>>(new Map());
 
@@ -92,8 +85,8 @@ export function useContextPullRequestStatus(project: Project): UseContextPullReq
 		}
 
 		const results = await Promise.all(
-			projectRepositories(project).map((repository) =>
-				loadRepositoryIndex(project, repository).catch(() => null),
+			project.effectiveRepositories.map((repository) =>
+				loadRepositoryIndex(repository).catch(() => null),
 			),
 		);
 		const next = new Map<string, RepositoryPullRequestIndex>();
@@ -101,7 +94,7 @@ export function useContextPullRequestStatus(project: Project): UseContextPullReq
 			if (result) next.set(result[0], result[1]);
 		}
 		setIndexes(next);
-	}, [project]);
+	}, [project.effectiveRepositories]);
 
 	useEffect(() => {
 		reload().catch(() => {

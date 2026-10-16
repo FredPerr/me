@@ -2,12 +2,12 @@ import { ActionIcon, Tooltip } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import { CloudArrowDownIcon } from "@phosphor-icons/react";
 import { useTranslation } from "react-i18next";
+import type { ProjectView } from "@/bindings";
 import { RepositoryBranchesModal } from "@/components/shared/RepositoryBranchesModal";
 import { useProjectHasRemote } from "@/hooks/useProjectHasRemote";
-import type { Project } from "@/models/Project";
 
 type PullContextsButtonProps = {
-	project: Project;
+	project: ProjectView;
 };
 
 export function PullContextsButton({ project }: PullContextsButtonProps) {

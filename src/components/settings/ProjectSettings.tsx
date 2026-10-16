@@ -3,16 +3,24 @@ import { useDisclosure } from "@mantine/hooks";
 import { PlusIcon, XIcon } from "@phosphor-icons/react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useProjects } from "@/hooks/useProjects";
-import type { Project } from "@/models/Project";
-import { ProjectDirectory } from "@/models/ProjectDirectory";
+import type { ProjectSettingsInput, ProjectView } from "@/bindings";
+import { UnreadableProjectsAlert } from "@/components/shared/UnreadableProjectsAlert";
+import {
+	useAddProject,
+	useDeleteProject,
+	useUpdateProjectSettings,
+} from "@/hooks/workspace/useProjectSettingsMutations";
+import { useProjects } from "@/hooks/workspace/useProjects";
 import { ProjectForm } from "./ProjectForm";
 import { ProjectList } from "./ProjectList";
 
 export function ProjectSettings() {
 	const { t } = useTranslation();
-	const { projects, reload } = useProjects();
-	const [editingProject, setEditingProject] = useState<Project | undefined>();
+	const { projects, unreadableProjects } = useProjects();
+	const addProject = useAddProject();
+	const updateProjectSettings = useUpdateProjectSettings();
+	const deleteProject = useDeleteProject();
+	const [editingProject, setEditingProject] = useState<ProjectView | undefined>();
 	const [opened, { open, close }] = useDisclosure(false);
 	const [searchFilter, setSearchFilter] = useState("");
 
@@ -21,20 +29,18 @@ export function ProjectSettings() {
 		open();
 	}
 
-	function handleEdit(project: Project) {
+	function handleEdit(project: ProjectView) {
 		setEditingProject(project);
 		open();
 	}
 
-	async function handleDelete(project: Project) {
-		await ProjectDirectory.deleteProject(project.tag);
-		await reload();
+	function handleDelete(project: ProjectView) {
+		deleteProject.mutate(project.tag);
 	}
 
-	async function handleSubmit(project: Project) {
-		await ProjectDirectory.saveProject(project);
-		close();
-		await reload();
+	function handleSubmit(projectTag: string, settings: ProjectSettingsInput) {
+		const saveProject = editingProject ? updateProjectSettings : addProject;
+		saveProject.mutate({ projectTag, settings }, { onSuccess: close });
 	}
 
 	return (
@@ -59,20 +65,18 @@ export function ProjectSettings() {
 							</ActionIcon>
 						}
 					/>
-
 					<Button leftSection={<PlusIcon />} onClick={handleAdd}>
 						{t("settings.projects.addProject")}
 					</Button>
 				</Group>
 			</Group>
-
+			<UnreadableProjectsAlert unreadableProjects={unreadableProjects} />
 			<ProjectList
 				projects={projects}
 				onEdit={handleEdit}
 				onDelete={handleDelete}
 				searchValue={searchFilter}
 			/>
-
 			<Modal
 				opened={opened}
 				onClose={close}
@@ -81,7 +85,12 @@ export function ProjectSettings() {
 					editingProject ? t("settings.projects.editProject") : t("settings.projects.addProject")
 				}
 			>
-				<ProjectForm initialProject={editingProject} onSubmit={handleSubmit} onCancel={close} />
+				<ProjectForm
+					initialProject={editingProject}
+					submitting={addProject.isPending || updateProjectSettings.isPending}
+					onSubmit={handleSubmit}
+					onCancel={close}
+				/>
 			</Modal>
 		</Stack>
 	);

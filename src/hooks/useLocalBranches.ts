@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
-import { commands, type LocalBranchView } from "@/bindings";
+import { commands, type LocalBranchView, type ProjectView, type RepositoryView } from "@/bindings";
 import { describeError } from "@/infra/commandError";
-import type { Project, Repository } from "@/models/Project";
 
 export type LocalBranch = LocalBranchView;
 
 export type RepositoryBranches = {
-	repository: Repository;
+	repository: RepositoryView;
 	resolvedPath: string;
 	branches: LocalBranch[];
 };
@@ -21,7 +20,7 @@ export type BranchDeletionFailure = {
 	message: string;
 };
 
-export function useLocalBranches(project: Project, enabled: boolean) {
+export function useLocalBranches(project: ProjectView, enabled: boolean) {
 	const [repositoryBranches, setRepositoryBranches] = useState<RepositoryBranches[]>([]);
 	const [loading, setLoading] = useState(false);
 
@@ -29,11 +28,10 @@ export function useLocalBranches(project: Project, enabled: boolean) {
 		setLoading(true);
 		try {
 			const entries = await Promise.all(
-				project.repositories.map(async (repository) => {
+				project.effectiveRepositories.map(async (repository) => {
 					try {
-						const resolvedPath = await repository.resolveAbsolutePath(project.path);
-						const branches = await commands.listLocalBranches(resolvedPath);
-						return { repository, resolvedPath, branches };
+						const branches = await commands.listLocalBranches(repository.path);
+						return { repository, resolvedPath: repository.path, branches };
 					} catch {
 						return { repository, resolvedPath: "", branches: [] };
 					}
@@ -43,7 +41,7 @@ export function useLocalBranches(project: Project, enabled: boolean) {
 		} finally {
 			setLoading(false);
 		}
-	}, [project]);
+	}, [project.effectiveRepositories]);
 
 	useEffect(() => {
 		if (enabled) {

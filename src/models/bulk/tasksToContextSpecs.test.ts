@@ -3,7 +3,6 @@ import { toWorkItemId, toWorkProjectId } from "@/domain/work-tracking/identifier
 import type { WorkItem } from "@/domain/work-tracking/WorkItem";
 import { WorkItemPriority } from "@/domain/work-tracking/WorkItemPriority";
 import { WorkItemStatus } from "@/domain/work-tracking/WorkItemStatus";
-import { BranchNamingPolicy } from "@/models/BranchNaming";
 import {
 	buildTaskPreprompt,
 	DEFAULT_TASKS_PREAMBLE,
@@ -14,11 +13,12 @@ const TASK_TITLE = "Build the login page";
 const TASK_DESCRIPTION = "Add email and password fields with validation.";
 const TASK_URL = "https://example.teamwork.com/tasks/42";
 const PREAMBLE = "Do the work described below.";
-const FEATURE_PREFIX = "feature";
+const CONNECTION_ID = "teamwork:acme.teamwork.com";
+const TASK_ID = "task-1";
 
 function buildTask(overrides?: Partial<WorkItem>): WorkItem {
 	return {
-		id: toWorkItemId("task-1"),
+		id: toWorkItemId(TASK_ID),
 		projectId: toWorkProjectId("project-1"),
 		title: TASK_TITLE,
 		description: TASK_DESCRIPTION,
@@ -30,15 +30,6 @@ function buildTask(overrides?: Partial<WorkItem>): WorkItem {
 		url: TASK_URL,
 		...overrides,
 	};
-}
-
-function policyWithPrefix(): BranchNamingPolicy {
-	// allowNoPrefix=false forces the default prefix onto every branch name.
-	return BranchNamingPolicy.create([FEATURE_PREFIX], false);
-}
-
-function policyWithoutPrefix(): BranchNamingPolicy {
-	return BranchNamingPolicy.create([], true);
 }
 
 describe("buildTaskPreprompt", () => {
@@ -67,31 +58,27 @@ describe("buildTaskPreprompt", () => {
 
 describe("tasksToContextSpecs", () => {
 	it("creates one spec per task with the title as context name", () => {
-		const specs = tasksToContextSpecs([buildTask()], PREAMBLE, policyWithoutPrefix());
+		const specs = tasksToContextSpecs([buildTask()], PREAMBLE, CONNECTION_ID);
 
 		expect(specs).toHaveLength(1);
 		expect(specs[0].contextName).toBe(TASK_TITLE);
 	});
 
-	it("slugifies the title into the branch name using the naming policy", () => {
-		const specs = tasksToContextSpecs([buildTask()], PREAMBLE, policyWithPrefix());
+	it("remembers the task each context is created from", () => {
+		const specs = tasksToContextSpecs([buildTask()], PREAMBLE, CONNECTION_ID);
 
-		expect(specs[0].branchName).toBe("feature/build-the-login-page");
+		expect(specs[0].task).toEqual({ connectionId: CONNECTION_ID, taskId: TASK_ID });
 	});
 
-	it("stores the composed preamble and task text as the preprompt", () => {
-		const specs = tasksToContextSpecs([buildTask()], PREAMBLE, policyWithoutPrefix());
+	it("stores the composed preamble and task text as the agent prompt", () => {
+		const specs = tasksToContextSpecs([buildTask()], PREAMBLE, CONNECTION_ID);
 
-		expect(specs[0].preprompt).toContain(PREAMBLE);
-		expect(specs[0].preprompt).toContain(TASK_TITLE);
+		expect(specs[0].agentPrompt).toContain(PREAMBLE);
+		expect(specs[0].agentPrompt).toContain(TASK_TITLE);
 	});
 
-	it("drops tasks whose title slugifies to an empty branch name", () => {
-		const specs = tasksToContextSpecs(
-			[buildTask({ title: "   " }), buildTask({ title: "###" })],
-			PREAMBLE,
-			policyWithoutPrefix(),
-		);
+	it("drops tasks without a title", () => {
+		const specs = tasksToContextSpecs([buildTask({ title: "   " })], PREAMBLE, CONNECTION_ID);
 
 		expect(specs).toHaveLength(0);
 	});
@@ -102,7 +89,7 @@ describe("tasksToContextSpecs", () => {
 			buildTask({ id: toWorkItemId("b"), title: "Second task" }),
 		];
 
-		const specs = tasksToContextSpecs(tasks, PREAMBLE, policyWithoutPrefix());
+		const specs = tasksToContextSpecs(tasks, PREAMBLE, CONNECTION_ID);
 
 		expect(specs.map((spec) => spec.contextName)).toEqual(["First task", "Second task"]);
 	});

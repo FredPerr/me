@@ -17,17 +17,17 @@ import { notifications } from "@mantine/notifications";
 import { ArrowClockwiseIcon, PlusIcon, SparkleIcon, TrashIcon } from "@phosphor-icons/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import type { ProjectView } from "@/bindings";
 import { type BulkDraftError, useBulkContextDraft } from "@/hooks/useBulkContextDraft";
-import type { BulkContextSpec } from "@/hooks/useContexts";
-import { describeError } from "@/infra/commandError";
+import { useCreateContexts } from "@/hooks/workspace/useCreateContexts";
 import type { BulkContextDraft } from "@/models/bulk/BulkContextDraft";
-import type { Context, Project } from "@/models/Project";
+import type { BulkContextSpec } from "@/models/bulk/BulkContextSpec";
+import { findContext } from "@/models/projectView";
 
 type BulkCreateContextsModalProps = {
 	opened: boolean;
 	onClose: () => void;
-	project: Project;
-	onCreate: (specs: BulkContextSpec[], baseContext?: Context) => Promise<void>;
+	project: ProjectView;
 };
 
 type RowOrigin = "generated" | "manual";
@@ -75,14 +75,13 @@ export function BulkCreateContextsModal({
 	opened,
 	onClose,
 	project,
-	onCreate,
 }: BulkCreateContextsModalProps) {
 	const { t } = useTranslation();
 	const { status, drafts, error, generate, reset } = useBulkContextDraft(project);
 	const [instruction, setInstruction] = useState("");
 	const [rows, setRows] = useState<ReviewRow[]>([]);
-	const [baseContextName, setBaseContextName] = useState<string | null>(null);
-	const [creating, setCreating] = useState(false);
+	const [baseContextId, setBaseContextId] = useState<string | null>(null);
+	const { createContexts, creating } = useCreateContexts(project);
 
 	// Existing non-default contexts a new batch can branch off of.
 	const baseContextOptions = useMemo(
@@ -113,7 +112,7 @@ export function BulkCreateContextsModal({
 		mergedDraftsRef.current = null;
 		setInstruction("");
 		setRows([]);
-		setBaseContextName(null);
+		setBaseContextId(null);
 		onClose();
 	}
 
@@ -151,30 +150,22 @@ export function BulkCreateContextsModal({
 			.map((row) => ({
 				contextName: row.contextName.trim(),
 				branchName: row.branchName.trim(),
-				preprompt: row.preprompt?.trim() ? row.preprompt.trim() : undefined,
+				agentPrompt: row.preprompt?.trim() ? row.preprompt.trim() : undefined,
 			}));
 		if (specs.length === 0) return;
 
-		const baseContext = baseContextOptions.find((context) => context.name === baseContextName);
-
-		setCreating(true);
+		const baseContext = baseContextId ? findContext(project, baseContextId) : undefined;
 		try {
-			await onCreate(specs, baseContext);
-			notifications.show({
-				title: t("contexts.bulk.createdTitle"),
-				message: t("contexts.bulk.createdMessage", { count: specs.length }),
-				color: "green",
-			});
-			handleClose();
-		} catch (createError) {
-			notifications.show({
-				title: t("contexts.bulk.createFailed"),
-				message: describeError(createError),
-				color: "red",
-			});
-		} finally {
-			setCreating(false);
+			await createContexts(specs, baseContext);
+		} catch {
+			return;
 		}
+		notifications.show({
+			title: t("contexts.bulk.createdTitle"),
+			message: t("contexts.bulk.createdMessage", { count: specs.length }),
+			color: "green",
+		});
+		handleClose();
 	}
 
 	const hasRows = rows.length > 0;
@@ -208,11 +199,11 @@ export function BulkCreateContextsModal({
 							description={t("contexts.bulk.baseContextHint")}
 							placeholder={t("contexts.bulk.baseContextDefault")}
 							data={baseContextOptions.map((context) => ({
-								value: context.name,
+								value: context.id,
 								label: context.name,
 							}))}
-							value={baseContextName}
-							onChange={setBaseContextName}
+							value={baseContextId}
+							onChange={setBaseContextId}
 							disabled={isGenerating || creating}
 							clearable
 							searchable

@@ -2,21 +2,30 @@ import { Anchor, Card, Group, Stack, Text, Textarea, TextInput } from "@mantine/
 import { ArrowSquareOutIcon } from "@phosphor-icons/react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useTranslation } from "react-i18next";
+import type { ProjectView } from "@/bindings";
+import { useBranchNameSuggestion } from "@/hooks/workspace/useBranchNameSuggestion";
 import type { TaskContextDraft, ValidatedTaskContextDraft } from "@/models/bulk/taskContextDrafts";
 
 type TaskContextDraftCardProps = {
+	project: ProjectView;
 	validatedDraft: ValidatedTaskContextDraft;
 	disabled: boolean;
 	onChange: (draft: TaskContextDraft) => void;
 };
 
 export function TaskContextDraftCard({
+	project,
 	validatedDraft,
 	disabled,
 	onChange,
 }: TaskContextDraftCardProps) {
 	const { t } = useTranslation();
-	const { draft, branchName, issue } = validatedDraft;
+	const { draft, issue } = validatedDraft;
+	const branchName = useBranchNameSuggestion(
+		project.tag,
+		draft.contextName,
+		project.branchNaming.defaultPrefix,
+	);
 
 	return (
 		<Card withBorder padding="sm" radius="sm">

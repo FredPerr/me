@@ -1,13 +1,14 @@
 import { describe, expect, it } from "vitest";
+import type { ContextView } from "@/bindings";
 import { toWorkItemId, toWorkProjectId } from "@/domain/work-tracking/identifiers";
 import { ProviderKind } from "@/domain/work-tracking/ProviderKind";
 import { RemoteProjectLink } from "@/domain/work-tracking/RemoteProjectLink";
 import type { WorkItem } from "@/domain/work-tracking/WorkItem";
 import { WorkItemPriority } from "@/domain/work-tracking/WorkItemPriority";
 import { WorkItemStatus } from "@/domain/work-tracking/WorkItemStatus";
-import { Context } from "@/models/Project";
+import { buildContext } from "@/test-utils/workspaceBuilders";
 import type { LinkedTask } from "./listLinkedProjectTasks";
-import { selectPendingTasks, workItemRefOf } from "./selectPendingTasks";
+import { selectPendingTasks, taskRefOf } from "./selectPendingTasks";
 
 const CONNECTION_ID = RemoteProjectLink.create(
 	{
@@ -36,19 +37,8 @@ function buildTask(id: string, title: string): LinkedTask {
 	return { connectionId: CONNECTION_ID, item };
 }
 
-function buildContextFrom(task: LinkedTask): Context {
-	return new Context(
-		"context-1",
-		task.item.title,
-		[],
-		false,
-		undefined,
-		{},
-		undefined,
-		undefined,
-		false,
-		workItemRefOf(task),
-	);
+function buildContextFrom(task: LinkedTask): ContextView {
+	return buildContext({ name: task.item.title, origin: { kind: "fromTask", ...taskRefOf(task) } });
 }
 
 describe("selectPendingTasks", () => {
