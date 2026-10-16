@@ -3,8 +3,8 @@ use std::sync::{Arc, Mutex};
 use super::registry::GitHostRegistry;
 use super::service::GitHostingService;
 use super::test_support::{
-    account, open_pull_request, repository_remote, FakeHostTokens, FakeProjectRemotes, HostScript,
-    RecordingEvents, BITBUCKET_LOGIN, GITHUB_LOGIN,
+    account, open_pull_request, repository_remote, FakeClock, FakeHostTokens, FakeProjectRemotes,
+    HostScript, RecordingEvents, BITBUCKET_LOGIN, GITHUB_LOGIN,
 };
 use crate::git_hosting::domain::capped::Capped;
 use crate::git_hosting::domain::error::GitHostingError;
@@ -89,6 +89,7 @@ impl Harness {
             Arc::new(InMemoryHostedAccounts::default()),
             Arc::new(RecordingEvents::default()),
             Arc::new(FakeProjectRemotes::project(PROJECT_TAG, repositories)),
+            Arc::new(FakeClock::default()),
         );
         service.project_open_pull_requests(project_tag).await
     }

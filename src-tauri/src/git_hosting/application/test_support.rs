@@ -3,6 +3,7 @@
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 
@@ -16,7 +17,8 @@ use crate::git_hosting::domain::hosted_account::HostedAccount;
 use crate::git_hosting::domain::hosted_pull_request::{HostedPullRequest, PullRequestState};
 use crate::git_hosting::domain::hosted_repository::HostedRepository;
 use crate::git_hosting::domain::ports::{
-    BrowserSignIn, GitHost, GitHostingEvents, HostTokens, HostTokensUnavailable, ProjectRemotes,
+    BrowserSignIn, Clock, GitHost, GitHostingEvents, HostTokens, HostTokensUnavailable,
+    ProjectRemotes,
 };
 use crate::git_hosting::domain::project_pull_requests::ProjectRepositoryRemote;
 use crate::git_hosting::domain::sign_in::{BrowserSignInStep, SignInPoll};
@@ -129,15 +131,22 @@ impl HostTokens for FakeHostTokens {
     }
 }
 
+/// The repository name and branch of a branch pull request lookup.
+pub type RepositoryBranch = (String, String);
+
 /// Scripted answers of one Git host, plus a log of the secrets its adapters
-/// were built with and of the account fetches. A repository without a
-/// scripted pull request answer has no open pull requests.
+/// were built with, of the account fetches and of the branch lookups. A
+/// repository without a scripted pull request answer has no open pull
+/// requests, and a branch without one has no pull request.
 pub struct HostScript {
     pub account_result: Result<HostedAccount, GitHostingError>,
     pub pull_requests_by_repository:
         HashMap<String, Result<Capped<HostedPullRequest>, GitHostingError>>,
+    pub pull_request_by_branch:
+        HashMap<RepositoryBranch, Result<Option<HostedPullRequest>, GitHostingError>>,
     pub created_with_secrets: Vec<String>,
     pub account_fetches: usize,
+    pub branch_lookups: Vec<RepositoryBranch>,
 }
 
 impl HostScript {
@@ -145,8 +154,10 @@ impl HostScript {
         Arc::new(Mutex::new(Self {
             account_result,
             pull_requests_by_repository: HashMap::new(),
+            pull_request_by_branch: HashMap::new(),
             created_with_secrets: Vec::new(),
             account_fetches: 0,
+            branch_lookups: Vec::new(),
         }))
     }
 
@@ -191,6 +202,21 @@ impl GitHost for ScriptedGitHost {
                 items: Vec::new(),
                 truncated: false,
             }))
+    }
+
+    async fn find_branch_pull_request(
+        &self,
+        repository: &HostedRepository,
+        branch: &str,
+    ) -> Result<Option<HostedPullRequest>, GitHostingError> {
+        let repository_branch = (repository.name.clone(), branch.to_string());
+        let mut script = self.script.lock().unwrap();
+        script.branch_lookups.push(repository_branch.clone());
+        script
+            .pull_request_by_branch
+            .get(&repository_branch)
+            .cloned()
+            .unwrap_or(Ok(None))
     }
 }
 
@@ -285,6 +311,7 @@ pub fn repository_remote(name: &str, remote: Option<&str>) -> ProjectRepositoryR
         repository_id: format!("{name}-id"),
         repository_name: name.to_string(),
         remote: remote.map(RemoteUrl::new),
+        context_branches: Vec::new(),
     }
 }
 
@@ -299,5 +326,30 @@ impl ProjectRemotes for FakeProjectRemotes {
         } else {
             Err(GitHostingError::NotFound)
         }
+    }
+}
+
+/// A clock that only moves when told to.
+pub struct FakeClock {
+    now: Mutex<Instant>,
+}
+
+impl Default for FakeClock {
+    fn default() -> Self {
+        Self {
+            now: Mutex::new(Instant::now()),
+        }
+    }
+}
+
+impl FakeClock {
+    pub fn advance(&self, elapsed: Duration) {
+        *self.now.lock().unwrap() += elapsed;
+    }
+}
+
+impl Clock for FakeClock {
+    fn now(&self) -> Instant {
+        *self.now.lock().unwrap()
     }
 }

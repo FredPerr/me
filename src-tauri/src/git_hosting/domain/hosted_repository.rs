@@ -8,7 +8,7 @@ const GIT_SUFFIX: &str = ".git";
 
 /// A repository on a supported Git host, read from a git remote. This is the
 /// single rule deciding which Git host a remote belongs to.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct HostedRepository {
     pub host: HostKind,
     pub owner: String,

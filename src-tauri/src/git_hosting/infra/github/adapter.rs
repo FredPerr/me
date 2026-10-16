@@ -69,6 +69,28 @@ impl GitHost for GithubHost {
         })
         .await
     }
+
+    async fn find_branch_pull_request(
+        &self,
+        repository: &HostedRepository,
+        branch: &str,
+    ) -> Result<Option<HostedPullRequest>, GitHostingError> {
+        let query = pull_request_mapping::branch_pull_requests_query(&repository.owner, branch);
+        let query: Vec<(&str, &str)> = query
+            .iter()
+            .map(|(name, value)| (*name, value.as_str()))
+            .collect();
+        let url = api_url(
+            API_BASE,
+            &["repos", &repository.owner, &repository.name, "pulls"],
+            &query,
+        )?;
+        let pull_requests: Vec<PullRequestResponse> = self
+            .client
+            .get_json(&url, &self.token, "find_branch_pull_request")
+            .await?;
+        Ok(pull_request_mapping::branch_pull_request(pull_requests))
+    }
 }
 
 /// GitHub's OAuth device flow: the user enters a code at github.com/login/device.

@@ -1,10 +1,29 @@
-//! Plain GitHub → domain mapping of pull request lists and their `Link` header.
+//! Plain GitHub → domain mapping of pull request lists and their `Link`
+//! header, and the query finding a branch's pull requests.
 
 use super::wire::PullRequestResponse;
-use crate::git_hosting::domain::hosted_pull_request::{HostedPullRequest, PullRequestState};
+use crate::git_hosting::domain::hosted_pull_request::{
+    most_recently_updated, HostedPullRequest, PullRequestState,
+};
 
 const OPEN: &str = "open";
 const NEXT_RELATION: &str = "next";
+
+/// The pull requests from `owner:branch` in every state, most recently
+/// updated first, on a single page.
+pub fn branch_pull_requests_query(owner: &str, branch: &str) -> Vec<(&'static str, String)> {
+    vec![
+        ("head", format!("{owner}:{branch}")),
+        ("state", "all".to_string()),
+        ("sort", "updated".to_string()),
+        ("direction", "desc".to_string()),
+        ("per_page", "100".to_string()),
+    ]
+}
+
+pub fn branch_pull_request(responses: Vec<PullRequestResponse>) -> Option<HostedPullRequest> {
+    most_recently_updated(responses.into_iter().map(pull_request))
+}
 
 pub fn pull_request(response: PullRequestResponse) -> HostedPullRequest {
     let state = if response.merged_at.is_some() {
@@ -59,6 +78,8 @@ mod tests {
     const HEAD_BRANCH: &str = "new-topic";
     const BASE_BRANCH: &str = "master";
     const UPDATED_AT: &str = "2011-01-26T19:01:12Z";
+    const OLDER_NUMBER: u32 = 1200;
+    const OLDER_UPDATED_AT: &str = "2010-12-01T08:00:00Z";
     const NEXT_URL: &str = "https://api.github.com/repositories/1300192/pulls?page=2";
     const LAST_URL: &str = "https://api.github.com/repositories/1300192/pulls?page=5";
 
@@ -131,6 +152,37 @@ mod tests {
         );
 
         assert_eq!(mapped(&without_user).author, None);
+    }
+
+    #[test]
+    fn finds_the_pull_requests_of_a_branch_in_every_state() {
+        assert_eq!(
+            branch_pull_requests_query("octocat", HEAD_BRANCH),
+            vec![
+                ("head", format!("octocat:{HEAD_BRANCH}")),
+                ("state", "all".to_string()),
+                ("sort", "updated".to_string()),
+                ("direction", "desc".to_string()),
+                ("per_page", "100".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn the_most_recently_updated_pull_request_of_a_branch_wins() {
+        let older = answer("closed", false, None)
+            .replace(&NUMBER.to_string(), &OLDER_NUMBER.to_string())
+            .replace(UPDATED_AT, OLDER_UPDATED_AT);
+        let answers = format!("[{older}, {}]", answer(OPEN, false, None));
+
+        let found = branch_pull_request(serde_json::from_str(&answers).unwrap());
+
+        assert_eq!(found.map(|found| found.number), Some(NUMBER));
+    }
+
+    #[test]
+    fn a_branch_without_pull_requests_has_none() {
+        assert_eq!(branch_pull_request(Vec::new()), None);
     }
 
     #[test]

@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use async_trait::async_trait;
 
 use super::capped::Capped;
@@ -32,10 +34,18 @@ pub trait GitHost: Send + Sync {
         &self,
         repository: &HostedRepository,
     ) -> Result<Capped<HostedPullRequest>, GitHostingError>;
+
+    /// The most recently updated pull request from `branch`, whatever its
+    /// state, or `None` when the branch has none.
+    async fn find_branch_pull_request(
+        &self,
+        repository: &HostedRepository,
+        branch: &str,
+    ) -> Result<Option<HostedPullRequest>, GitHostingError>;
 }
 
-/// The repositories of a Project and their remotes, read from the Workspace
-/// and git contexts by the composition root.
+/// The repositories of a Project, their remotes and the branches its contexts
+/// use, read from the Workspace and git contexts by the composition root.
 #[async_trait]
 pub trait ProjectRemotes: Send + Sync {
     /// `NotFound` when no Project has this tag.
@@ -72,4 +82,9 @@ pub trait HostedAccounts: Send + Sync {
 /// Tells open views that a Git host was signed in to or out of.
 pub trait GitHostingEvents: Send + Sync {
     fn changed(&self, host: HostKind);
+}
+
+/// The current time, controllable in tests.
+pub trait Clock: Send + Sync {
+    fn now(&self) -> Instant;
 }

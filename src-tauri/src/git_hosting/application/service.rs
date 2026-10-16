@@ -1,19 +1,23 @@
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use futures_util::future::join_all;
 
+use super::branch_pull_request_cache::BranchPullRequestCache;
 use super::registry::GitHostRegistry;
+use crate::git::domain::remote_url::RemoteUrl;
 use crate::git_hosting::domain::error::{GitHostingError, InputField};
 use crate::git_hosting::domain::host_kind::HostKind;
 use crate::git_hosting::domain::host_secret::HostSecret;
 use crate::git_hosting::domain::hosted_account::{HostedAccount, SignedInHost};
 use crate::git_hosting::domain::hosted_repository::HostedRepository;
 use crate::git_hosting::domain::ports::{
-    GitHost, GitHostingEvents, HostTokens, HostTokensUnavailable, HostedAccounts,
+    Clock, GitHost, GitHostingEvents, HostTokens, HostTokensUnavailable, HostedAccounts,
     HostedAccountsUnavailable, ProjectRemotes,
 };
 use crate::git_hosting::domain::project_pull_requests::{
-    ProjectRepositoryRemote, PullRequestsStatus, RepositoryPullRequests,
+    BranchPullRequest, BranchPullRequestStatus, ProjectRepositoryRemote, PullRequestsStatus,
+    RepositoryPullRequests,
 };
 use crate::git_hosting::domain::sign_in::{
     BrowserSignInStep, SignInMethod, SignInPoll, SignInProgress,
@@ -37,6 +41,7 @@ pub struct GitHostingService {
     accounts: Arc<dyn HostedAccounts>,
     events: Arc<dyn GitHostingEvents>,
     project_remotes: Arc<dyn ProjectRemotes>,
+    branch_lookups: BranchPullRequestCache,
 }
 
 impl GitHostingService {
@@ -46,6 +51,7 @@ impl GitHostingService {
         accounts: Arc<dyn HostedAccounts>,
         events: Arc<dyn GitHostingEvents>,
         project_remotes: Arc<dyn ProjectRemotes>,
+        clock: Arc<dyn Clock>,
     ) -> Self {
         Self {
             registry,
@@ -53,6 +59,7 @@ impl GitHostingService {
             accounts,
             events,
             project_remotes,
+            branch_lookups: BranchPullRequestCache::new(clock),
         }
     }
 
@@ -173,18 +180,36 @@ impl GitHostingService {
         Ok(join_all(loads).await)
     }
 
+    /// The pull request of each branch the Project's contexts use, once per
+    /// repository and branch, in the Project's order. Lookups run at the same
+    /// time and answers are reused for
+    /// [`BRANCH_LOOKUP_LIFETIME`](super::branch_pull_request_cache::BRANCH_LOOKUP_LIFETIME).
+    pub async fn context_branch_pull_requests(
+        &self,
+        project_tag: &str,
+    ) -> Result<Vec<BranchPullRequest>, GitHostingError> {
+        let repositories = self.project_remotes.repositories(project_tag).await?;
+        let loads = repositories
+            .into_iter()
+            .map(|repository| self.repository_branch_pull_requests(repository));
+        Ok(join_all(loads).await.into_iter().flatten().collect())
+    }
+
+    /// Asks the Git host again on the next lookup, e.g. once a pull request
+    /// was created from the branch or the branch was pushed.
+    // Tested; creating a pull request and pushing call it from #61.
+    #[allow(dead_code)]
+    pub fn forget_branch(&self, repository: &HostedRepository, branch: &str) {
+        self.branch_lookups.forget(repository, branch);
+    }
+
     async fn repository_pull_requests(
         &self,
         repository: ProjectRepositoryRemote,
     ) -> RepositoryPullRequests {
-        let (host, status) = match repository
-            .remote
-            .as_ref()
-            .map(HostedRepository::from_remote)
-        {
-            None => (None, PullRequestsStatus::NoRemote),
-            Some(Err(_)) => (None, PullRequestsStatus::UnsupportedHost),
-            Some(Ok(hosted)) => (Some(hosted.host), self.open_pull_requests(&hosted).await),
+        let (host, status) = match hosted_repository(repository.remote.as_ref()) {
+            Err(status) => (None, status),
+            Ok(hosted) => (Some(hosted.host), self.open_pull_requests(&hosted).await),
         };
         RepositoryPullRequests {
             repository_id: repository.repository_id,
@@ -201,16 +226,82 @@ impl GitHostingService {
         };
         match listed {
             Ok(pull_requests) => PullRequestsStatus::Ok(pull_requests),
-            Err(GitHostingError::NotConnected) => PullRequestsStatus::NotConnected,
+            Err(error) => failed_status(error, || {
+                format!("pull requests of {} not listed", describe(repository))
+            }),
+        }
+    }
+
+    async fn repository_branch_pull_requests(
+        &self,
+        repository: ProjectRepositoryRemote,
+    ) -> Vec<BranchPullRequest> {
+        let branches = distinct(repository.context_branches);
+        let (host, statuses) = match hosted_repository(repository.remote.as_ref()) {
+            Err(status) => (None, vec![status; branches.len()]),
+            Ok(hosted) => (
+                Some(hosted.host),
+                self.branch_statuses(&hosted, &branches).await,
+            ),
+        };
+        branches
+            .into_iter()
+            .zip(statuses)
+            .map(|(branch, status)| BranchPullRequest {
+                repository_id: repository.repository_id.clone(),
+                branch,
+                host,
+                status,
+            })
+            .collect()
+    }
+
+    /// One status per branch, in the order of `branches`. The Git host is
+    /// signed in to once for the repository.
+    async fn branch_statuses(
+        &self,
+        repository: &HostedRepository,
+        branches: &[String],
+    ) -> Vec<BranchPullRequestStatus> {
+        if branches.is_empty() {
+            return Vec::new();
+        }
+        let git_host = match self.connected_host(repository.host) {
+            Ok(git_host) => git_host,
             Err(error) => {
-                eprintln!(
-                    "[git_hosting] pull requests of {}/{} on {} not listed: {error:?}",
-                    repository.owner,
-                    repository.name,
-                    repository.host.as_str()
-                );
-                PullRequestsStatus::Failed(error)
+                let status = failed_status(error, || {
+                    format!("branch pull requests of {} not found", describe(repository))
+                });
+                return vec![status; branches.len()];
             }
+        };
+        let lookups = branches
+            .iter()
+            .map(|branch| self.branch_status(git_host.as_ref(), repository, branch));
+        join_all(lookups).await
+    }
+
+    async fn branch_status(
+        &self,
+        git_host: &dyn GitHost,
+        repository: &HostedRepository,
+        branch: &str,
+    ) -> BranchPullRequestStatus {
+        if let Some(pull_request) = self.branch_lookups.find(repository, branch) {
+            return PullRequestsStatus::Ok(pull_request);
+        }
+        match git_host.find_branch_pull_request(repository, branch).await {
+            Ok(pull_request) => {
+                self.branch_lookups
+                    .remember(repository, branch, pull_request.clone());
+                PullRequestsStatus::Ok(pull_request)
+            }
+            Err(error) => failed_status(error, || {
+                format!(
+                    "pull request of branch {branch} of {} not found",
+                    describe(repository)
+                )
+            }),
         }
     }
 
@@ -246,6 +337,49 @@ impl GitHostingService {
             }
         }
     }
+}
+
+/// The repository on a supported Git host, or the status saying why there is none.
+fn hosted_repository<Found>(
+    remote: Option<&RemoteUrl>,
+) -> Result<HostedRepository, PullRequestsStatus<Found>> {
+    match remote.map(HostedRepository::from_remote) {
+        None => Err(PullRequestsStatus::NoRemote),
+        Some(Err(_)) => Err(PullRequestsStatus::UnsupportedHost),
+        Some(Ok(hosted)) => Ok(hosted),
+    }
+}
+
+/// `NotConnected` is a status of its own; any other error is logged.
+fn failed_status<Found>(
+    error: GitHostingError,
+    failure: impl FnOnce() -> String,
+) -> PullRequestsStatus<Found> {
+    match error {
+        GitHostingError::NotConnected => PullRequestsStatus::NotConnected,
+        error => {
+            eprintln!("[git_hosting] {}: {error:?}", failure());
+            PullRequestsStatus::Failed(error)
+        }
+    }
+}
+
+fn describe(repository: &HostedRepository) -> String {
+    format!(
+        "{}/{} on {}",
+        repository.owner,
+        repository.name,
+        repository.host.as_str()
+    )
+}
+
+/// Each branch once, in the order first seen.
+fn distinct(branches: Vec<String>) -> Vec<String> {
+    let mut seen = HashSet::new();
+    branches
+        .into_iter()
+        .filter(|branch| seen.insert(branch.clone()))
+        .collect()
 }
 
 fn required(value: &str, field: InputField) -> Result<&str, GitHostingError> {

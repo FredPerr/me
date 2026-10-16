@@ -2,10 +2,11 @@
 //! repositories they host and the accounts signed in to them.
 //!
 //! This module is the composition root: the only place that names the GitHub
-//! and Bitbucket adapters, the keychain, the redb account store, the Tauri
-//! event adapter and the credentials handed to the `git` module. The
-//! repositories of a Project come in as a `ProjectRemotes` built by the
-//! application setup, so this context never names `workspace`.
+//! and Bitbucket adapters, the keychain, the redb account store, the system
+//! clock, the Tauri event adapter and the credentials handed to the `git`
+//! module. The repositories of a Project and the branches its contexts use
+//! come in as a `ProjectRemotes` built by the application setup, so this
+//! context never names `workspace`.
 
 pub mod application;
 pub mod commands;
@@ -21,6 +22,7 @@ use domain::ports::ProjectRemotes;
 use infra::host_token_credentials::HostTokenCredentials;
 use infra::keychain_host_tokens::KeychainHostTokens;
 use infra::redb_hosted_accounts::RedbHostedAccounts;
+use infra::system_clock::SystemClock;
 use infra::tauri_git_hosting_events::TauriGitHostingEvents;
 
 use crate::git::domain::ports::RemoteCredentials;
@@ -49,6 +51,7 @@ pub fn build(
         Arc::new(accounts),
         Arc::new(TauriGitHostingEvents::new(app)),
         project_remotes,
+        Arc::new(SystemClock),
     );
     Ok(GitHosting {
         service: Arc::new(service),
