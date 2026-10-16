@@ -393,7 +393,8 @@ export const en = {
 			loadFailed: "Could not load projects",
 			unreadable: {
 				title: "{{count}} project(s) could not be read",
-				description: "They were left untouched. Fix or remove them, then restart the app.",
+				description:
+					"Their stored data was left untouched and they are hidden until it can be read.",
 			},
 		},
 		project: {

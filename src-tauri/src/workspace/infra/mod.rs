@@ -5,7 +5,6 @@
 pub mod file_system_checkout_files;
 #[cfg(test)]
 pub mod in_memory_project_repository;
-pub mod legacy_project_import;
 #[cfg(test)]
 mod project_repository_contract;
 #[cfg(test)]

@@ -16,7 +16,7 @@ import { ProjectList } from "./ProjectList";
 
 export function ProjectSettings() {
 	const { t } = useTranslation();
-	const { projects, unreadableProjects, unreadableFiles } = useProjects();
+	const { projects, unreadableProjects } = useProjects();
 	const addProject = useAddProject();
 	const updateProjectSettings = useUpdateProjectSettings();
 	const deleteProject = useDeleteProject();
@@ -70,10 +70,7 @@ export function ProjectSettings() {
 					</Button>
 				</Group>
 			</Group>
-			<UnreadableProjectsAlert
-				unreadableProjects={unreadableProjects}
-				unreadableFiles={unreadableFiles}
-			/>
+			<UnreadableProjectsAlert unreadableProjects={unreadableProjects} />
 			<ProjectList
 				projects={projects}
 				onEdit={handleEdit}

@@ -24,7 +24,6 @@ use super::domain::project::{Project, ProjectSettings};
 use super::domain::project_tag::ProjectTag;
 use super::domain::remote_project_link::RemoteProjectLink;
 use super::domain::repository::Repository;
-use super::infra::legacy_project_import::UnreadableFile;
 use super::Workspace;
 use crate::git::domain::error::GitError;
 
@@ -284,19 +283,10 @@ pub struct UnreadableProjectView {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
-pub struct UnreadableFileView {
-    pub file_name: String,
-    pub reason: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
-#[serde(rename_all = "camelCase")]
 pub struct ProjectListView {
     pub projects: Vec<ProjectView>,
     /// Stored Projects that couldn't be read.
     pub unreadable_projects: Vec<UnreadableProjectView>,
-    /// Old project files the one-time import left untouched.
-    pub unreadable_files: Vec<UnreadableFileView>,
 }
 
 impl From<ContextStatus> for ContextStatusView {
@@ -488,7 +478,7 @@ impl From<&Project> for ProjectView {
 }
 
 impl ProjectListView {
-    fn new(listing: ProjectListing, unreadable_files: &[UnreadableFile]) -> Self {
+    fn new(listing: ProjectListing) -> Self {
         Self {
             projects: listing.projects.iter().map(ProjectView::from).collect(),
             unreadable_projects: listing
@@ -497,13 +487,6 @@ impl ProjectListView {
                 .map(|record| UnreadableProjectView {
                     tag: record.tag,
                     reason: record.reason,
-                })
-                .collect(),
-            unreadable_files: unreadable_files
-                .iter()
-                .map(|file| UnreadableFileView {
-                    file_name: file.file_name.clone(),
-                    reason: file.reason.clone(),
                 })
                 .collect(),
         }
@@ -698,10 +681,9 @@ pub async fn workspace_list_projects(
     workspace: State<'_, Workspace>,
 ) -> Result<ProjectListView, WorkspaceCommandError> {
     let service = service(&workspace);
-    let unreadable_files = workspace.unreadable_files.clone();
     run_blocking(move || {
         let listing = service.list_projects()?;
-        Ok(ProjectListView::new(listing, &unreadable_files))
+        Ok(ProjectListView::new(listing))
     })
     .await
 }

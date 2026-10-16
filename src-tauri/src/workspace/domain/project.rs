@@ -200,9 +200,10 @@ impl Project {
         self.add_checked_context(context)
     }
 
-    // TEMPORARY(legacy import): remove with `infra::legacy_project_import`.
-    /// Adds a context read from an old project file, which may hold linked
-    /// repositories. Every other rule of `add_context` applies.
+    // TEMPORARY(legacy linked repositories): remove with `ContextCheckout::Linked`.
+    /// Linked repositories only exist in projects imported before every
+    /// repository got its own branch; tests build such a project with this.
+    #[cfg(test)]
     pub fn add_legacy_context(self, context: Context) -> Result<Self, WorkspaceError> {
         self.add_checked_context(context)
     }

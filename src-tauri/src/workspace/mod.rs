@@ -15,23 +15,16 @@ use std::sync::Arc;
 use application::service::WorkspaceService;
 use domain::ports::ProjectRepository;
 use infra::file_system_checkout_files::FileSystemCheckoutFiles;
-use infra::legacy_project_import::{import_if_needed, UnreadableFile};
 use infra::redb_project_repository::RedbProjectRepository;
 use infra::tauri_project_events::TauriProjectEvents;
 
 use crate::git::domain::ports::GitRepositories;
 
 const DATABASE_FILE: &str = "me.redb";
-const LEGACY_PROJECTS_FOLDER: &str = "projects";
 
-/// Imports the old `projects/<tag>.json` files once, on first launch, renaming
-/// each imported file to `.json.imported`.
-const RUN_LEGACY_IMPORT_AT_STARTUP: bool = true;
-
-/// The workspace service and what the one-time import couldn't read, held in Tauri state.
+/// The workspace service, held in Tauri state.
 pub struct Workspace {
     pub service: Arc<WorkspaceService>,
-    pub unreadable_files: Vec<UnreadableFile>,
 }
 
 pub fn build(
@@ -43,14 +36,6 @@ pub fn build(
     let projects: Arc<dyn ProjectRepository> = Arc::new(RedbProjectRepository::open(
         app_data_folder.join(DATABASE_FILE),
     )?);
-    let unreadable_files = if RUN_LEGACY_IMPORT_AT_STARTUP {
-        import_legacy_projects(
-            &app_data_folder.join(LEGACY_PROJECTS_FOLDER),
-            projects.as_ref(),
-        )
-    } else {
-        vec![]
-    };
     let service = WorkspaceService::new(
         projects,
         git,
@@ -59,36 +44,5 @@ pub fn build(
     );
     Ok(Workspace {
         service: Arc::new(service),
-        unreadable_files,
     })
-}
-
-/// TEMPORARY(legacy import): remove with `infra::legacy_project_import`.
-fn import_legacy_projects(
-    projects_folder: &Path,
-    projects: &dyn ProjectRepository,
-) -> Vec<UnreadableFile> {
-    match import_if_needed(projects_folder, projects) {
-        Ok(report) => {
-            if !report.imported.is_empty() || !report.unreadable.is_empty() {
-                eprintln!(
-                    "[workspace] imported {} project file(s); left {} unreadable; skipped {} context(s)",
-                    report.imported.len(),
-                    report.unreadable.len(),
-                    report.skipped_contexts.len()
-                );
-            }
-            for skipped in &report.skipped_contexts {
-                eprintln!(
-                    "[workspace] context '{}' of '{}' not imported: {}",
-                    skipped.context_name, skipped.project, skipped.reason
-                );
-            }
-            report.unreadable
-        }
-        Err(error) => {
-            eprintln!("[workspace] project files not imported: {error}");
-            vec![]
-        }
-    }
 }

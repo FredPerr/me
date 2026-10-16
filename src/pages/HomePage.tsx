@@ -7,7 +7,7 @@ import { describeError } from "@/infra/commandError";
 
 export function HomePage() {
 	const { t } = useTranslation();
-	const { projects, unreadableProjects, unreadableFiles, loading, error } = useProjects();
+	const { projects, unreadableProjects, loading, error } = useProjects();
 
 	if (loading) {
 		return null;
@@ -20,10 +20,7 @@ export function HomePage() {
 					{describeError(error)}
 				</Alert>
 			)}
-			<UnreadableProjectsAlert
-				unreadableProjects={unreadableProjects}
-				unreadableFiles={unreadableFiles}
-			/>
+			<UnreadableProjectsAlert unreadableProjects={unreadableProjects} />
 			{projects.length === 0 ? (
 				<Text c="dimmed">{t("project.noProjects")}</Text>
 			) : (

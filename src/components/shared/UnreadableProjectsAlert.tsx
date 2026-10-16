@@ -1,22 +1,18 @@
 import { Alert, List, Text } from "@mantine/core";
 import { WarningIcon } from "@phosphor-icons/react";
 import { useTranslation } from "react-i18next";
-import type { UnreadableFileView, UnreadableProjectView } from "@/bindings";
+import type { UnreadableProjectView } from "@/bindings";
 
 type UnreadableProjectsAlertProps = {
 	unreadableProjects: readonly UnreadableProjectView[];
-	unreadableFiles: readonly UnreadableFileView[];
 };
 
-export function UnreadableProjectsAlert({
-	unreadableProjects,
-	unreadableFiles,
-}: UnreadableProjectsAlertProps) {
+export function UnreadableProjectsAlert({ unreadableProjects }: UnreadableProjectsAlertProps) {
 	const { t } = useTranslation();
-	const entries = [
-		...unreadableProjects.map((project) => ({ name: project.tag, reason: project.reason })),
-		...unreadableFiles.map((file) => ({ name: file.fileName, reason: file.reason })),
-	];
+	const entries = unreadableProjects.map((project) => ({
+		name: project.tag,
+		reason: project.reason,
+	}));
 	if (entries.length === 0) return null;
 
 	return (

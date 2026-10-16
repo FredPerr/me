@@ -12,7 +12,6 @@ function buildListing(overrides?: Partial<ProjectListView>): ProjectListView {
 	return {
 		projects: [buildProject(), buildProject({ tag: OTHER_PROJECT_TAG })],
 		unreadableProjects: [],
-		unreadableFiles: [],
 		...overrides,
 	};
 }

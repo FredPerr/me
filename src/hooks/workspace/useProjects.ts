@@ -5,7 +5,6 @@ import { PROJECT_LIST_QUERY_KEY } from "./workspaceQueryKeys";
 const EMPTY_LISTING: ProjectListView = {
 	projects: [],
 	unreadableProjects: [],
-	unreadableFiles: [],
 };
 
 export function useProjects() {
@@ -17,7 +16,6 @@ export function useProjects() {
 	return {
 		projects: listing.projects,
 		unreadableProjects: listing.unreadableProjects,
-		unreadableFiles: listing.unreadableFiles,
 		loading: query.isPending,
 		error: query.error,
 	};

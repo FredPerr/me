@@ -150,8 +150,6 @@ export type ProjectListView = {
 	projects: ProjectView[],
 	/**  Stored Projects that couldn't be read. */
 	unreadableProjects: UnreadableProjectView[],
-	/**  Old project files the one-time import left untouched. */
-	unreadableFiles: UnreadableFileView[],
 };
 
 /**
@@ -235,11 +233,6 @@ export type RepositoryView = {
 	postCheckoutCommand: string | null,
 	/**  The repository's folder: its main checkout. */
 	path: string,
-};
-
-export type UnreadableFileView = {
-	fileName: string,
-	reason: string,
 };
 
 export type UnreadableProjectView = {

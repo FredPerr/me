@@ -31,18 +31,6 @@ impl ContextFolder {
         Self(name.as_str().to_string())
     }
 
-    // TEMPORARY(legacy import): remove with `infra::legacy_project_import`.
-    /// A folder name read from an old project file, kept as it was stored.
-    pub fn from_stored(folder_name: &str) -> Result<Self, WorkspaceError> {
-        let trimmed = folder_name.trim();
-        if trimmed.is_empty() {
-            return Err(WorkspaceError::EmptyContextFolder {
-                name: folder_name.to_string(),
-            });
-        }
-        Ok(Self(trimmed.to_string()))
-    }
-
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -79,24 +67,6 @@ mod tests {
         assert_eq!(
             ContextFolder::legacy(&name(ACCENTED_NAME)).as_str(),
             ACCENTED_NAME
-        );
-    }
-
-    #[test]
-    fn a_stored_folder_is_kept_as_stored() {
-        assert_eq!(
-            ContextFolder::from_stored(" old-folder ").unwrap().as_str(),
-            "old-folder"
-        );
-    }
-
-    #[test]
-    fn refuses_a_blank_stored_folder() {
-        assert_eq!(
-            ContextFolder::from_stored(" "),
-            Err(WorkspaceError::EmptyContextFolder {
-                name: " ".to_string()
-            })
         );
     }
 
