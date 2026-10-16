@@ -8,12 +8,12 @@ const HOST_COLOR: Record<HostKindView, string> = {
 	bitbucket: "blue",
 };
 
-type ProviderBadgeProps = {
+type GitHostBadgeProps = {
 	host: HostKindView;
 };
 
 /** A small tag naming the Git host a pull request belongs to. */
-export function ProviderBadge({ host }: ProviderBadgeProps) {
+export function GitHostBadge({ host }: GitHostBadgeProps) {
 	const { t } = useTranslation();
 	return (
 		<Badge variant="light" size="sm" color={HOST_COLOR[host]}>

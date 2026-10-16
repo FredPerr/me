@@ -27,12 +27,12 @@ export function GitHostingSettings() {
 
 	return (
 		<Stack gap="sm">
-			<Title order={3}>{t("settings.gitProvider.title")}</Title>
+			<Title order={3}>{t("settings.gitHosting.title")}</Title>
 			<Text size="sm" c="dimmed">
-				{t("settings.gitProvider.description")}
+				{t("settings.gitHosting.description")}
 			</Text>
 			{error && (
-				<Alert color="red" title={t("settings.gitProvider.loadError")}>
+				<Alert color="red" title={t("settings.gitHosting.loadError")}>
 					{describeError(error)}
 				</Alert>
 			)}

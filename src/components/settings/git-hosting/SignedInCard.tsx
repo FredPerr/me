@@ -15,9 +15,9 @@ export function SignedInCard({ signedIn }: { signedIn: SignedInHostView }) {
 		signOut.mutate(signedIn.host, {
 			onSuccess: () =>
 				notifications.show({
-					title: t("settings.gitProvider.disconnectedTitle"),
-					message: t("settings.gitProvider.disconnectedMessage", {
-						provider: t(GIT_HOSTS[signedIn.host].displayNameKey),
+					title: t("settings.gitHosting.disconnectedTitle"),
+					message: t("settings.gitHosting.disconnectedMessage", {
+						host: t(GIT_HOSTS[signedIn.host].displayNameKey),
 					}),
 					color: "green",
 				}),
@@ -30,7 +30,7 @@ export function SignedInCard({ signedIn }: { signedIn: SignedInHostView }) {
 			signedIn={signedIn}
 			action={
 				<Button variant="light" color="red" onClick={handleSignOut} loading={signOut.isPending}>
-					{t("settings.gitProvider.disconnect")}
+					{t("settings.gitHosting.disconnect")}
 				</Button>
 			}
 		/>

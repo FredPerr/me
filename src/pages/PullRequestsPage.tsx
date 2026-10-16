@@ -13,7 +13,7 @@ import type {
 	RepositoryPullRequestsView,
 } from "@/bindings";
 import { CreatePullRequestModal } from "@/components/contexts/CreatePullRequestModal";
-import { ProviderBadge } from "@/components/shared/ProviderBadge";
+import { GitHostBadge } from "@/components/shared/GitHostBadge";
 import { PullRequestsNotices } from "@/components/shared/PullRequestsNotices";
 import { useProjectsPullRequests } from "@/hooks/gitHosting/useProjectPullRequests";
 import { useProjects } from "@/hooks/workspace/useProjects";
@@ -151,7 +151,7 @@ function PullRequestCard({
 						<Text fw={600} size="sm" truncate>
 							{pullRequest.title}
 						</Text>
-						{host && <ProviderBadge host={host} />}
+						{host && <GitHostBadge host={host} />}
 						{pullRequest.draft && (
 							<Badge variant="light" color="gray" size="sm">
 								{t("pullRequests.draftBadge")}

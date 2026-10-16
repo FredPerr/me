@@ -13,14 +13,14 @@ function BrowserStep({ step }: { step: BrowserSignInStepView }) {
 	const { t } = useTranslation();
 	return (
 		<Stack gap="xs" mt="md">
-			<Text size="sm">{t("settings.gitProvider.deviceInstructions")}</Text>
+			<Text size="sm">{t("settings.gitHosting.deviceInstructions")}</Text>
 			<Group gap="xs">
 				<Code fz="lg" fw={700}>
 					{step.userCode}
 				</Code>
 				<CopyButton value={step.userCode}>
 					{({ copied, copy }) => (
-						<Tooltip label={copied ? t("common.copied") : t("settings.gitProvider.copyCode")}>
+						<Tooltip label={copied ? t("common.copied") : t("settings.gitHosting.copyCode")}>
 							<Button
 								size="xs"
 								variant="subtle"
@@ -29,7 +29,7 @@ function BrowserStep({ step }: { step: BrowserSignInStepView }) {
 									copied ? <CheckIcon size={COPY_ICON_SIZE} /> : <CopyIcon size={COPY_ICON_SIZE} />
 								}
 							>
-								{copied ? t("common.copied") : t("settings.gitProvider.copyCode")}
+								{copied ? t("common.copied") : t("settings.gitHosting.copyCode")}
 							</Button>
 						</Tooltip>
 					)}
@@ -40,10 +40,10 @@ function BrowserStep({ step }: { step: BrowserSignInStepView }) {
 				leftSection={<ArrowSquareOutIcon size={BUTTON_ICON_SIZE} />}
 				onClick={() => openUrl(step.verificationUrl)}
 			>
-				{t("settings.gitProvider.openVerification")}
+				{t("settings.gitHosting.openVerification")}
 			</Button>
 			<Text size="xs" c="dimmed">
-				{t("settings.gitProvider.waitingForAuthorization")}
+				{t("settings.gitHosting.waitingForAuthorization")}
 			</Text>
 		</Stack>
 	);
@@ -53,9 +53,9 @@ function FailureAlert({ failure }: { failure: BrowserSignInFailure }) {
 	const { t } = useTranslation();
 	const message =
 		failure.reason === "expired"
-			? t("settings.gitProvider.expired")
+			? t("settings.gitHosting.expired")
 			: failure.reason === "denied"
-				? t("settings.gitProvider.denied")
+				? t("settings.gitHosting.denied")
 				: failure.message;
 	return (
 		<Alert color="red" mt="md" title={t("common.error")}>
@@ -81,7 +81,7 @@ export function BrowserSignInCard({ host }: { host: HostKindView }) {
 					</Button>
 				) : (
 					<Button leftSection={<GitHostIcon host={host} size={BUTTON_ICON_SIZE} />} onClick={start}>
-						{t("settings.gitProvider.connect")}
+						{t("settings.gitHosting.connect")}
 					</Button>
 				)
 			}

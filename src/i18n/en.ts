@@ -63,9 +63,9 @@ export const en = {
 				savedMessage: "Your settings have been saved successfully.",
 				saveError: "Failed to save settings.",
 			},
-			gitProvider: {
+			gitHosting: {
 				title: "Connected accounts",
-				description: "Connect a git provider to perform operations on your repositories from Me.",
+				description: "Connect a Git host to perform operations on your repositories from Me.",
 				github: "GitHub",
 				bitbucket: "Bitbucket",
 				notConnected: "Not connected",
@@ -75,8 +75,7 @@ export const en = {
 				loadError: "Could not load the connected accounts",
 				disconnect: "Disconnect",
 				disconnectedTitle: "Account disconnected",
-				disconnectedMessage: "Your {{provider}} account has been disconnected.",
-				disconnectError: "Failed to disconnect the account.",
+				disconnectedMessage: "Your {{host}} account has been disconnected.",
 				deviceInstructions:
 					"Enter this code on GitHub to authorize Me, then keep this window open.",
 				copyCode: "Copy code",
@@ -377,9 +376,9 @@ export const en = {
 			draftsTab: "Drafts",
 			noDrafts: "No draft pull requests yet.",
 			untitledDraft: "Untitled draft",
-			notConnectedTitle: "No git provider connected",
+			notConnectedTitle: "No Git host connected",
 			notConnectedDescription:
-				"Connect a git provider like GitHub or Bitbucket to view your active pull requests here.",
+				"Connect a Git host like GitHub or Bitbucket to view your active pull requests here.",
 			goToSettings: "Connect an account in Settings",
 			loadError: "Could not load pull requests.",
 			noOpen: "No open pull requests across your projects.",

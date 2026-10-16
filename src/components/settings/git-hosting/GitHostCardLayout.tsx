@@ -25,9 +25,9 @@ export function GitHostCardLayout({ host, signedIn, action, children }: GitHostC
 	const account = signedIn?.account ?? null;
 
 	function statusText() {
-		if (account) return t("settings.gitProvider.connectedAs", { login: account.login });
-		if (signedIn) return t("settings.gitProvider.connectedWithoutAccount");
-		return t("settings.gitProvider.notConnected");
+		if (account) return t("settings.gitHosting.connectedAs", { login: account.login });
+		if (signedIn) return t("settings.gitHosting.connectedWithoutAccount");
+		return t("settings.gitHosting.notConnected");
 	}
 
 	return (

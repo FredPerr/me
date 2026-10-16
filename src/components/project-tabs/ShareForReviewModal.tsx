@@ -25,7 +25,7 @@ import {
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { ProjectView } from "@/bindings";
-import { ProviderBadge } from "@/components/shared/ProviderBadge";
+import { GitHostBadge } from "@/components/shared/GitHostBadge";
 import { PullRequestsNotices } from "@/components/shared/PullRequestsNotices";
 import { useProjectPullRequests } from "@/hooks/gitHosting/useProjectPullRequests";
 import { describeError } from "@/infra/commandError";
@@ -241,7 +241,7 @@ export function ShareForReviewModal({ opened, onClose, project }: ShareForReview
 												<Badge size="sm" variant="light">
 													{pullRequest.repositoryName}
 												</Badge>
-												{pullRequest.host && <ProviderBadge host={pullRequest.host} />}
+												{pullRequest.host && <GitHostBadge host={pullRequest.host} />}
 											</Group>
 										}
 									/>
