@@ -1,5 +1,10 @@
+use async_trait::async_trait;
+
+use super::error::GitHostingError;
 use super::host_kind::HostKind;
 use super::host_secret::HostSecret;
+use super::hosted_account::HostedAccount;
+use super::sign_in::{BrowserSignInStep, SignInPoll};
 
 /// The secret store could not be used. Platform details are dropped so they
 /// never reach the UI.
@@ -12,4 +17,39 @@ pub trait HostTokens: Send + Sync {
     fn save(&self, host: HostKind, secret: &HostSecret) -> Result<(), HostTokensUnavailable>;
     /// Succeeds when no secret is stored.
     fn delete(&self, host: HostKind) -> Result<(), HostTokensUnavailable>;
+}
+
+/// A Git host's API, signed in with one account. One adapter per Git host.
+#[async_trait]
+pub trait GitHost: Send + Sync {
+    async fn current_account(&self) -> Result<HostedAccount, GitHostingError>;
+}
+
+/// Signing in by entering a code in the browser.
+#[async_trait]
+pub trait BrowserSignIn: Send + Sync {
+    async fn start(&self) -> Result<BrowserSignInStep, GitHostingError>;
+    async fn poll(&self, device_code: &str) -> Result<SignInPoll, GitHostingError>;
+}
+
+/// The account store could not be used. The reason is logged by the adapter.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HostedAccountsUnavailable;
+
+/// The signed-in account summaries, at most one per Git host.
+pub trait HostedAccounts: Send + Sync {
+    /// Ordered by Git host identifier.
+    fn list(&self) -> Result<Vec<HostedAccount>, HostedAccountsUnavailable>;
+    // Contract-tested, but no use case reads a single account yet.
+    #[allow(dead_code)]
+    fn find(&self, host: HostKind) -> Result<Option<HostedAccount>, HostedAccountsUnavailable>;
+    /// Replaces the account stored for the same Git host.
+    fn save(&self, account: &HostedAccount) -> Result<(), HostedAccountsUnavailable>;
+    /// Succeeds when no account is stored.
+    fn remove(&self, host: HostKind) -> Result<(), HostedAccountsUnavailable>;
+}
+
+/// Tells open views that a Git host was signed in to or out of.
+pub trait GitHostingEvents: Send + Sync {
+    fn changed(&self, host: HostKind);
 }

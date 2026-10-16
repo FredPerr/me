@@ -42,10 +42,16 @@ export const commands = {
 	workspaceDeleteProject: (projectTag: string) => __TAURI_INVOKE<null>("workspace_delete_project", { projectTag }),
 	/**  `prefix: null` asks for a name without prefix. */
 	workspaceSuggestBranchName: (projectTag: string, title: string, prefix: string | null) => __TAURI_INVOKE<string>("workspace_suggest_branch_name", { projectTag, title, prefix }),
+	gitHostingListAccounts: () => __TAURI_INVOKE<SignedInHostView[]>("git_hosting_list_accounts"),
+	gitHostingStartSignIn: (host: HostKindView) => __TAURI_INVOKE<BrowserSignInStepView>("git_hosting_start_sign_in", { host }),
+	gitHostingPollSignIn: (host: HostKindView, deviceCode: string) => __TAURI_INVOKE<SignInProgressView>("git_hosting_poll_sign_in", { host, deviceCode }),
+	gitHostingSignInWithToken: (host: HostKindView, username: string, token: string) => __TAURI_INVOKE<HostedAccountView>("git_hosting_sign_in_with_token", { host, username, token }),
+	gitHostingSignOut: (host: HostKindView) => __TAURI_INVOKE<null>("git_hosting_sign_out", { host }),
 };
 
 /** Events */
 export const events = {
+	gitHostingChanged: makeEvent<GitHostingChanged>("git-hosting-changed"),
 	projectChanged: makeEvent<ProjectChanged>("project-changed"),
 };
 
@@ -69,6 +75,14 @@ export type BranchNamingView = {
 	prefixes: string[],
 	allowsNoPrefix: boolean,
 	defaultPrefix: string | null,
+};
+
+export type BrowserSignInStepView = {
+	userCode: string,
+	verificationUrl: string,
+	deviceCode: string,
+	intervalSeconds: number,
+	expiresInSeconds: number,
 };
 
 export type ContextBranchView = {
@@ -128,6 +142,36 @@ export type GitCommandError = {
 
 /**  The kind of a git failure, as the frontend sees it. */
 export type GitErrorKind = "notARepository" | "invalidBranchName" | "branchNotFound" | "branchAlreadyExists" | "branchCheckedOut" | "noRemote" | "noUpstream" | "detachedHead" | "notFastForward" | "authenticationFailed" | "network" | "io" | "commandFailed";
+
+/**
+ *  Emitted as `git-hosting-changed` after signing in to or out of a Git host,
+ *  so every Git hosting view refetches.
+ */
+export type GitHostingChanged = {
+	host: HostKindView,
+};
+
+/**
+ *  A failed Git Hosting command on the wire. `message` is a fixed English
+ *  sentence per kind and never holds a response body or a secret.
+ */
+export type GitHostingCommandError = {
+	kind: GitHostingErrorKind,
+	message: string,
+	retryAfterSeconds: number | null,
+	status: number | null,
+};
+
+export type GitHostingErrorKind = "notConnected" | "invalidInput" | "unauthorized" | "forbidden" | "notFound" | "rateLimited" | "network" | "timeout" | "providerError" | "invalidResponse" | "storage";
+
+export type HostKindView = "github" | "bitbucket";
+
+export type HostedAccountView = {
+	host: HostKindView,
+	login: string,
+	name: string | null,
+	avatarUrl: string | null,
+};
 
 export type LocalBranchView = {
 	name: string,
@@ -233,6 +277,17 @@ export type RepositoryView = {
 	postCheckoutCommand: string | null,
 	/**  The repository's folder: its main checkout. */
 	path: string,
+};
+
+export type SignInProgressView = { status: "authorized" } | { status: "pending" } | { status: "slowDown"; intervalSeconds: number } | { status: "expired" } | { status: "denied" };
+
+/**
+ *  A Git host with a stored secret. `account` is null when it could not be
+ *  fetched yet, e.g. while offline.
+ */
+export type SignedInHostView = {
+	host: HostKindView,
+	account: HostedAccountView | null,
 };
 
 export type UnreadableProjectView = {
