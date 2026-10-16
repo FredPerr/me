@@ -1,4 +1,5 @@
-//! Injects a stored provider access token into `git` CLI invocations.
+//! Builds the HTTP authorization that lets `git` CLI calls use a stored
+//! provider access token.
 //!
 //! Rather than rewriting remote URLs (which would persist credentials into
 //! `.git/config`) or touching the on-disk credential helper, we pass the token
@@ -73,29 +74,17 @@ fn basic_credential(provider_id: &str, stored_token: &str) -> String {
     }
 }
 
-/// Build the `-c http.<host>.extraheader=...` arguments that authenticate a
-/// `git` call against `remote_url`, or an empty vec when no token applies
+/// The HTTP authorization for a `git` call against `remote_url`: the URL prefix
+/// the header is scoped to and the header value. `None` when no token applies
 /// (unrecognized remote, SSH remote, or not connected).
-pub fn auth_args_for_remote(remote_url: &str) -> Vec<String> {
-    let Some((provider_id, host)) = provider_for_remote(remote_url) else {
-        return Vec::new();
-    };
-
-    let stored_token = match token_store::read_token(provider_id) {
-        Ok(Some(token)) => token,
-        _ => return Vec::new(),
-    };
-
+pub fn authorization_for_remote(remote_url: &str) -> Option<(String, String)> {
+    let (provider_id, host) = provider_for_remote(remote_url)?;
+    let stored_token = token_store::read_token(provider_id).ok().flatten()?;
     let credential = base64_encode(basic_credential(provider_id, &stored_token).as_bytes());
-    let host_config = format!("https://{}/", host);
-
-    vec![
-        "-c".to_string(),
-        format!(
-            "http.{}.extraheader=Authorization: Basic {}",
-            host_config, credential
-        ),
-    ]
+    Some((
+        format!("https://{}/", host),
+        format!("Basic {}", credential),
+    ))
 }
 
 #[cfg(test)]
@@ -126,14 +115,14 @@ mod tests {
     }
 
     #[test]
-    fn no_auth_args_for_ssh_remote() {
-        assert!(auth_args_for_remote("git@github.com:user/repo.git").is_empty());
-        assert!(auth_args_for_remote("git@bitbucket.org:workspace/repo.git").is_empty());
+    fn no_authorization_for_ssh_remote() {
+        assert!(authorization_for_remote("git@github.com:user/repo.git").is_none());
+        assert!(authorization_for_remote("git@bitbucket.org:workspace/repo.git").is_none());
     }
 
     #[test]
-    fn no_auth_args_for_unrecognized_https_remote() {
-        assert!(auth_args_for_remote("https://gitlab.com/user/repo.git").is_empty());
+    fn no_authorization_for_unrecognized_https_remote() {
+        assert!(authorization_for_remote("https://gitlab.com/user/repo.git").is_none());
     }
 
     #[test]

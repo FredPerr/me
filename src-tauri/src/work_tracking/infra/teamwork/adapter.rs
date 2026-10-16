@@ -53,7 +53,10 @@ impl WorkTracker for TeamworkWorkTracker {
         let item_segment = mapper::numeric_id(item_id.as_str(), InputField::ItemId)?;
         let body = mapper::add_assignee_body(user_id);
         // The response envelope is irrelevant on success; discard it.
-        let _: serde::de::IgnoredAny = self.client.patch_json(&task_path(item_segment), &body).await?;
+        let _: serde::de::IgnoredAny = self
+            .client
+            .patch_json(&task_path(item_segment), &body)
+            .await?;
         Ok(())
     }
 

@@ -566,7 +566,12 @@ mod tests {
         // Three provider calls that each resolve the adapter.
         block_on(fixture.service.list_projects(CONNECTION_ID, None)).unwrap();
         block_on(fixture.service.list_groups(CONNECTION_ID, "10", None)).unwrap();
-        block_on(fixture.service.list_project_items(CONNECTION_ID, "10", None)).unwrap();
+        block_on(
+            fixture
+                .service
+                .list_project_items(CONNECTION_ID, "10", None),
+        )
+        .unwrap();
         // The keychain was read once; later calls used the in-memory cache.
         assert_eq!(fixture.credentials.read_calls.load(Ordering::SeqCst), 1);
     }
@@ -619,9 +624,8 @@ mod tests {
         let fixture = fixture();
         fixture.connections.insert(sample_connection());
         fixture.credentials.insert(CONNECTION_ID, "key-1");
-        fixture.script.lock().unwrap().current_user_result = Ok(
-            crate::work_tracking::domain::identifiers::PersonId::from_numeric(55),
-        );
+        fixture.script.lock().unwrap().current_user_result =
+            Ok(crate::work_tracking::domain::identifiers::PersonId::from_numeric(55));
         assert_eq!(
             block_on(fixture.service.assign_me_to_task(CONNECTION_ID, "321")),
             Ok(())

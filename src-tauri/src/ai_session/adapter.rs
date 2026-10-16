@@ -142,7 +142,11 @@ pub trait CliAdapter: Send + Sync {
         if let Some(agent) = request.agent.as_deref().filter(|value| !value.is_empty()) {
             arguments.extend(self.agent_arguments(agent));
         }
-        if let Some(resume_id) = request.resume_id.as_deref().filter(|value| !value.is_empty()) {
+        if let Some(resume_id) = request
+            .resume_id
+            .as_deref()
+            .filter(|value| !value.is_empty())
+        {
             arguments.extend(self.resume_arguments(resume_id));
         }
         if request.trust_all_tools {
