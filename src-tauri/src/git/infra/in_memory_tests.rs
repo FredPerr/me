@@ -465,12 +465,20 @@ fn fetching_a_branch_missing_on_the_remote_fails() {
 }
 
 #[test]
-fn push_and_pull_need_an_upstream() {
+fn pull_needs_an_upstream() {
     let fixture = Fixture::with_remote();
-    let repository = fixture.open(API);
 
-    assert_eq!(repository.push(), Err(GitError::NoUpstream));
-    assert_eq!(repository.pull(), Err(GitError::NoUpstream));
+    assert_eq!(fixture.open(API).pull(), Err(GitError::NoUpstream));
+}
+
+#[test]
+fn pushing_a_branch_without_upstream_publishes_it() {
+    let fixture = Fixture::with_remote();
+
+    fixture.open(API).push().unwrap();
+
+    assert!(fixture.branch(MAIN).has_upstream);
+    assert_eq!(fixture.open(API).pull().map(|_| ()), Ok(()));
 }
 
 #[test]

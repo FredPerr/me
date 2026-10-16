@@ -86,7 +86,8 @@ pub trait GitRepository {
     /// Fetches `name` from `origin` into a local branch of the same name. Does
     /// nothing when the local branch already exists.
     fn fetch_branch(&self, name: &BranchName) -> Result<(), GitError>;
-    /// Pushes the current branch to its upstream; returns git's report.
+    /// Pushes the current branch to its upstream; returns git's report. A
+    /// branch without one is published to `origin` and tracks it from then on.
     fn push(&self) -> Result<String, GitError>;
     /// Fast-forwards the current branch to its upstream; returns git's report.
     fn pull(&self) -> Result<String, GitError>;

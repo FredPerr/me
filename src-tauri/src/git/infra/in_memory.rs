@@ -646,6 +646,17 @@ impl GitRepository for InMemoryGitRepository {
 
     fn push(&self) -> Result<String, GitError> {
         self.run(Operation::Push, |repository, checkout| {
+            repository.remote()?;
+            let local = repository.head_at(checkout).ok_or(GitError::DetachedHead)?;
+            if repository.upstream_history(local).is_none() {
+                let (name, history) = (local.name.clone(), local.history.clone());
+                repository
+                    .remote_mut()?
+                    .branches
+                    .insert(name.to_string(), history);
+                repository.branch_mut(&name)?.upstream = Some(name.clone());
+                return Ok(format!("{name} -> {name} (new branch)"));
+            }
             let tracking = repository.tracking_at(checkout)?;
             let remote_tip = tracking
                 .remote_history

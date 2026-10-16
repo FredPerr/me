@@ -76,7 +76,7 @@ pub trait ProjectRemotes: Send + Sync {
 /// Why a checkout's branch was not pushed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PushFailure {
-    /// There is no remote branch to push to.
+    /// The repository has no remote to push to.
     Skipped,
     Failed(PushFailureReason),
 }

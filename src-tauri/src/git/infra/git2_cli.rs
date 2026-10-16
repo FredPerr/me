@@ -534,13 +534,23 @@ impl GitRepository for Git2CliRepository {
 
     fn push(&self) -> Result<String, GitError> {
         self.require_origin()?;
-        let upstream = self.upstream().ok_or(GitError::NoUpstream)?;
         let local_branch = self.current_branch().ok_or(GitError::DetachedHead)?;
         let _guard = self.write_guard();
-        let refspec = format!("{local_branch}:{}", upstream.remote_branch);
-        let auth = self.auth_for_remote(&upstream.remote);
-        let output =
-            self.git_with_auth("push", &["push", &upstream.remote, &refspec], auth.as_ref())?;
+        let output = match self.upstream() {
+            Some(upstream) => {
+                let refspec = format!("{local_branch}:{}", upstream.remote_branch);
+                let auth = self.auth_for_remote(&upstream.remote);
+                self.git_with_auth("push", &["push", &upstream.remote, &refspec], auth.as_ref())?
+            }
+            None => {
+                let auth = self.auth_for_remote(ORIGIN);
+                self.git_with_auth(
+                    "push",
+                    &["push", "--set-upstream", ORIGIN, local_branch.as_str()],
+                    auth.as_ref(),
+                )?
+            }
+        };
         Ok(output.stderr)
     }
 

@@ -99,13 +99,18 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_branch_without_upstream_is_skipped() {
+    async fn a_branch_without_upstream_is_published() {
         let git = git_with_login_checkout();
 
-        assert_eq!(
-            pushes(&git).push(LOGIN_CHECKOUT).await,
-            Err(PushFailure::Skipped)
-        );
+        assert_eq!(pushes(&git).push(LOGIN_CHECKOUT).await, Ok(()));
+    }
+
+    #[tokio::test]
+    async fn a_repository_without_remote_is_skipped() {
+        let git = Arc::new(InMemoryGitRepositories::new());
+        git.add_repository(&RepositoryPath::new(API), &branch(MAIN));
+
+        assert_eq!(pushes(&git).push(API).await, Err(PushFailure::Skipped));
     }
 
     #[tokio::test]

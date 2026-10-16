@@ -165,7 +165,7 @@ impl From<GitHostingError> for GitHostingCommandError {
             ),
             GitHostingError::PushSkipped => Self::new(
                 Kind::PushSkipped,
-                "The branch could not be pushed: it has no remote branch to push to.",
+                "The branch could not be pushed: the repository has no remote.",
             ),
             GitHostingError::PushFailed { reason } => {
                 Self::new(Kind::PushFailed, push_failed_message(reason))

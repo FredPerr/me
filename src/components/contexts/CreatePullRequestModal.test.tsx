@@ -59,7 +59,7 @@ const CREATED: CreatedPullRequestView = {
 };
 const PUSH_SKIPPED_ERROR: GitHostingCommandError = {
 	kind: "pushSkipped",
-	message: "The branch could not be pushed: it has no remote branch to push to.",
+	message: "The branch could not be pushed: the repository has no remote.",
 	retryAfterSeconds: null,
 	status: null,
 };

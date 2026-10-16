@@ -636,13 +636,16 @@ mod tests {
         }
 
         #[test]
-        fn a_branch_without_upstream_is_reported_as_not_pushed() {
+        fn a_branch_without_upstream_is_published_and_heard() {
             let fixture = Fixture::new();
 
             let pushed = fixture.push().unwrap();
 
-            assert!(!pushed.pushed);
-            assert_eq!(fixture.heard(), vec![]);
+            assert!(pushed.pushed);
+            assert_eq!(
+                fixture.heard(),
+                vec![(ORIGIN_URL.to_string(), LOGIN_BRANCH.to_string())]
+            );
         }
     }
 

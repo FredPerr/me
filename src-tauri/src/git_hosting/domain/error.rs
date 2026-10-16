@@ -48,7 +48,7 @@ pub enum GitHostingError {
     NoRemote,
     /// The repository's remote is not on a supported Git host.
     UnsupportedHost,
-    /// The branch was not pushed: it has no remote branch to push to.
+    /// The branch was not pushed: the repository has no remote.
     PushSkipped,
     PushFailed {
         reason: PushFailureReason,
