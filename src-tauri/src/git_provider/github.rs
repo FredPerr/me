@@ -45,7 +45,10 @@ async fn describe_error_response(context: &str, response: reqwest::Response) -> 
         "[github] {} failed: status {} body {}",
         context, status, body
     );
-    format!("GitHub returned status {} for {}: {}", status, context, body)
+    format!(
+        "GitHub returned status {} for {}: {}",
+        status, context, body
+    )
 }
 
 // --- Device flow: step 1, request a device + user code ----------------------
@@ -255,11 +258,10 @@ pub async fn github_list_repositories() -> Result<Vec<GitHubRepository>, String>
         return Err(describe_error_response("list_repositories", response).await);
     }
 
-    let repositories: Vec<GitHubRepositoryResponse> =
-        response.json().await.map_err(|error| {
-            eprintln!("[github] list_repositories decode error: {}", error);
-            error.to_string()
-        })?;
+    let repositories: Vec<GitHubRepositoryResponse> = response.json().await.map_err(|error| {
+        eprintln!("[github] list_repositories decode error: {}", error);
+        error.to_string()
+    })?;
 
     Ok(repositories
         .into_iter()

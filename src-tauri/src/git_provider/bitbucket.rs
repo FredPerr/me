@@ -122,7 +122,10 @@ async fn fetch_user(username: &str, token: &str) -> Result<BitbucketUser, String
         .send()
         .await
         .map_err(|error| {
-            eprintln!("[bitbucket] get_authenticated_user request error: {}", error);
+            eprintln!(
+                "[bitbucket] get_authenticated_user request error: {}",
+                error
+            );
             error.to_string()
         })?;
 
@@ -138,7 +141,10 @@ async fn fetch_user(username: &str, token: &str) -> Result<BitbucketUser, String
     Ok(BitbucketUser {
         login: user.username.unwrap_or_else(|| username.to_string()),
         name: user.display_name,
-        avatar_url: user.links.and_then(|links| links.avatar).and_then(|a| a.href),
+        avatar_url: user
+            .links
+            .and_then(|links| links.avatar)
+            .and_then(|a| a.href),
     })
 }
 
@@ -146,10 +152,7 @@ async fn fetch_user(username: &str, token: &str) -> Result<BitbucketUser, String
 /// the credential in the OS keychain. The credential is never returned to the
 /// frontend. Rejects (without storing) when the credentials are invalid.
 #[tauri::command]
-pub async fn bitbucket_connect_with_token(
-    username: String,
-    token: String,
-) -> Result<(), String> {
+pub async fn bitbucket_connect_with_token(username: String, token: String) -> Result<(), String> {
     let username = username.trim().to_string();
     let token = token.trim().to_string();
     if username.is_empty() || token.is_empty() {
@@ -228,7 +231,11 @@ pub async fn bitbucket_list_repositories() -> Result<Vec<BitbucketRepository>, S
         .get(&url)
         .bearer_auth(&token)
         .header(reqwest::header::ACCEPT, "application/json")
-        .query(&[("role", "member"), ("sort", "-updated_on"), ("pagelen", "100")])
+        .query(&[
+            ("role", "member"),
+            ("sort", "-updated_on"),
+            ("pagelen", "100"),
+        ])
         .send()
         .await
         .map_err(|error| {

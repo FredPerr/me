@@ -2,9 +2,11 @@ use tauri::Manager;
 
 mod ai_session;
 mod binary_resolver;
+mod context_checkout;
 mod git;
 mod git_provider;
 mod ide_launcher;
+mod pull_request_template;
 mod secret_store;
 mod shortcuts;
 mod work_tracking;
@@ -52,23 +54,22 @@ pub fn run() {
             greet,
             open_in_ide,
             check_path_exists,
-            git::get_git_remote_url,
-            git::list_worktrees,
-            git::get_worktree_status,
-            git::get_worktree_diff,
-            git::read_pull_request_template,
-            git::list_branches,
-            git::list_local_branches,
-            git::delete_local_branch,
-            git::create_worktree,
-            git::delete_worktree,
-            git::prune_worktrees,
-            git::create_context,
-            git::delete_context,
-            git::check_is_git_repository,
-            git::pull_worktree,
-            git::push_worktree,
-            git::fetch_pr_branch,
+            git::commands::get_git_remote_url,
+            git::commands::list_worktrees,
+            git::commands::get_worktree_status,
+            git::commands::get_worktree_diff,
+            pull_request_template::read_pull_request_template,
+            git::commands::list_branches,
+            git::commands::list_local_branches,
+            git::commands::delete_local_branch,
+            git::commands::delete_worktree,
+            git::commands::prune_worktrees,
+            context_checkout::create_context,
+            context_checkout::delete_context,
+            git::commands::check_is_git_repository,
+            git::commands::pull_worktree,
+            git::commands::push_worktree,
+            git::commands::fetch_pr_branch,
             git_provider::github::github_start_device_authorization,
             git_provider::github::github_poll_for_access_token,
             git_provider::github::github_get_authenticated_user,
@@ -101,6 +102,7 @@ pub fn run() {
         .setup(|app| {
             tauri::Manager::manage(app, work_tracking::build_service(app.handle().clone()));
             app.manage(ai_session::registry::SessionRegistry::new());
+            app.manage(git::build());
             shortcuts::register(app.handle())?;
             Ok(())
         })
