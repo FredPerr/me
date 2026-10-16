@@ -12,6 +12,7 @@ pub mod context_status;
 pub mod default_branch;
 pub mod error;
 pub mod identifiers;
+pub mod ports;
 pub mod project;
 pub mod project_paths;
 pub mod project_tag;
@@ -20,4 +21,4 @@ pub mod repository;
 pub mod slug;
 
 #[cfg(test)]
-mod test_support;
+pub mod test_support;

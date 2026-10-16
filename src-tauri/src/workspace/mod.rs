@@ -2,3 +2,4 @@
 //! Every change to a Project goes through the `Project` aggregate.
 
 pub mod domain;
+pub mod infra;
