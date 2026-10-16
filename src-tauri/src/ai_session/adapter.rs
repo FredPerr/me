@@ -178,7 +178,7 @@ pub trait CliAdapter: Send + Sync {
 
 /// Metadata describing an available adapter, surfaced to the frontend so the UI
 /// can offer the list of supported CLIs without hardcoding it.
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct AdapterInfo {
     pub id: String,

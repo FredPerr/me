@@ -4,7 +4,7 @@ use super::identifiers::{WorkItemGroupId, WorkItemId, WorkProjectId};
 use super::label::Label;
 use super::person::Person;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub enum WorkItemStatus {
     Todo,
@@ -14,7 +14,7 @@ pub enum WorkItemStatus {
     Unknown,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub enum WorkItemPriority {
     None,
@@ -27,7 +27,7 @@ pub enum WorkItemPriority {
 }
 
 /// Read model of a remote task, issue or subtask.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkItem {
     pub id: WorkItemId,

@@ -13,6 +13,7 @@ mod work_tracking;
 mod workspace_detector;
 
 #[tauri::command]
+#[specta::specta]
 fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
 }
@@ -27,8 +28,99 @@ async fn check_path_exists(path: String) -> bool {
     std::path::Path::new(&path).exists()
 }
 
+/// Commands converted to tauri-specta; everything else still goes through
+/// `generate_handler!`. Names must match the Rust fn names.
+const SPECTA_COMMANDS: &[&str] = &[
+    "greet",
+    "spawn_ai_session",
+    "kill_ai_session",
+    "list_ai_sessions",
+    "list_ai_adapters",
+    "work_tracking_list_connections",
+    "work_tracking_list_items",
+];
+
+fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
+    tauri_specta::Builder::<tauri::Wry>::new().commands(tauri_specta::collect_commands![
+        greet,
+        ai_session::spawn_ai_session,
+        ai_session::kill_ai_session,
+        ai_session::list_ai_sessions,
+        ai_session::list_ai_adapters,
+        work_tracking::commands::work_tracking_list_connections,
+        work_tracking::commands::work_tracking_list_items,
+    ])
+}
+
+#[cfg(test)]
+mod bindings_tests {
+    #[test]
+    fn export_bindings() {
+        super::specta_builder()
+            .export(
+                specta_typescript::Typescript::default(),
+                concat!(env!("CARGO_MANIFEST_DIR"), "/../src/bindings.ts"),
+            )
+            .expect("failed to export typescript bindings");
+    }
+
+    /// Spike finding: fails because `skip_serializing_if` requires serde phases.
+    #[test]
+    #[ignore]
+    fn export_bindings_without_serde_phases() {
+        super::specta_builder()
+            .disable_serde_phases()
+            .export(specta_typescript::Typescript::default(), "/tmp/spike-bindings-nophases.ts")
+            .expect("failed to export typescript bindings");
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let specta_handler = specta_builder().invoke_handler();
+    let legacy_handler: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool = tauri::generate_handler![
+        open_in_ide,
+        check_path_exists,
+        git::commands::get_git_remote_url,
+        git::commands::list_worktrees,
+        git::commands::get_worktree_status,
+        git::commands::get_worktree_diff,
+        pull_request_template::read_pull_request_template,
+        git::commands::list_branches,
+        git::commands::list_local_branches,
+        git::commands::delete_local_branch,
+        git::commands::delete_worktree,
+        git::commands::prune_worktrees,
+        context_checkout::create_context,
+        context_checkout::delete_context,
+        git::commands::check_is_git_repository,
+        git::commands::pull_worktree,
+        git::commands::push_worktree,
+        git::commands::fetch_pr_branch,
+        git_provider::github::github_start_device_authorization,
+        git_provider::github::github_poll_for_access_token,
+        git_provider::github::github_get_authenticated_user,
+        git_provider::github::github_list_repositories,
+        git_provider::github::github_list_pull_requests,
+        git_provider::github::github_create_pull_request,
+        git_provider::github::github_is_connected,
+        git_provider::github::github_disconnect,
+        git_provider::bitbucket::bitbucket_connect_with_token,
+        git_provider::bitbucket::bitbucket_get_authenticated_user,
+        git_provider::bitbucket::bitbucket_list_repositories,
+        git_provider::bitbucket::bitbucket_list_pull_requests,
+        git_provider::bitbucket::bitbucket_create_pull_request,
+        git_provider::bitbucket::bitbucket_is_connected,
+        git_provider::bitbucket::bitbucket_disconnect,
+        work_tracking::commands::work_tracking_save_connection,
+        work_tracking::commands::work_tracking_remove_connection,
+        work_tracking::commands::work_tracking_list_projects,
+        work_tracking::commands::work_tracking_list_groups,
+        work_tracking::commands::work_tracking_list_project_items,
+        work_tracking::commands::work_tracking_assign_me_to_task,
+        workspace_detector::get_active_workspaces,
+    ];
+
     let mut builder = tauri::Builder::default().plugin(tauri_plugin_store::Builder::new().build());
 
     #[cfg(desktop)]
@@ -50,55 +142,13 @@ pub fn run() {
         .plugin(tauri_plugin_window_state::Builder::new().build())
         .plugin(shortcuts::plugin())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![
-            greet,
-            open_in_ide,
-            check_path_exists,
-            git::commands::get_git_remote_url,
-            git::commands::list_worktrees,
-            git::commands::get_worktree_status,
-            git::commands::get_worktree_diff,
-            pull_request_template::read_pull_request_template,
-            git::commands::list_branches,
-            git::commands::list_local_branches,
-            git::commands::delete_local_branch,
-            git::commands::delete_worktree,
-            git::commands::prune_worktrees,
-            context_checkout::create_context,
-            context_checkout::delete_context,
-            git::commands::check_is_git_repository,
-            git::commands::pull_worktree,
-            git::commands::push_worktree,
-            git::commands::fetch_pr_branch,
-            git_provider::github::github_start_device_authorization,
-            git_provider::github::github_poll_for_access_token,
-            git_provider::github::github_get_authenticated_user,
-            git_provider::github::github_list_repositories,
-            git_provider::github::github_list_pull_requests,
-            git_provider::github::github_create_pull_request,
-            git_provider::github::github_is_connected,
-            git_provider::github::github_disconnect,
-            git_provider::bitbucket::bitbucket_connect_with_token,
-            git_provider::bitbucket::bitbucket_get_authenticated_user,
-            git_provider::bitbucket::bitbucket_list_repositories,
-            git_provider::bitbucket::bitbucket_list_pull_requests,
-            git_provider::bitbucket::bitbucket_create_pull_request,
-            git_provider::bitbucket::bitbucket_is_connected,
-            git_provider::bitbucket::bitbucket_disconnect,
-            work_tracking::commands::work_tracking_list_connections,
-            work_tracking::commands::work_tracking_save_connection,
-            work_tracking::commands::work_tracking_remove_connection,
-            work_tracking::commands::work_tracking_list_projects,
-            work_tracking::commands::work_tracking_list_groups,
-            work_tracking::commands::work_tracking_list_items,
-            work_tracking::commands::work_tracking_list_project_items,
-            work_tracking::commands::work_tracking_assign_me_to_task,
-            workspace_detector::get_active_workspaces,
-            ai_session::spawn_ai_session,
-            ai_session::kill_ai_session,
-            ai_session::list_ai_sessions,
-            ai_session::list_ai_adapters
-        ])
+        .invoke_handler(move |invoke| {
+            if SPECTA_COMMANDS.contains(&invoke.message.command()) {
+                specta_handler(invoke)
+            } else {
+                legacy_handler(invoke)
+            }
+        })
         .setup(|app| {
             tauri::Manager::manage(app, work_tracking::build_service(app.handle().clone()));
             app.manage(ai_session::registry::SessionRegistry::new());

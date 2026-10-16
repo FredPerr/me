@@ -11,7 +11,7 @@ use super::domain::work_project::WorkProject;
 
 /// Structured wire error. `message` is a fixed English sentence per kind and
 /// never contains provider or credential data.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct CommandError {
     kind: &'static str,
@@ -21,6 +21,7 @@ pub struct CommandError {
     #[serde(skip_serializing_if = "Option::is_none")]
     reason: Option<&'static str>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[specta(type = Option<specta_typescript::Number>)]
     retry_after_seconds: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     status: Option<u16>,
@@ -141,6 +142,7 @@ impl From<SaveConnectionInput> for SaveConnectionCommand {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn work_tracking_list_connections(
     state: State<'_, WorkTrackingService>,
 ) -> Result<Vec<ConnectionView>, CommandError> {
@@ -187,6 +189,7 @@ pub async fn work_tracking_list_groups(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn work_tracking_list_items(
     state: State<'_, WorkTrackingService>,
     connection_id: String,

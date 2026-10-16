@@ -55,7 +55,7 @@ pub struct StatusEvent {
 }
 
 /// Parameters for spawning a session, sent from the frontend (camelCase).
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct SpawnOptions {
     /// Adapter id selecting the CLI to run (e.g. `"kiro"`).
@@ -84,7 +84,7 @@ pub struct SpawnOptions {
 }
 
 /// A single environment variable pair from the frontend.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct EnvVar {
     pub key: String,
@@ -92,7 +92,7 @@ pub struct EnvVar {
 }
 
 /// The result returned to the caller when a session is accepted and started.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct SpawnedSession {
     pub session_id: String,
@@ -108,6 +108,7 @@ pub struct SpawnedSession {
 /// background tasks that forward stdout/stderr lines to the frontend and watch
 /// for exit. Returns immediately with the session id and pid.
 #[tauri::command]
+#[specta::specta]
 pub async fn spawn_ai_session(
     app: tauri::AppHandle,
     registry: State<'_, SessionRegistry>,
@@ -146,6 +147,7 @@ pub async fn spawn_ai_session(
 /// A kill is flagged in the registry first so the exit is reported as `killed`
 /// rather than `completed`/`failed`, then the OS process group is signalled.
 #[tauri::command]
+#[specta::specta]
 pub async fn kill_ai_session(
     registry: State<'_, SessionRegistry>,
     session_id: String,
@@ -160,12 +162,14 @@ pub async fn kill_ai_session(
 
 /// Lists the ids of sessions currently tracked as running.
 #[tauri::command]
+#[specta::specta]
 pub async fn list_ai_sessions(registry: State<'_, SessionRegistry>) -> Result<Vec<String>, String> {
     Ok(registry.running_ids())
 }
 
 /// Lists the AI CLI adapters this build supports, for populating the UI.
 #[tauri::command]
+#[specta::specta]
 pub async fn list_ai_adapters(
     registry: State<'_, SessionRegistry>,
 ) -> Result<Vec<AdapterInfo>, String> {
