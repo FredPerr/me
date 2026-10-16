@@ -27,8 +27,10 @@ import {
 } from "@phosphor-icons/react";
 import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import type { ContextView, ProjectView } from "@/bindings";
 import { useContextPullRequestStatus } from "@/hooks/useContextPullRequestStatus";
-import type { CreateContextParams } from "@/hooks/useContexts";
+import { useKiroPromptDrafts } from "@/hooks/useKiroPromptDrafts";
+import { useSetContextStatus } from "@/hooks/workspace/useContextMutations";
 import type { KiroConversation } from "@/models/ai-session/KiroConversation";
 import {
 	CONTEXT_STATUSES,
@@ -36,7 +38,6 @@ import {
 	IDLE_CONTEXT_STATUS,
 	isContextStatus,
 } from "@/models/ContextStatus";
-import type { Context, Project } from "@/models/Project";
 import { ContextCard } from "./ContextCard";
 import { ContextCardDragHandle } from "./ContextCardDragHandle";
 import { type FlowBoardAction, FlowBoardActionsNode } from "./FlowBoardActionsNode";
@@ -45,13 +46,8 @@ import { type FlowBoardStaticData, FlowBoardStaticNode } from "./FlowBoardStatic
 import { KiroConversationModal } from "./KiroConversationModal";
 
 type FlowBoardProps = {
-	contexts: Context[];
-	project: Project;
-	onDelete: (contextId: string) => void;
-	onCreate: (params: CreateContextParams) => Promise<void>;
-	onStatusChange: (contextId: string, status: ContextStatus) => void;
-	onExpandedChange: (contextId: string, expanded: boolean) => void;
-	onRunKiro: (context: Context, prompt: string) => Promise<void>;
+	project: ProjectView;
+	onRunKiro: (context: ContextView, prompt: string) => Promise<void>;
 	onKillKiro: (contextId: string) => Promise<void>;
 	isKiroRunning: (contextId: string) => boolean;
 	getKiroConversation: (contextId: string) => KiroConversation | undefined;
@@ -61,7 +57,6 @@ type FlowBoardProps = {
 	onShareForReview: () => void;
 	onCreateFromBranches: () => void;
 	onCreateFromPullRequests: () => void;
-	onStaticChange: (contextId: string, isStatic: boolean) => void;
 };
 
 const COLUMN_GAP = 400;
@@ -78,12 +73,7 @@ const nodeTypes: NodeTypes = {
 function noop() {}
 
 export function FlowBoard({
-	contexts,
 	project,
-	onDelete,
-	onCreate,
-	onStatusChange,
-	onExpandedChange,
 	onRunKiro,
 	onKillKiro,
 	isKiroRunning,
@@ -94,13 +84,14 @@ export function FlowBoard({
 	onShareForReview,
 	onCreateFromBranches,
 	onCreateFromPullRequests,
-	onStaticChange,
 }: FlowBoardProps) {
 	const { t } = useTranslation();
+	const { contexts } = project;
+	const { mutate: setContextStatus } = useSetContextStatus(project.tag);
 	const [activeId, setActiveId] = useState<string | null>(null);
 	const { lookup: pullRequestLookup } = useContextPullRequestStatus(project);
 	const [openKiroContextId, setOpenKiroContextId] = useState<string | null>(null);
-	const [kiroPromptDrafts, setKiroPromptDrafts] = useState<Record<string, string>>({});
+	const { promptFor, changePrompt, keepPrompt } = useKiroPromptDrafts(project.tag);
 	const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
 	const filtered = useMemo(() => {
@@ -110,20 +101,17 @@ export function FlowBoard({
 	}, [contexts, searchFilter]);
 
 	const contextsByStatus = useMemo(() => {
-		const groups = new Map<ContextStatus, Context[]>(
+		const groups = new Map<ContextStatus, ContextView[]>(
 			CONTEXT_STATUSES.map((status) => [status, []]),
 		);
 		for (const context of filtered) {
-			if (context.isEffectivelyStatic) continue;
+			if (context.isStatic) continue;
 			groups.get(context.status)?.push(context);
 		}
 		return groups;
 	}, [filtered]);
 
-	const staticContexts = useMemo(
-		() => filtered.filter((context) => context.isEffectivelyStatic),
-		[filtered],
-	);
+	const staticContexts = useMemo(() => filtered.filter((context) => context.isStatic), [filtered]);
 
 	const getKiroHistoryCount = useCallback(
 		(contextId: string) => getKiroConversation(contextId)?.turns.length ?? 0,
@@ -146,13 +134,8 @@ export function FlowBoard({
 				status,
 				contexts: contextsByStatus.get(status) ?? [],
 				project,
-				allContexts: contexts,
 				pullRequestLookup,
-				onDelete,
-				onCreate,
-				onExpandedChange,
-				onStaticChange,
-				onOpenKiro: (target: Context) => setOpenKiroContextId(target.id),
+				onOpenKiro: (target: ContextView) => setOpenKiroContextId(target.id),
 				isKiroRunning,
 				getKiroHistoryCount,
 			} satisfies FlowBoardColumnData,
@@ -226,13 +209,8 @@ export function FlowBoard({
 			data: {
 				contexts: staticContexts,
 				project,
-				allContexts: contexts,
 				pullRequestLookup,
-				onDelete,
-				onCreate,
-				onExpandedChange,
-				onStaticChange,
-				onOpenKiro: (target: Context) => setOpenKiroContextId(target.id),
+				onOpenKiro: (target: ContextView) => setOpenKiroContextId(target.id),
 				isKiroRunning,
 				getKiroHistoryCount,
 			} satisfies FlowBoardStaticData,
@@ -242,13 +220,8 @@ export function FlowBoard({
 	}, [
 		columnIndex,
 		contextsByStatus,
-		contexts,
 		project,
 		pullRequestLookup,
-		onDelete,
-		onCreate,
-		onExpandedChange,
-		onStaticChange,
 		isKiroRunning,
 		getKiroHistoryCount,
 		onCreateFromTasks,
@@ -292,9 +265,9 @@ export function FlowBoard({
 		if (!isContextStatus(targetStatus)) return;
 
 		const context = contexts.find((c) => c.id === String(active.id));
-		if (!context || context.isDefault || context.status === targetStatus) return;
+		if (!context || context.isStatic || context.status === targetStatus) return;
 
-		onStatusChange(context.id, targetStatus);
+		setContextStatus({ contextId: context.id, status: targetStatus });
 	}
 
 	return (
@@ -330,9 +303,6 @@ export function FlowBoard({
 					<ContextCard
 						context={activeContext}
 						project={project}
-						allContexts={contexts}
-						onDelete={onDelete}
-						onCreate={onCreate}
 						pullRequestLookup={pullRequestLookup}
 						dragHandle={<ContextCardDragHandle />}
 					/>
@@ -342,18 +312,19 @@ export function FlowBoard({
 			{openKiroContext && (
 				<KiroConversationModal
 					opened
-					onClose={() => setOpenKiroContextId(null)}
+					onClose={() => {
+						keepPrompt(openKiroContext);
+						setOpenKiroContextId(null);
+					}}
 					contextId={openKiroContext.id}
 					contextName={openKiroContext.name}
 					conversation={getKiroConversation(openKiroContext.id)}
 					isRunning={isKiroRunning(openKiroContext.id)}
-					prompt={kiroPromptDrafts[openKiroContext.id] ?? openKiroContext.preprompt ?? ""}
-					onPromptChange={(prompt) =>
-						setKiroPromptDrafts((current) => ({ ...current, [openKiroContext.id]: prompt }))
-					}
+					prompt={promptFor(openKiroContext)}
+					onPromptChange={(prompt) => changePrompt(openKiroContext.id, prompt)}
 					onSend={(prompt) => onRunKiro(openKiroContext, prompt)}
 					onKill={() => onKillKiro(openKiroContext.id)}
-					slashBasePath={project.resolveContextIdePathCandidates(openKiroContext)[0]}
+					slashBasePath={openKiroContext.idePath}
 				/>
 			)}
 		</DndContext>

@@ -1,12 +1,12 @@
 import { Stack, Text } from "@mantine/core";
 import { useTranslation } from "react-i18next";
-import type { Project } from "@/models/Project";
+import type { ProjectView } from "@/bindings";
 import { ProjectListItem } from "./ProjectListItem";
 
 type ProjectListProps = {
-	projects: Project[];
-	onEdit: (project: Project) => void;
-	onDelete: (project: Project) => void;
+	projects: ProjectView[];
+	onEdit: (project: ProjectView) => void;
+	onDelete: (project: ProjectView) => void;
 	searchValue: string;
 };
 

@@ -1,10 +1,10 @@
 import { Tabs, TabsList } from "@mantine/core";
-import type { Project } from "@/models/Project";
+import type { ProjectView } from "@/bindings";
 import { ProjectTab } from "./ProjectTab";
 import { ProjectTabPanel } from "./ProjectTabPanel";
 
 type ProjectTabsProps = {
-	projects: Project[];
+	projects: ProjectView[];
 };
 
 export function ProjectTabs({ projects }: ProjectTabsProps) {
@@ -20,13 +20,13 @@ export function ProjectTabs({ projects }: ProjectTabsProps) {
 					<ProjectTab
 						displayName={project.name}
 						projectTag={project.tag}
-						icon={project.icon}
+						icon={project.icon ?? undefined}
 						key={project.tag}
 					/>
 				))}
 			</TabsList>
 			{projects.map((project) => (
-				<ProjectTabPanel project={project} key={project.tag} />
+				<ProjectTabPanel projectTag={project.tag} key={project.tag} />
 			))}
 		</Tabs>
 	);

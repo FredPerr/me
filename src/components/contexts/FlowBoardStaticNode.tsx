@@ -1,40 +1,23 @@
 import { Badge, Group, Paper, Stack, Text } from "@mantine/core";
 import { CubeIcon } from "@phosphor-icons/react";
 import { useTranslation } from "react-i18next";
+import type { ContextView, ProjectView } from "@/bindings";
 import type { PullRequestLookup } from "@/hooks/useContextPullRequestStatus";
-import type { CreateContextParams } from "@/hooks/useContexts";
-import type { Context, Project } from "@/models/Project";
 import { ContextCard } from "./ContextCard";
 
 export type FlowBoardStaticData = {
-	contexts: Context[];
-	project: Project;
-	allContexts: Context[];
+	contexts: ContextView[];
+	project: ProjectView;
 	pullRequestLookup?: PullRequestLookup;
-	onDelete: (contextId: string) => void;
-	onCreate: (params: CreateContextParams) => Promise<void>;
-	onExpandedChange: (contextId: string, expanded: boolean) => void;
-	onStaticChange: (contextId: string, isStatic: boolean) => void;
-	onOpenKiro: (context: Context) => void;
+	onOpenKiro: (context: ContextView) => void;
 	isKiroRunning: (contextId: string) => boolean;
 	getKiroHistoryCount: (contextId: string) => number;
 };
 
 export function FlowBoardStaticNode({ data }: { data: FlowBoardStaticData }) {
 	const { t } = useTranslation();
-	const {
-		contexts,
-		project,
-		allContexts,
-		pullRequestLookup,
-		onDelete,
-		onCreate,
-		onExpandedChange,
-		onStaticChange,
-		onOpenKiro,
-		isKiroRunning,
-		getKiroHistoryCount,
-	} = data;
+	const { contexts, project, pullRequestLookup, onOpenKiro, isKiroRunning, getKiroHistoryCount } =
+		data;
 
 	return (
 		<Stack gap="xs" style={{ width: 720 }}>
@@ -67,12 +50,7 @@ export function FlowBoardStaticNode({ data }: { data: FlowBoardStaticData }) {
 								<ContextCard
 									context={context}
 									project={project}
-									allContexts={allContexts}
-									onDelete={onDelete}
-									onCreate={onCreate}
 									pullRequestLookup={pullRequestLookup}
-									onExpandedChange={onExpandedChange}
-									onStaticChange={onStaticChange}
 									onOpenKiro={onOpenKiro}
 									isKiroRunning={isKiroRunning(context.id)}
 									hasKiroHistory={getKiroHistoryCount(context.id) > 0}

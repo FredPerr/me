@@ -1,17 +1,16 @@
 import { useCallback, useEffect, useState } from "react";
-import { commands } from "@/bindings";
+import { commands, type ProjectView, type RepositoryView } from "@/bindings";
 import { describeError } from "@/infra/commandError";
 import type { GitProviderId, ProviderPullRequest } from "@/models/git-provider/GitProvider";
 import {
 	listGitProviders,
 	resolveProviderForRemote,
 } from "@/models/git-provider/GitProviderRegistry";
-import { type Project, Repository } from "@/models/Project";
 
 /** Open pull requests for one repository within a project. */
 export type RepositoryPullRequests = {
-	project: Project;
-	repository: Repository;
+	project: ProjectView;
+	repository: RepositoryView;
 	providerId: GitProviderId;
 	pullRequests: ProviderPullRequest[];
 };
@@ -24,13 +23,15 @@ type UseProjectPullRequestsResult = {
 	reload: () => Promise<void>;
 };
 
-async function resolveRemoteUrl(project: Project, repository: Repository): Promise<string | null> {
+async function resolveRemoteUrl(
+	project: ProjectView,
+	repository: RepositoryView,
+): Promise<string | null> {
 	try {
-		const resolvedPath = await repository.resolveAbsolutePath(project.path);
-		const remoteUrl = await commands.getGitRemoteUrl(resolvedPath);
+		const remoteUrl = await commands.getGitRemoteUrl(repository.path);
 		if (!remoteUrl) {
 			console.warn(
-				`[pull-requests] no git remote URL for ${project.name}/${repository.name} at ${resolvedPath}`,
+				`[pull-requests] no git remote URL for ${project.name}/${repository.name} at ${repository.path}`,
 			);
 		}
 		return remoteUrl;
@@ -43,21 +44,13 @@ async function resolveRemoteUrl(project: Project, repository: Repository): Promi
 	}
 }
 
-function projectRepositories(project: Project): Repository[] {
-	// Fall back to the project root as a single repository when no explicit
-	// repositories are configured (mono-repo projects).
-	return project.repositories.length > 0
-		? project.repositories
-		: [new Repository(project.tag, project.name, ".")];
-}
-
 async function loadRepositoryPullRequests(
-	project: Project,
-	repository: Repository,
+	project: ProjectView,
+	repository: RepositoryView,
 ): Promise<RepositoryPullRequests | null> {
 	const remoteUrl = await resolveRemoteUrl(project, repository);
 	console.debug(
-		`[pull-requests] considering ${project.name}/${repository.name} (relPath "${repository.relPath}") -> remote ${remoteUrl ?? "<none>"}`,
+		`[pull-requests] considering ${project.name}/${repository.name} (relative path "${repository.relativePath}") -> remote ${remoteUrl ?? "<none>"}`,
 	);
 	if (!remoteUrl) return null;
 
@@ -96,8 +89,8 @@ type RepositoryLoadResult =
  * single failing repository never discards the results of the others.
  */
 async function loadRepositorySafely(
-	project: Project,
-	repository: Repository,
+	project: ProjectView,
+	repository: RepositoryView,
 ): Promise<RepositoryLoadResult> {
 	try {
 		const group = await loadRepositoryPullRequests(project, repository);
@@ -116,7 +109,7 @@ async function loadRepositorySafely(
  * loads the open pull requests, grouped by repository. Only runs when a GitHub
  * account is connected.
  */
-export function useProjectPullRequests(projects: Project[]): UseProjectPullRequestsResult {
+export function useProjectPullRequests(projects: ProjectView[]): UseProjectPullRequestsResult {
 	const [connected, setConnected] = useState(false);
 	const [loading, setLoading] = useState(true);
 	const [groups, setGroups] = useState<RepositoryPullRequests[]>([]);
@@ -138,7 +131,9 @@ export function useProjectPullRequests(projects: Project[]): UseProjectPullReque
 			}
 
 			const tasks = projects.flatMap((project) =>
-				projectRepositories(project).map((repository) => loadRepositorySafely(project, repository)),
+				project.effectiveRepositories.map((repository) =>
+					loadRepositorySafely(project, repository),
+				),
 			);
 			const results = await Promise.all(tasks);
 

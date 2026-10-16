@@ -13,32 +13,36 @@ import {
 import { PaintBrushHouseholdIcon } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { commands } from "@/bindings";
-import type { CreateContextFromBranchesParams, ExistingBranchConfig } from "@/hooks/useContexts";
-import type { Project } from "@/models/Project";
+import { commands, type ProjectView, type RepositoryBranchInput } from "@/bindings";
+import { useBranchNameSuggestion } from "@/hooks/workspace/useBranchNameSuggestion";
+import { useCreateContext } from "@/hooks/workspace/useContextMutations";
+import { findDefaultBranch } from "@/models/projectView";
 import { fuzzySelectFilter } from "@/utils/fuzzySelectFilter";
 
 type CreateFromBranchesModalProps = {
 	opened: boolean;
 	onClose: () => void;
-	project: Project;
-	onCreate: (params: CreateContextFromBranchesParams) => Promise<void>;
+	project: ProjectView;
 };
 
 export function CreateFromBranchesModal({
 	opened,
 	onClose,
 	project,
-	onCreate,
 }: CreateFromBranchesModalProps) {
 	const { t } = useTranslation();
-	const isSingleRepo = project.effectiveRepositories().length === 1;
+	const createContext = useCreateContext();
+	const repositories = project.effectiveRepositories;
+	const isSingleRepo = repositories.length === 1;
 	const [contextName, setContextName] = useState("");
 	const [selectedBranches, setSelectedBranches] = useState<Record<string, string | null>>({});
 	const [branchOptions, setBranchOptions] = useState<Record<string, string[]>>({});
-	const [branchErrors, setBranchErrors] = useState<Record<string, string>>({});
 	const [loadingBranches, setLoadingBranches] = useState(false);
-	const [loading, setLoading] = useState(false);
+	const suggestedBranchName = useBranchNameSuggestion(
+		project.tag,
+		contextName,
+		project.branchNaming.defaultPrefix,
+	);
 
 	useEffect(() => {
 		if (!opened) return;
@@ -46,28 +50,18 @@ export function CreateFromBranchesModal({
 		async function fetchBranches() {
 			setLoadingBranches(true);
 			const options: Record<string, string[]> = {};
-			for (const repo of project.effectiveRepositories()) {
-				try {
-					const resolvedPath = await repo.resolveAbsolutePath(project.path);
-					options[repo.id] = await commands.listBranches(resolvedPath);
-				} catch {
-					options[repo.id] = [];
-				}
+			for (const repository of repositories) {
+				options[repository.id] = await commands.listBranches(repository.path).catch(() => []);
 			}
 			setBranchOptions(options);
 			setLoadingBranches(false);
 		}
 
 		fetchBranches();
-	}, [opened, project]);
+	}, [opened, repositories]);
 
 	function selectBranch(repositoryId: string, branch: string | null) {
 		setSelectedBranches((prev) => ({ ...prev, [repositoryId]: branch }));
-		setBranchErrors((prev) => {
-			const next = { ...prev };
-			delete next[repositoryId];
-			return next;
-		});
 	}
 
 	function copyBranchToName(repositoryId: string) {
@@ -77,60 +71,46 @@ export function CreateFromBranchesModal({
 		}
 	}
 
-	const hasErrors = Object.keys(branchErrors).length > 0;
-	const canSubmit = !!contextName.trim() && !hasErrors;
-
-	async function validateSelectedBranches(): Promise<boolean> {
-		const errors: Record<string, string> = {};
-
-		for (const repo of project.effectiveRepositories()) {
-			const branch = selectedBranches[repo.id];
-			if (!branch) continue;
-
-			try {
-				const resolvedPath = await repo.resolveAbsolutePath(project.path);
-				const worktrees = await commands.listWorktrees(resolvedPath);
-				const conflicting = worktrees.find((wt) => wt.branch === branch);
-				if (conflicting) {
-					errors[repo.id] = t("contexts.branchAlreadyInUse", {
-						branch,
-						worktree: conflicting.path,
-					});
-				}
-			} catch {
-				// skip validation if we can't list worktrees
-			}
-		}
-
-		setBranchErrors(errors);
-		return Object.keys(errors).length === 0;
-	}
+	const branchChoices: RepositoryBranchInput[] = repositories.map((repository) => {
+		const selectedBranch = selectedBranches[repository.id];
+		const branch = selectedBranch
+			? { kind: "existingBranch" as const, name: selectedBranch }
+			: {
+					kind: "newBranch" as const,
+					name: suggestedBranchName,
+					baseBranch: findDefaultBranch(project, repository.id) ?? "",
+				};
+		return { repositoryId: repository.id, branch };
+	});
+	const canSubmit =
+		!!contextName.trim() &&
+		branchChoices.every(
+			({ branch }) =>
+				branch.name !== "" && (branch.kind !== "newBranch" || branch.baseBranch !== ""),
+		);
 
 	function reset() {
 		setContextName("");
 		setSelectedBranches({});
-		setBranchErrors({});
 	}
 
 	async function handleSubmit() {
 		if (!canSubmit) return;
-
-		setLoading(true);
 		try {
-			const isValid = await validateSelectedBranches();
-			if (!isValid) return;
-
-			const repositories: ExistingBranchConfig[] = project.effectiveRepositories().map((repo) => ({
-				repositoryId: repo.id,
-				branch: selectedBranches[repo.id] ?? null,
-			}));
-
-			await onCreate({ name: contextName.trim(), repositories });
-			reset();
-			onClose();
-		} finally {
-			setLoading(false);
+			await createContext.mutateAsync({
+				projectTag: project.tag,
+				name: contextName.trim(),
+				baseContextId: null,
+				origin: { kind: "fromBranches" },
+				status: null,
+				agentPrompt: null,
+				branches: branchChoices,
+			});
+		} catch {
+			return;
 		}
+		reset();
+		onClose();
 	}
 
 	function handleClose() {
@@ -144,7 +124,7 @@ export function CreateFromBranchesModal({
 				<Text size="sm" c="dimmed">
 					{t("contexts.createFromBranchesDescription")}
 				</Text>
-				{project.effectiveRepositories().map((repo) => {
+				{repositories.map((repo) => {
 					const branch = selectedBranches[repo.id] ?? null;
 					return (
 						<Box
@@ -166,7 +146,6 @@ export function CreateFromBranchesModal({
 									value={branch}
 									onChange={(value) => selectBranch(repo.id, value)}
 									data={branchOptions[repo.id] ?? []}
-									error={branchErrors[repo.id]}
 									nothingFoundMessage={t("contexts.noBranchesFound")}
 									disabled={loadingBranches}
 									searchable
@@ -189,7 +168,10 @@ export function CreateFromBranchesModal({
 							</Group>
 							{!branch && (
 								<Text size="xs" c="dimmed" mt={4}>
-									{t("contexts.repoWillBeLinked")}
+									{t("contexts.repoGetsNewBranch", {
+										branch: suggestedBranchName || t("contexts.branchFromContextName"),
+										base: findDefaultBranch(project, repo.id) ?? "—",
+									})}
 								</Text>
 							)}
 						</Box>
@@ -206,7 +188,7 @@ export function CreateFromBranchesModal({
 					<Button variant="subtle" onClick={handleClose}>
 						{t("common.cancel")}
 					</Button>
-					<Button onClick={handleSubmit} loading={loading} disabled={!canSubmit}>
+					<Button onClick={handleSubmit} loading={createContext.isPending} disabled={!canSubmit}>
 						{t("common.create")}
 					</Button>
 				</Group>

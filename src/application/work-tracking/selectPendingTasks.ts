@@ -1,8 +1,9 @@
-import type { Context, WorkItemRef } from "@/models/Project";
+import type { ContextView } from "@/bindings";
+import { isCreatedFromTask, type TaskRef } from "@/models/projectView";
 import type { LinkedTask } from "./listLinkedProjectTasks";
 
-export function workItemRefOf(task: LinkedTask): WorkItemRef {
-	return { connectionId: task.connectionId, workItemId: task.item.id };
+export function taskRefOf(task: LinkedTask): TaskRef {
+	return { connectionId: task.connectionId, taskId: task.item.id };
 }
 
 /**
@@ -11,13 +12,13 @@ export function workItemRefOf(task: LinkedTask): WorkItemRef {
  */
 export function selectPendingTasks(
 	tasks: readonly LinkedTask[],
-	contexts: readonly Context[],
+	contexts: readonly ContextView[],
 	searchQuery = "",
 ): LinkedTask[] {
 	const query = searchQuery.toLowerCase().trim();
 	return tasks.filter((task) => {
-		const ref = workItemRefOf(task);
-		if (contexts.some((context) => context.isCreatedFrom(ref))) return false;
+		const taskRef = taskRefOf(task);
+		if (contexts.some((context) => isCreatedFromTask(context, taskRef))) return false;
 		return query === "" || task.item.title.toLowerCase().includes(query);
 	});
 }

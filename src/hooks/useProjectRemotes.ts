@@ -1,58 +1,39 @@
 import { useEffect, useState } from "react";
-import { commands } from "@/bindings";
-import { type Project, Repository } from "@/models/Project";
+import { commands, type ProjectView, type RepositoryView } from "@/bindings";
 
 export type RepositoryRemote = {
-	repository: Repository;
+	repository: RepositoryView;
 	remoteUrl: string;
 };
 
-export function useProjectRemotes(project: Project) {
+async function resolveRemote(repository: RepositoryView): Promise<RepositoryRemote | null> {
+	try {
+		const remoteUrl = await commands.getGitRemoteUrl(repository.path);
+		return remoteUrl ? { repository, remoteUrl } : null;
+	} catch {
+		return null;
+	}
+}
+
+export function useProjectRemotes(project: ProjectView) {
 	const [remotes, setRemotes] = useState<RepositoryRemote[]>([]);
+	const repositories = project.effectiveRepositories;
 
 	useEffect(() => {
 		let cancelled = false;
 
-		async function resolveRemote(repository: Repository): Promise<RepositoryRemote | null> {
-			try {
-				const resolvedPath = await repository.resolveAbsolutePath(project.path);
-				const remoteUrl = await commands.getGitRemoteUrl(resolvedPath);
-				return remoteUrl ? { repository, remoteUrl } : null;
-			} catch {
-				return null;
-			}
-		}
-
-		async function resolveProjectRootRemote(): Promise<RepositoryRemote | null> {
-			try {
-				const remoteUrl = await commands.getGitRemoteUrl(project.path);
-				if (!remoteUrl) return null;
-				const repository = new Repository(project.tag, project.name, ".");
-				return { repository, remoteUrl };
-			} catch {
-				return null;
-			}
-		}
-
 		async function loadRemotes() {
-			// Fall back to the project root when a mono-repo project has no
-			// explicit repository entries configured.
-			const results =
-				project.repositories.length > 0
-					? await Promise.all(project.repositories.map(resolveRemote))
-					: [await resolveProjectRootRemote()];
-
+			const results = await Promise.all(repositories.map(resolveRemote));
 			if (!cancelled) {
 				setRemotes(results.filter((entry): entry is RepositoryRemote => !!entry));
 			}
 		}
 
 		loadRemotes();
-
 		return () => {
 			cancelled = true;
 		};
-	}, [project]);
+	}, [repositories]);
 
 	return { remotes };
 }

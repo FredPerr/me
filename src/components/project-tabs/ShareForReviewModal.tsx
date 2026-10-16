@@ -24,12 +24,12 @@ import {
 } from "@phosphor-icons/react";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import type { ProjectView } from "@/bindings";
 import { ProviderBadge } from "@/components/shared/ProviderBadge";
 import {
 	type ReviewPullRequest,
 	useProjectReviewPullRequests,
 } from "@/hooks/useProjectReviewPullRequests";
-import type { Project } from "@/models/Project";
 import {
 	inferDependencies,
 	moveItem,
@@ -41,7 +41,7 @@ import { formatSlackMessage } from "@/models/review-share/SlackMessageFormatter"
 type ShareForReviewModalProps = {
 	opened: boolean;
 	onClose: () => void;
-	project: Project;
+	project: ProjectView;
 };
 
 function itemId(pullRequest: ReviewPullRequest): string {

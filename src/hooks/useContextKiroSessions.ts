@@ -1,6 +1,10 @@
-import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { ContextView, ProjectView } from "@/bindings";
 import { useAppSettings } from "@/hooks/useAppSettings";
+import {
+	useRecordAgentConversation,
+	useSetContextStatus,
+} from "@/hooks/workspace/useContextMutations";
 import {
 	isTerminalStatus,
 	type OutputEvent,
@@ -9,7 +13,7 @@ import {
 import { ensurePermissionFloor } from "@/models/ai-session/ensurePermissionFloor";
 import type { KiroConversation, KiroTurn } from "@/models/ai-session/KiroConversation";
 import type { ContextStatus } from "@/models/ContextStatus";
-import type { Context, Project } from "@/models/Project";
+import { findContext } from "@/models/projectView";
 import { aiSessionService } from "@/services/aiSessionService";
 
 /** The Kiro adapter id registered in the Rust backend. */
@@ -27,7 +31,7 @@ const FINISHED_STATUS: ContextStatus = "needsHuman";
 const MAX_LINES_PER_TURN = 2000;
 
 type RunKiroParams = {
-	context: Context;
+	context: ContextView;
 	prompt: string;
 };
 
@@ -60,20 +64,6 @@ function parseKiroConversationId(line: string): string | undefined {
 }
 
 /**
- * Resolves the first existing path among the context's IDE path candidates,
- * falling back to the last candidate. Mirrors how "open in IDE" picks the
- * working directory so a Kiro run lands in the same place.
- */
-async function resolveWorkingDirectory(project: Project, context: Context): Promise<string> {
-	const candidates = project.resolveContextIdePathCandidates(context);
-	for (const candidate of candidates) {
-		const exists = await invoke<boolean>("check_path_exists", { path: candidate });
-		if (exists) return candidate;
-	}
-	return candidates[candidates.length - 1];
-}
-
-/**
  * Drives Kiro CLI runs from the context kanban and keeps a conversation
  * transcript per context. Spawning a session moves its context to "in
  * progress"; when the backend reports the session finished (completed, failed,
@@ -85,12 +75,10 @@ async function resolveWorkingDirectory(project: Project, context: Context): Prom
  * session id to context id map lives in a ref so the handlers route events
  * without resubscribing per run.
  */
-export function useContextKiroSessions(
-	project: Project,
-	onStatusChange: (contextId: string, status: ContextStatus) => void,
-	onKiroConversationId: (contextId: string, conversationId: string) => void,
-): UseContextKiroSessionsResult {
+export function useContextKiroSessions(project: ProjectView): UseContextKiroSessionsResult {
 	const { settings } = useAppSettings();
+	const { mutate: setContextStatus } = useSetContextStatus(project.tag);
+	const { mutate: recordAgentConversation } = useRecordAgentConversation(project.tag);
 
 	// contextId -> sessionId for sessions currently running.
 	const [runningByContext, setRunningByContext] = useState<Record<string, string>>({});
@@ -101,12 +89,19 @@ export function useContextKiroSessions(
 	const sessionToContext = useRef<Record<string, string>>({});
 	// Monotonic counter for stable, unique line ids across all turns.
 	const lineCounter = useRef(0);
-	// Latest status-change callback, read without resubscribing.
-	const onStatusChangeRef = useRef(onStatusChange);
-	onStatusChangeRef.current = onStatusChange;
-	// Latest conversation-id callback, read without resubscribing.
-	const onKiroConversationIdRef = useRef(onKiroConversationId);
-	onKiroConversationIdRef.current = onKiroConversationId;
+	// Latest project and commands, read inside the event handlers without resubscribing.
+	const projectRef = useRef(project);
+	projectRef.current = project;
+	const setContextStatusRef = useRef(setContextStatus);
+	setContextStatusRef.current = setContextStatus;
+	const recordAgentConversationRef = useRef(recordAgentConversation);
+	recordAgentConversationRef.current = recordAgentConversation;
+	// Static contexts keep their status, so a run doesn't move them.
+	const moveContext = useCallback((contextId: string, status: ContextStatus) => {
+		const context = findContext(projectRef.current, contextId);
+		if (!context || context.isStatic || context.status === status) return;
+		setContextStatusRef.current({ contextId, status });
+	}, []);
 	// Contexts whose Kiro conversation id has already been captured this run, so
 	// the id is persisted once rather than on every output line that carries it.
 	const capturedConversationContexts = useRef<Set<string>>(new Set());
@@ -121,7 +116,10 @@ export function useContextKiroSessions(
 			const conversationId = parseKiroConversationId(event.line);
 			if (conversationId) {
 				capturedConversationContexts.current.add(contextId);
-				onKiroConversationIdRef.current(contextId, conversationId);
+				const recorded = findContext(projectRef.current, contextId)?.agentWork?.tool.conversationId;
+				if (recorded !== conversationId) {
+					recordAgentConversationRef.current({ contextId, conversationId });
+				}
 			}
 		}
 
@@ -144,31 +142,34 @@ export function useContextKiroSessions(
 		});
 	}, []);
 
-	const applyStatus = useCallback((event: StatusEvent) => {
-		const contextId = sessionToContext.current[event.sessionId];
-		if (!contextId) return;
+	const applyStatus = useCallback(
+		(event: StatusEvent) => {
+			const contextId = sessionToContext.current[event.sessionId];
+			if (!contextId) return;
 
-		setConversations((current) => {
-			const conversation = current[contextId];
-			if (!conversation) return current;
-			const turns = conversation.turns.map((turn) =>
-				turn.sessionId === event.sessionId
-					? { ...turn, status: event.status, exitCode: event.exitCode, error: event.error }
-					: turn,
-			);
-			return { ...current, [contextId]: { ...conversation, turns } };
-		});
+			setConversations((current) => {
+				const conversation = current[contextId];
+				if (!conversation) return current;
+				const turns = conversation.turns.map((turn) =>
+					turn.sessionId === event.sessionId
+						? { ...turn, status: event.status, exitCode: event.exitCode, error: event.error }
+						: turn,
+				);
+				return { ...current, [contextId]: { ...conversation, turns } };
+			});
 
-		if (!isTerminalStatus(event.status)) return;
+			if (!isTerminalStatus(event.status)) return;
 
-		onStatusChangeRef.current(contextId, FINISHED_STATUS);
-		delete sessionToContext.current[event.sessionId];
-		setRunningByContext((current) => {
-			const next = { ...current };
-			delete next[contextId];
-			return next;
-		});
-	}, []);
+			moveContext(contextId, FINISHED_STATUS);
+			delete sessionToContext.current[event.sessionId];
+			setRunningByContext((current) => {
+				const next = { ...current };
+				delete next[contextId];
+				return next;
+			});
+		},
+		[moveContext],
+	);
 
 	useEffect(() => {
 		let disposed = false;
@@ -189,14 +190,14 @@ export function useContextKiroSessions(
 
 	const runKiro = useCallback(
 		async ({ context, prompt }: RunKiroParams) => {
-			const workingDirectory = await resolveWorkingDirectory(project, context);
+			const workingDirectory = context.idePath;
 			// Seed the safety deny floor before a trusted run, if not already present.
 			await ensurePermissionFloor(workingDirectory);
 			const spawned = await aiSessionService.spawn({
 				adapterId: KIRO_ADAPTER_ID,
 				prompt,
 				workingDirectory,
-				resumeId: context.kiroConversationId || undefined,
+				resumeId: context.agentWork?.tool.conversationId || undefined,
 				shell: settings?.shell || undefined,
 				trustAllTools: true,
 			});
@@ -218,9 +219,9 @@ export function useContextKiroSessions(
 				return { ...current, [context.id]: { contextId: context.id, turns } };
 			});
 			setRunningByContext((current) => ({ ...current, [context.id]: spawned.sessionId }));
-			onStatusChangeRef.current(context.id, RUNNING_STATUS);
+			moveContext(context.id, RUNNING_STATUS);
 		},
-		[project, settings?.shell],
+		[moveContext, settings?.shell],
 	);
 
 	const killKiro = useCallback(

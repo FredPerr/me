@@ -18,9 +18,16 @@ import "@uiw/react-md-editor/markdown-editor.css";
 import "./CreatePullRequestModal.css";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { commands } from "@/bindings";
+import {
+	type ContextView,
+	commands,
+	type ProjectView,
+	type PullRequestDraftView,
+	type RepositoryView,
+} from "@/bindings";
 import { usePullRequestDescriptionDraft } from "@/hooks/usePullRequestDescriptionDraft";
 import { usePushWorktree } from "@/hooks/usePushWorktree";
+import { useSavePullRequestDraft } from "@/hooks/workspace/useContextMutations";
 import { describeError } from "@/infra/commandError";
 import type {
 	CreatedPullRequest,
@@ -28,7 +35,12 @@ import type {
 	RepositoryRef,
 } from "@/models/git-provider/GitProvider";
 import { resolveProviderForRemote } from "@/models/git-provider/GitProviderRegistry";
-import type { Context, Project, PullRequestDraft, Repository } from "@/models/Project";
+import {
+	findBaseContext,
+	findContextBranch,
+	findDefaultBranch,
+	findEffectiveRepository,
+} from "@/models/projectView";
 
 /** The provider that owns a repository's remote, with its parsed ref. */
 type ResolvedProvider = {
@@ -38,10 +50,12 @@ type ResolvedProvider = {
 
 /** Everything needed to open a pull request for one subrepository. */
 type RepositoryTarget = {
-	repository: Repository;
+	repository: RepositoryView;
+	/** The context's checkout of this repository. */
+	worktreePath: string;
 	/** Branch holding the context's changes (the PR head). */
 	headBranch: string;
-	/** Branch the PR merges into, taken from the base context. */
+	/** Branch the PR merges into: the base context's branch, else the default branch. */
 	baseBranch: string | null;
 	/** Provider + ref resolved from the remote, or null if unsupported. */
 	resolved: ResolvedProvider | null;
@@ -50,51 +64,31 @@ type RepositoryTarget = {
 type CreatePullRequestModalProps = {
 	opened: boolean;
 	onClose: () => void;
-	project: Project;
-	context: Context;
-	allContexts: Context[];
-	/** Persists the per-repository drafts (title + description). */
-	onSaveDrafts: (
-		contextId: string,
-		drafts: Record<string, PullRequestDraft>,
-	) => Promise<void> | void;
+	project: ProjectView;
+	context: ContextView;
 };
 
-const EMPTY_DRAFT: PullRequestDraft = { title: "", description: "" };
+const EMPTY_DRAFT: PullRequestDraftView = { title: "", description: "" };
 
-async function resolveProvider(
-	project: Project,
-	repository: Repository,
-): Promise<ResolvedProvider | null> {
+async function resolveProvider(repository: RepositoryView): Promise<ResolvedProvider | null> {
 	try {
-		const resolvedPath = await repository.resolveAbsolutePath(project.path);
-		const remoteUrl = await commands.getGitRemoteUrl(resolvedPath);
+		const remoteUrl = await commands.getGitRemoteUrl(repository.path);
 		return remoteUrl ? resolveProviderForRemote(remoteUrl) : null;
 	} catch {
 		return null;
 	}
 }
 
-/**
- * The repository's default integration branch (main/master), used as the PR
- * base when the base context has no branch recorded for this repository.
- */
-async function resolveDefaultBranch(
-	project: Project,
-	repository: Repository,
-): Promise<string | null> {
-	try {
-		const resolvedPath = await repository.resolveAbsolutePath(project.path);
-		const branches = await commands.listBranches(resolvedPath);
-		return (
-			branches.find((branch) => branch === "main") ??
-			branches.find((branch) => branch === "master") ??
-			branches[0] ??
-			null
-		);
-	} catch {
-		return null;
-	}
+function savedDrafts(context: ContextView): Record<string, PullRequestDraftView> {
+	return Object.fromEntries(
+		context.branches.flatMap((branch) =>
+			branch.pullRequestDraft ? [[branch.repositoryId, branch.pullRequestDraft]] : [],
+		),
+	);
+}
+
+function isSameDraft(left: PullRequestDraftView, right: PullRequestDraftView): boolean {
+	return left.title === right.title && left.description === right.description;
 }
 
 export function CreatePullRequestModal({
@@ -102,25 +96,23 @@ export function CreatePullRequestModal({
 	onClose,
 	project,
 	context,
-	allContexts,
-	onSaveDrafts,
 }: CreatePullRequestModalProps) {
 	const { t } = useTranslation();
 	const { push } = usePushWorktree();
-	const { stateFor, generate } = usePullRequestDescriptionDraft(project);
+	const { stateFor, generate } = usePullRequestDescriptionDraft();
+	const { mutateAsync: savePullRequestDraft } = useSavePullRequestDraft(project.tag);
 
 	const [targets, setTargets] = useState<RepositoryTarget[] | null>(null);
-	const [drafts, setDrafts] = useState<Record<string, PullRequestDraft>>(context.pullRequestDrafts);
+	const [drafts, setDrafts] = useState<Record<string, PullRequestDraftView>>(() =>
+		savedDrafts(context),
+	);
 	const [creatingRepositoryId, setCreatingRepositoryId] = useState<string | null>(null);
 	const [draftByRepository, setDraftByRepository] = useState<Record<string, boolean>>({});
 	const [createdByRepository, setCreatedByRepository] = useState<
 		Record<string, CreatedPullRequest>
 	>({});
 
-	const baseContext = useMemo(
-		() => allContexts.find((candidate) => candidate.name === context.baseContextName),
-		[allContexts, context.baseContextName],
-	);
+	const baseContext = useMemo(() => findBaseContext(project, context), [project, context]);
 
 	// Resolve each subrepo's GitHub ref and base branch once the modal opens.
 	useEffect(() => {
@@ -130,18 +122,20 @@ export function CreatePullRequestModal({
 		async function resolveTargets() {
 			const resolved = await Promise.all(
 				context.branches.map(async (branch) => {
-					const repository = project.findEffectiveRepository(branch.repositoryId);
-					if (!repository) return null;
-					const resolved = await resolveProvider(project, repository);
+					const repository = findEffectiveRepository(project, branch.repositoryId);
+					if (!repository || !branch.worktreePath) return null;
+					const resolved = await resolveProvider(repository);
 					// Prefer the base context's branch; fall back to the repository's
 					// default branch so a context whose base has no recorded branch for
 					// this repo (e.g. a mono-repo default saved with empty branches)
 					// still has something to open the pull request against.
 					const baseBranch =
-						baseContext?.getBranchForRepository(branch.repositoryId) ??
-						(await resolveDefaultBranch(project, repository));
+						(baseContext && findContextBranch(baseContext, branch.repositoryId)?.branch) ??
+						findDefaultBranch(project, branch.repositoryId) ??
+						null;
 					return {
 						repository,
+						worktreePath: branch.worktreePath,
 						headBranch: branch.branch,
 						baseBranch,
 						resolved,
@@ -177,16 +171,25 @@ export function CreatePullRequestModal({
 		}
 	}, [targets, stateFor]);
 
-	function draftFor(repositoryId: string): PullRequestDraft {
+	function draftFor(repositoryId: string): PullRequestDraftView {
 		return drafts[repositoryId] ?? EMPTY_DRAFT;
 	}
 
-	function updateDraft(repositoryId: string, next: PullRequestDraft) {
+	function updateDraft(repositoryId: string, next: PullRequestDraftView) {
 		setDrafts((current) => ({ ...current, [repositoryId]: next }));
 	}
 
+	/** Saves the drafts that differ from the saved ones, one repository at a time. */
+	async function saveChangedDrafts() {
+		const saved = savedDrafts(context);
+		for (const [repositoryId, draft] of Object.entries(drafts)) {
+			if (isSameDraft(draft, saved[repositoryId] ?? EMPTY_DRAFT)) continue;
+			await savePullRequestDraft({ contextId: context.id, repositoryId, ...draft });
+		}
+	}
+
 	function handleClose() {
-		onSaveDrafts(context.id, drafts);
+		saveChangedDrafts().catch(() => undefined);
 		onClose();
 	}
 
@@ -204,8 +207,7 @@ export function CreatePullRequestModal({
 
 		setCreatingRepositoryId(target.repository.id);
 		try {
-			const worktreePath = context.getWorktreePath(project.path, target.repository);
-			const pushResult = await push(worktreePath);
+			const pushResult = await push(target.worktreePath);
 			if (!pushResult.pushed) {
 				notifications.show({
 					color: "red",
@@ -224,7 +226,7 @@ export function CreatePullRequestModal({
 			});
 
 			setCreatedByRepository((current) => ({ ...current, [target.repository.id]: created }));
-			await onSaveDrafts(context.id, drafts);
+			await saveChangedDrafts();
 			notifications.show({
 				color: "green",
 				title: t("contexts.createPr.createdTitle"),
@@ -302,8 +304,9 @@ export function CreatePullRequestModal({
 								onClick={() =>
 									target.baseBranch &&
 									generate({
-										context,
+										contextName: context.name,
 										repository: target.repository,
+										worktreePath: target.worktreePath,
 										baseBranch: target.baseBranch,
 									})
 								}

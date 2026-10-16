@@ -13,25 +13,22 @@ import {
 } from "@mantine/core";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { commands } from "@/bindings";
-import type {
-	CreateContextFromPullRequestsParams,
-	PullRequestBranchConfig,
-} from "@/hooks/useContexts";
+import { commands, type ProjectView, type RepositoryBranchInput } from "@/bindings";
 import {
 	type RepositoryPullRequests,
 	useProjectPullRequests,
 } from "@/hooks/useProjectPullRequests";
+import { useBranchNameSuggestion } from "@/hooks/workspace/useBranchNameSuggestion";
+import { useCreateContext } from "@/hooks/workspace/useContextMutations";
 import { describeError } from "@/infra/commandError";
 import type { ProviderPullRequest } from "@/models/git-provider/GitProvider";
-import type { Project } from "@/models/Project";
+import { findDefaultBranch } from "@/models/projectView";
 import { fuzzySelectFilter } from "@/utils/fuzzySelectFilter";
 
 type CreateFromPullRequestsModalProps = {
 	opened: boolean;
 	onClose: () => void;
-	project: Project;
-	onCreate: (params: CreateContextFromPullRequestsParams) => Promise<void>;
+	project: ProjectView;
 };
 
 /** Build the Select option list for a repository's open pull requests, keyed by head branch. */
@@ -52,9 +49,10 @@ export function CreateFromPullRequestsModal({
 	opened,
 	onClose,
 	project,
-	onCreate,
 }: CreateFromPullRequestsModalProps) {
 	const { t } = useTranslation();
+	const createContext = useCreateContext();
+	const repositories = project.effectiveRepositories;
 	const projects = useMemo(() => [project], [project]);
 	const {
 		connected,
@@ -65,11 +63,15 @@ export function CreateFromPullRequestsModal({
 
 	const [contextName, setContextName] = useState("");
 	const [nameEditedManually, setNameEditedManually] = useState(false);
-	// Map of repositoryId -> selected PR head branch (null = link the repo).
+	// Map of repositoryId -> selected PR head branch (null = a new branch named after the context).
 	const [selectedBranches, setSelectedBranches] = useState<Record<string, string | null>>({});
-	const [branchErrors, setBranchErrors] = useState<Record<string, string>>({});
 	const [submitError, setSubmitError] = useState<string | null>(null);
-	const [loading, setLoading] = useState(false);
+	const [fetching, setFetching] = useState(false);
+	const suggestedBranchName = useBranchNameSuggestion(
+		project.tag,
+		contextName,
+		project.branchNaming.defaultPrefix,
+	);
 
 	const groupByRepositoryId = useMemo(() => {
 		const map: Record<string, RepositoryPullRequests> = {};
@@ -97,79 +99,71 @@ export function CreateFromPullRequestsModal({
 
 	function selectBranch(repositoryId: string, branch: string | null) {
 		setSelectedBranches((prev) => ({ ...prev, [repositoryId]: branch }));
-		setBranchErrors((prev) => {
-			const next = { ...prev };
-			delete next[repositoryId];
-			return next;
-		});
 	}
 
 	const hasSelection = Object.values(selectedBranches).some((branch) => !!branch);
-	const hasErrors = Object.keys(branchErrors).length > 0;
-	const canSubmit = !!contextName.trim() && hasSelection && !hasErrors;
+	const branchChoices: RepositoryBranchInput[] = repositories.map((repository) => {
+		const headBranch = selectedBranches[repository.id];
+		const branch = headBranch
+			? { kind: "existingBranch" as const, name: headBranch }
+			: {
+					kind: "newBranch" as const,
+					name: suggestedBranchName,
+					baseBranch: findDefaultBranch(project, repository.id) ?? "",
+				};
+		return { repositoryId: repository.id, branch };
+	});
+	const canSubmit =
+		!!contextName.trim() &&
+		hasSelection &&
+		branchChoices.every(
+			({ branch }) =>
+				branch.name !== "" && (branch.kind !== "newBranch" || branch.baseBranch !== ""),
+		);
 
-	async function validateSelectedBranches(): Promise<boolean> {
-		const errors: Record<string, string> = {};
-
-		for (const repo of project.effectiveRepositories()) {
-			const branch = selectedBranches[repo.id];
-			if (!branch) continue;
-
-			try {
-				const resolvedPath = await repo.resolveAbsolutePath(project.path);
-				const worktrees = await commands.listWorktrees(resolvedPath);
-				const conflicting = worktrees.find((worktree) => worktree.branch === branch);
-				if (conflicting) {
-					errors[repo.id] = t("contexts.branchAlreadyInUse", {
-						branch,
-						worktree: conflicting.path,
-					});
-				}
-			} catch {
-				// Skip validation when worktrees cannot be listed.
+	/** Open pull requests usually live only on the remote: fetch their branches first. */
+	async function fetchSelectedBranches(): Promise<boolean> {
+		setFetching(true);
+		try {
+			for (const repository of repositories) {
+				const headBranch = selectedBranches[repository.id];
+				if (headBranch) await commands.fetchPrBranch(repository.path, headBranch);
 			}
+			return true;
+		} catch (fetchError) {
+			setSubmitError(describeError(fetchError));
+			return false;
+		} finally {
+			setFetching(false);
 		}
-
-		setBranchErrors(errors);
-		return Object.keys(errors).length === 0;
 	}
 
 	function reset() {
 		setContextName("");
 		setNameEditedManually(false);
 		setSelectedBranches({});
-		setBranchErrors({});
 		setSubmitError(null);
 	}
 
 	async function handleSubmit() {
 		if (!canSubmit) return;
-
-		setLoading(true);
 		setSubmitError(null);
+		if (!(await fetchSelectedBranches())) return;
 		try {
-			const isValid = await validateSelectedBranches();
-			if (!isValid) return;
-
-			const repositories: PullRequestBranchConfig[] = project
-				.effectiveRepositories()
-				.map((repo) => {
-					const headBranch = selectedBranches[repo.id] ?? null;
-					return {
-						repositoryId: repo.id,
-						headBranch,
-						baseBranch: headBranch ? findBaseBranch(repo.id, headBranch) : null,
-					};
-				});
-
-			await onCreate({ name: contextName.trim(), repositories });
-			reset();
-			onClose();
-		} catch (createError) {
-			setSubmitError(describeError(createError));
-		} finally {
-			setLoading(false);
+			await createContext.mutateAsync({
+				projectTag: project.tag,
+				name: contextName.trim(),
+				baseContextId: null,
+				origin: { kind: "fromPullRequests" },
+				status: "review",
+				agentPrompt: null,
+				branches: branchChoices,
+			});
+		} catch {
+			return;
 		}
+		reset();
+		onClose();
 	}
 
 	function handleClose() {
@@ -196,7 +190,7 @@ export function CreateFromPullRequestsModal({
 					</Alert>
 				) : (
 					<>
-						{project.effectiveRepositories().map((repo) => {
+						{repositories.map((repo) => {
 							const group = groupByRepositoryId[repo.id];
 							const pullRequests = group?.pullRequests ?? [];
 							const branch = selectedBranches[repo.id] ?? null;
@@ -220,7 +214,6 @@ export function CreateFromPullRequestsModal({
 										value={branch}
 										onChange={(value) => selectBranch(repo.id, value)}
 										data={pullRequestOptions(pullRequests)}
-										error={branchErrors[repo.id]}
 										nothingFoundMessage={t("contexts.noOpenPullRequests")}
 										disabled={pullRequests.length === 0}
 										searchable
@@ -241,7 +234,10 @@ export function CreateFromPullRequestsModal({
 										</Group>
 									) : (
 										<Text size="xs" c="dimmed" mt={4}>
-											{t("contexts.repoWillBeLinked")}
+											{t("contexts.repoGetsNewBranch", {
+												branch: suggestedBranchName || t("contexts.branchFromContextName"),
+												base: findDefaultBranch(project, repo.id) ?? "—",
+											})}
 										</Text>
 									)}
 								</Box>
@@ -271,7 +267,11 @@ export function CreateFromPullRequestsModal({
 					<Button variant="subtle" onClick={handleClose}>
 						{t("common.cancel")}
 					</Button>
-					<Button onClick={handleSubmit} loading={loading} disabled={!canSubmit}>
+					<Button
+						onClick={handleSubmit}
+						loading={fetching || createContext.isPending}
+						disabled={!canSubmit}
+					>
 						{t("common.create")}
 					</Button>
 				</Group>

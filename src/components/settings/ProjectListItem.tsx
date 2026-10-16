@@ -2,13 +2,13 @@ import { ActionIcon, Card, Group, Text } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import { PencilSimpleIcon, TrashIcon } from "@phosphor-icons/react";
 import { useTranslation } from "react-i18next";
-import type { Project } from "@/models/Project";
+import type { ProjectView } from "@/bindings";
 import { ProjectConfirmDeleteModal } from "./ProjectConfirmDeleteModal";
 
 type ProjectListItemProps = {
-	project: Project;
-	onEdit: (project: Project) => void;
-	onDelete: (project: Project) => void;
+	project: ProjectView;
+	onEdit: (project: ProjectView) => void;
+	onDelete: (project: ProjectView) => void;
 };
 
 export function ProjectListItem({ project, onEdit, onDelete }: ProjectListItemProps) {
@@ -23,7 +23,7 @@ export function ProjectListItem({ project, onEdit, onDelete }: ProjectListItemPr
 						{project.path}
 					</Text>
 					<Text>
-						{t("settings.projects.repoCount", { count: project.effectiveRepositories().length })}
+						{t("settings.projects.repoCount", { count: project.effectiveRepositories.length })}
 					</Text>
 				</div>
 				<Group gap="xs">

@@ -1,11 +1,9 @@
-import type { BranchNamingPolicy } from "@/models/BranchNaming";
-
 /**
  * A single context the bulk creator proposes from one high-level instruction.
  *
- * `contextName` and `branchName` are always present. `branchName` has already
- * been forced through the project's {@link BranchNamingPolicy}, so it is a
- * git-safe ref. `preprompt` is the text pre-filled into the context's Kiro
+ * `contextName` and `branchName` are always present. `branchName` is what the
+ * model proposed (or the context name), to be named by the project's branch
+ * naming before use. `preprompt` is the text pre-filled into the context's Kiro
  * input the first time it is opened; it is absent when nothing relevant could
  * be generated for that context.
  */
@@ -80,18 +78,15 @@ function extractJsonArray(rawOutput: string): string | null {
 }
 
 /**
- * Normalizes one raw row into a {@link BulkContextDraft}, forcing the branch
- * name through the policy. A row is dropped (returns null) when it lacks a
- * usable context name or the branch name slugifies to empty. The context name
- * seeds the branch name whenever the model omitted its own `branchName`.
+ * Normalizes one raw row into a {@link BulkContextDraft}. A row is dropped
+ * (returns null) when it lacks a usable context name. The context name seeds
+ * the branch name whenever the model omitted its own `branchName`.
  */
-function normalizeRow(row: RawDraftRow, branchNaming: BranchNamingPolicy): BulkContextDraft | null {
+function normalizeRow(row: RawDraftRow): BulkContextDraft | null {
 	if (!isNonEmptyString(row.contextName)) return null;
 
 	const contextName = row.contextName.trim();
-	const branchSeed = isNonEmptyString(row.branchName) ? row.branchName : contextName;
-	const branchName = branchNaming.composeBranchName(branchSeed, branchNaming.defaultPrefix);
-	if (branchName === "") return null;
+	const branchName = isNonEmptyString(row.branchName) ? row.branchName.trim() : contextName;
 
 	const draft: BulkContextDraft = { contextName, branchName };
 	if (isNonEmptyString(row.preprompt)) {
@@ -101,16 +96,11 @@ function normalizeRow(row: RawDraftRow, branchNaming: BranchNamingPolicy): BulkC
 }
 
 /**
- * Parses the raw stdout of a headless bulk-generation run into validated
- * drafts. Branch names are forced through `branchNaming` so they are always
- * valid git refs regardless of what the model returned. Invalid rows are
- * dropped; the parse only fails when no JSON array is present, the JSON is
- * malformed, it is not an array, or no row survives validation.
+ * Parses the raw stdout of a headless bulk-generation run into drafts.
+ * Invalid rows are dropped; the parse only fails when no JSON array is
+ * present, the JSON is malformed, it is not an array, or no row survives.
  */
-export function parseBulkContextDrafts(
-	rawOutput: string,
-	branchNaming: BranchNamingPolicy,
-): ParseBulkDraftsResult {
+export function parseBulkContextDrafts(rawOutput: string): ParseBulkDraftsResult {
 	const jsonText = extractJsonArray(rawOutput);
 	if (jsonText === null) return { ok: false, error: "no-json-found" };
 
@@ -125,7 +115,7 @@ export function parseBulkContextDrafts(
 
 	const drafts = parsed
 		.filter((row): row is RawDraftRow => typeof row === "object" && row !== null)
-		.map((row) => normalizeRow(row, branchNaming))
+		.map(normalizeRow)
 		.filter((draft): draft is BulkContextDraft => draft !== null);
 
 	if (drafts.length === 0) return { ok: false, error: "no-valid-rows" };

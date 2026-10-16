@@ -1,7 +1,7 @@
 import { useMemo } from "react";
+import type { ProjectView } from "@/bindings";
 import { useProjectPullRequests } from "@/hooks/useProjectPullRequests";
 import type { GitProviderId, ProviderPullRequest } from "@/models/git-provider/GitProvider";
-import type { Project } from "@/models/Project";
 
 /** A project PR flattened for the review-share modal, tagged with its repo. */
 export type ReviewPullRequest = ProviderPullRequest & {
@@ -22,7 +22,9 @@ type UseProjectReviewPullRequestsResult = {
  * list suitable for building a review message. Reuses the grouped
  * project-pull-requests hook so remote resolution stays in one place.
  */
-export function useProjectReviewPullRequests(project: Project): UseProjectReviewPullRequestsResult {
+export function useProjectReviewPullRequests(
+	project: ProjectView,
+): UseProjectReviewPullRequestsResult {
 	const projects = useMemo(() => [project], [project]);
 	const { connected, loading, groups, error } = useProjectPullRequests(projects);
 

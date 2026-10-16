@@ -4,44 +4,44 @@ import { ArrowSquareOutIcon, GitPullRequestIcon, PlugsIcon } from "@phosphor-ico
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
+import type { ContextView, ProjectView, PullRequestDraftView } from "@/bindings";
 import { CreatePullRequestModal } from "@/components/contexts/CreatePullRequestModal";
 import { ProviderBadge } from "@/components/shared/ProviderBadge";
-import { useContexts } from "@/hooks/useContexts";
 import {
 	type RepositoryPullRequests,
 	useProjectPullRequests,
 } from "@/hooks/useProjectPullRequests";
-import { useProjects } from "@/hooks/useProjects";
+import { useProjects } from "@/hooks/workspace/useProjects";
 import type { GitProviderId, ProviderPullRequest } from "@/models/git-provider/GitProvider";
-import type { Context, Project, PullRequestDraft } from "@/models/Project";
+import { findEffectiveRepository } from "@/models/projectView";
 import { SettingsTab, settingsPath } from "./settingsTabs";
 
 type DraftEntry = {
-	project: Project;
-	context: Context;
+	project: ProjectView;
+	context: ContextView;
 	repositoryId: string;
 	repositoryName: string;
-	draft: PullRequestDraft;
+	draft: PullRequestDraftView;
 };
 
-function isDraftFilled(draft: PullRequestDraft): boolean {
+function isDraftFilled(draft: PullRequestDraftView): boolean {
 	return draft.title.trim().length > 0 || draft.description.trim().length > 0;
 }
 
-function collectDraftEntries(projects: Project[]): DraftEntry[] {
+function collectDraftEntries(projects: ProjectView[]): DraftEntry[] {
 	const entries: DraftEntry[] = [];
 	for (const project of projects) {
 		for (const context of project.contexts) {
-			for (const [repositoryId, draft] of Object.entries(context.pullRequestDrafts)) {
-				if (!isDraftFilled(draft)) continue;
-				const repository = project.findRepository(repositoryId);
+			for (const { repositoryId, pullRequestDraft } of context.branches) {
+				if (!pullRequestDraft || !isDraftFilled(pullRequestDraft)) continue;
+				const repository = findEffectiveRepository(project, repositoryId);
 				if (!repository) continue;
 				entries.push({
 					project,
 					context,
 					repositoryId,
 					repositoryName: repository.name,
-					draft,
+					draft: pullRequestDraft,
 				});
 			}
 		}
@@ -52,7 +52,6 @@ function collectDraftEntries(projects: Project[]): DraftEntry[] {
 function DraftEntryCard({ entry }: { entry: DraftEntry }) {
 	const { t } = useTranslation();
 	const [opened, { open, close }] = useDisclosure(false);
-	const { savePullRequestDrafts } = useContexts(entry.project);
 
 	return (
 		<>
@@ -77,14 +76,12 @@ function DraftEntryCard({ entry }: { entry: DraftEntry }) {
 				onClose={close}
 				project={entry.project}
 				context={entry.context}
-				allContexts={entry.project.contexts}
-				onSaveDrafts={savePullRequestDrafts}
 			/>
 		</>
 	);
 }
 
-function DraftsSection({ projects }: { projects: Project[] }) {
+function DraftsSection({ projects }: { projects: ProjectView[] }) {
 	const { t } = useTranslation();
 	const entries = collectDraftEntries(projects);
 
@@ -196,7 +193,7 @@ function RepositoryGroup({ group }: { group: RepositoryPullRequests }) {
 	);
 }
 
-function ActiveSection({ projects }: { projects: Project[] }) {
+function ActiveSection({ projects }: { projects: ProjectView[] }) {
 	const { t } = useTranslation();
 	const { connected, loading, groups, error } = useProjectPullRequests(projects);
 

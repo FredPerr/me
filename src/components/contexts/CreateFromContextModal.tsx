@@ -3,7 +3,6 @@ import {
 	Autocomplete,
 	Box,
 	Button,
-	Checkbox,
 	Group,
 	Modal,
 	Select,
@@ -13,220 +12,159 @@ import {
 	Tooltip,
 } from "@mantine/core";
 import { PaintBrushHouseholdIcon } from "@phosphor-icons/react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { commands } from "@/bindings";
-import type { CreateContextParams, RepositoryBranchConfig } from "@/hooks/useContexts";
-import type { Context, Project } from "@/models/Project";
+import {
+	type ContextView,
+	commands,
+	type ProjectView,
+	type RepositoryBranchInput,
+} from "@/bindings";
+import { useBranchNameSuggestion } from "@/hooks/workspace/useBranchNameSuggestion";
+import { useCreateContext } from "@/hooks/workspace/useContextMutations";
+import { findContextBranch, findDefaultBranch } from "@/models/projectView";
 import { fuzzySelectFilter } from "@/utils/fuzzySelectFilter";
 import { BranchNameFromTaskPopover } from "./BranchNameFromTaskPopover";
 
 type CreateFromContextModalProps = {
 	opened: boolean;
 	onClose: () => void;
-	sourceContext: Context;
-	project: Project;
-	onCreate: (params: CreateContextParams) => Promise<void>;
+	sourceContext: ContextView;
+	project: ProjectView;
 };
 
 type RepositoryFormState = {
-	/** When off, the repo is symlinked to the base context instead of branched. */
-	createBranch: boolean;
-	/** Branch to check out: an existing branch, or a new name to create. */
+	/** An existing branch to check out, or a new name; empty falls back to the suggested name. */
 	branchName: string;
-	/** Base branch a new branch is cut from (ignored when the branch exists). */
+	/** Branch a new branch starts from (ignored when the branch exists). */
 	baseBranch: string;
 };
+
+function initialRepositoryStates(
+	project: ProjectView,
+	sourceContext: ContextView,
+): Record<string, RepositoryFormState> {
+	return Object.fromEntries(
+		project.effectiveRepositories.map((repository) => {
+			const baseBranch =
+				findContextBranch(sourceContext, repository.id)?.branch ??
+				findDefaultBranch(project, repository.id) ??
+				"";
+			return [repository.id, { branchName: "", baseBranch }];
+		}),
+	);
+}
 
 export function CreateFromContextModal({
 	opened,
 	onClose,
 	sourceContext,
 	project,
-	onCreate,
 }: CreateFromContextModalProps) {
 	const { t } = useTranslation();
+	const createContext = useCreateContext();
+	const repositories = project.effectiveRepositories;
 	const [contextName, setContextName] = useState("");
-	const repositories = useMemo(() => project.effectiveRepositories(), [project]);
-	const [repoStates, setRepoStates] = useState<Record<string, RepositoryFormState>>(() =>
-		Object.fromEntries(
-			repositories.map((repo) => {
-				const sourceBranch = sourceContext.getBranchForRepository(repo.id) ?? "main";
-				return [repo.id, { createBranch: true, branchName: "", baseBranch: sourceBranch }];
-			}),
-		),
+	const [repositoryStates, setRepositoryStates] = useState(() =>
+		initialRepositoryStates(project, sourceContext),
 	);
-	const [loading, setLoading] = useState(false);
 	const [syncBranchNames, setSyncBranchNames] = useState(true);
 	const [isBranchPopoverOpened, setIsBranchPopoverOpened] = useState(false);
-	const [branchErrors, setBranchErrors] = useState<Record<string, string>>({});
 	const [branchOptions, setBranchOptions] = useState<Record<string, string[]>>({});
+	const suggestedBranchName = useBranchNameSuggestion(
+		project.tag,
+		contextName,
+		project.branchNaming.defaultPrefix,
+	);
 
 	useEffect(() => {
 		async function fetchBranches() {
 			const options: Record<string, string[]> = {};
-			for (const repo of repositories) {
-				try {
-					const resolvedPath = await repo.resolveAbsolutePath(project.path);
-					const branches = await commands.listBranches(resolvedPath);
-					options[repo.id] = branches;
-				} catch {
-					options[repo.id] = [];
-				}
+			for (const repository of repositories) {
+				options[repository.id] = await commands.listBranches(repository.path).catch(() => []);
 			}
 			setBranchOptions(options);
 		}
 		if (opened) {
 			fetchBranches();
 		}
-	}, [opened, project, repositories]);
+	}, [opened, repositories]);
 
 	useEffect(() => {
 		if (!opened) setIsBranchPopoverOpened(false);
 	}, [opened]);
 
-	function updateRepoState(repositoryId: string, patch: Partial<RepositoryFormState>) {
-		setRepoStates((prev) => ({
-			...prev,
-			[repositoryId]: { ...prev[repositoryId], ...patch },
+	function updateRepositoryState(repositoryId: string, patch: Partial<RepositoryFormState>) {
+		setRepositoryStates((current) => ({
+			...current,
+			[repositoryId]: { ...current[repositoryId], ...patch },
 		}));
-		if (patch.branchName !== undefined) {
-			setBranchErrors((prev) => {
-				const next = { ...prev };
-				delete next[repositoryId];
-				return next;
-			});
-		}
 	}
 
-	// A repo contributes if it creates/checks out a branch, or is symlinked
-	// (createBranch off); so at least one repo always produces a worktree entry.
-	const hasAtLeastOneBranch = Object.values(repoStates).some(
-		(s) => !s.createBranch || Boolean(s.branchName.trim()),
-	);
-
-	const hasErrors = Object.keys(branchErrors).length > 0;
-
-	/** Applies one branch name to every repo that is set to create a branch. */
-	function syncBranchesToName(name: string) {
-		const trimmed = name.trim();
-		setRepoStates((prev) => {
-			const next = { ...prev };
-			for (const id of Object.keys(next)) {
-				if (next[id].createBranch) {
-					next[id] = { ...next[id], branchName: trimmed };
-				}
-			}
-			return next;
-		});
+	function branchNameFor(repositoryId: string): string {
+		if (syncBranchNames) return suggestedBranchName;
+		return repositoryStates[repositoryId].branchName.trim() || suggestedBranchName;
 	}
 
-	function handleContextNameChange(name: string) {
-		setContextName(name);
-		if (syncBranchNames) {
-			syncBranchesToName(name);
-		}
+	function isExistingBranch(repositoryId: string, branchName: string): boolean {
+		return (branchOptions[repositoryId] ?? []).includes(branchName);
 	}
 
 	function applyGeneratedBranchName(branchName: string) {
-		if (syncBranchNames) {
-			handleContextNameChange(branchName);
-			return;
-		}
-		for (const repositoryId of Object.keys(repoStates)) {
-			if (repoStates[repositoryId].createBranch) {
-				updateRepoState(repositoryId, { branchName });
-			}
-		}
+		setSyncBranchNames(false);
+		setRepositoryStates((current) =>
+			Object.fromEntries(
+				Object.entries(current).map(([repositoryId, state]) => [
+					repositoryId,
+					{ ...state, branchName },
+				]),
+			),
+		);
 		if (!contextName.trim()) {
 			setContextName(branchName);
 		}
 	}
 
 	function toggleSync() {
-		const nextEnabled = !syncBranchNames;
-		setSyncBranchNames(nextEnabled);
-		if (nextEnabled) {
-			syncBranchesToName(contextName);
-		}
+		setSyncBranchNames((enabled) => !enabled);
 	}
 
-	async function validateBranches(): Promise<boolean> {
-		const errors: Record<string, string> = {};
-
-		for (const repo of repositories) {
-			const state = repoStates[repo.id];
-			const branch = state.branchName.trim();
-			if (!state.createBranch || !branch) continue;
-
-			// Selecting an existing branch is fine: the backend checks it out
-			// (reusing its worktree if any). Only a brand-new branch name that
-			// collides with an already checked-out branch is a real conflict.
-			const branchExists = (branchOptions[repo.id] ?? []).includes(branch);
-			if (branchExists) continue;
-
-			try {
-				const resolvedPath = await repo.resolveAbsolutePath(project.path);
-				const worktrees = await commands.listWorktrees(resolvedPath);
-				const conflicting = worktrees.find((wt) => wt.branch === branch);
-				if (conflicting) {
-					errors[repo.id] = t("contexts.branchAlreadyInUse", {
-						branch,
-						worktree: conflicting.path,
-					});
-				}
-			} catch {
-				// skip validation if we can't list worktrees
-			}
-		}
-
-		setBranchErrors(errors);
-		return Object.keys(errors).length === 0;
-	}
+	const branchChoices: RepositoryBranchInput[] = repositories.map((repository) => {
+		const name = branchNameFor(repository.id);
+		const branch = isExistingBranch(repository.id, name)
+			? { kind: "existingBranch" as const, name }
+			: {
+					kind: "newBranch" as const,
+					name,
+					baseBranch: repositoryStates[repository.id].baseBranch,
+				};
+		return { repositoryId: repository.id, branch };
+	});
+	const canSubmit =
+		contextName.trim() !== "" &&
+		branchChoices.every(
+			({ branch }) =>
+				branch.name !== "" && (branch.kind !== "newBranch" || branch.baseBranch !== ""),
+		);
 
 	async function handleSubmit() {
-		if (!contextName.trim() || !hasAtLeastOneBranch) return;
-
-		setLoading(true);
+		if (!canSubmit) return;
 		try {
-			const isValid = await validateBranches();
-			if (!isValid) return;
-
-			const repositoryConfigs: RepositoryBranchConfig[] = repositories.map((repo) => {
-				const state = repoStates[repo.id];
-				const branch = state.branchName.trim();
-				const branchExists = (branchOptions[repo.id] ?? []).includes(branch);
-				// Checkbox off, or no branch typed: link this repo to the base
-				// context's checkout. Empty branchName drives the link path in the
-				// hook; baseBranch keeps the source branch so the linked repo still
-				// records a meaningful branch. An existing branch is checked out
-				// as-is; a new name is created off the base branch.
-				if (!state.createBranch || !branch) {
-					return {
-						repositoryId: repo.id,
-						createBranch: false,
-						branchName: "",
-						baseBranch: state.baseBranch,
-					};
-				}
-				return {
-					repositoryId: repo.id,
-					createBranch: !branchExists,
-					branchName: branch,
-					baseBranch: branchExists ? branch : state.baseBranch,
-				};
-			});
-
-			await onCreate({
+			await createContext.mutateAsync({
+				projectTag: project.tag,
 				name: contextName.trim(),
-				repositories: repositoryConfigs,
-				baseContextName: sourceContext.name,
+				baseContextId: sourceContext.id,
+				origin: { kind: "fromContext" },
+				status: null,
+				agentPrompt: null,
+				branches: branchChoices,
 			});
-			setContextName("");
-			onClose();
-		} finally {
-			setLoading(false);
+		} catch {
+			return;
 		}
+		setContextName("");
+		setRepositoryStates(initialRepositoryStates(project, sourceContext));
+		onClose();
 	}
 
 	return (
@@ -238,19 +176,21 @@ export function CreateFromContextModal({
 		>
 			<Stack gap="md">
 				<Text size="sm" c="dimmed">
-					{t("contexts.createFromContextDescription", { name: sourceContext.name })}
+					{t("contexts.createFromContextDescription", {
+						name: sourceContext.isDefault ? t("common.default") : sourceContext.name,
+					})}
 				</Text>
 				<TextInput
 					label={t("contexts.contextName")}
 					placeholder="feature/my-feature"
 					value={contextName}
-					onChange={(e) => handleContextNameChange(e.currentTarget.value)}
+					onChange={(event) => setContextName(event.currentTarget.value)}
 					required
 					rightSectionWidth={60}
 					rightSection={
 						<Group gap={4} wrap="nowrap">
 							<BranchNameFromTaskPopover
-								branchNaming={project.branchNaming}
+								project={project}
 								opened={isBranchPopoverOpened}
 								onOpenedChange={setIsBranchPopoverOpened}
 								onApply={applyGeneratedBranchName}
@@ -273,14 +213,14 @@ export function CreateFromContextModal({
 						</Group>
 					}
 				/>
-				{repositories.map((repo) => {
-					const state = repoStates[repo.id];
-					const branches = branchOptions[repo.id] ?? [];
-					const branch = state.branchName.trim();
-					const branchExists = branches.includes(branch);
+				{repositories.map((repository) => {
+					const state = repositoryStates[repository.id];
+					const branches = branchOptions[repository.id] ?? [];
+					const branchName = branchNameFor(repository.id);
+					const branchExists = isExistingBranch(repository.id, branchName);
 					return (
 						<Box
-							key={repo.id}
+							key={repository.id}
 							p="xs"
 							style={{
 								border: "1px solid var(--mantine-color-default-border)",
@@ -288,54 +228,43 @@ export function CreateFromContextModal({
 							}}
 						>
 							<Stack gap="xs">
-								<Checkbox
-									label={`${t("contexts.createNewBranch")} — ${repo.name}`}
-									checked={state.createBranch}
-									onChange={(e) => {
-										const checked = e.currentTarget.checked;
-										updateRepoState(repo.id, {
-											createBranch: checked,
-											...(checked && syncBranchNames ? { branchName: contextName.trim() } : {}),
-										});
-									}}
-								/>
-								{state.createBranch ? (
-									<Group gap="xs" grow align="flex-start">
-										<Select
-											label={t("contexts.baseBranch")}
-											value={state.baseBranch || null}
-											onChange={(value) => updateRepoState(repo.id, { baseBranch: value ?? "" })}
-											data={branches}
-											placeholder={t("contexts.selectExistingBranch")}
-											nothingFoundMessage={t("contexts.noBranchesFound")}
-											disabled={branchExists}
-											searchable
-											size="xs"
-										/>
-										<Autocomplete
-											label={t("contexts.contextBranch")}
-											description={
-												branch
-													? branchExists
-														? t("contexts.branchExistsHint")
-														: t("contexts.branchNewHint")
-													: undefined
-											}
-											placeholder={t("contexts.selectExistingBranch")}
-											value={state.branchName}
-											onChange={(value) => updateRepoState(repo.id, { branchName: value })}
-											data={branches}
-											readOnly={syncBranchNames}
-											error={branchErrors[repo.id]}
-											filter={fuzzySelectFilter}
-											size="xs"
-										/>
-									</Group>
-								) : (
-									<Text size="xs" c="dimmed">
-										{t("contexts.repoWillBeLinkedToBase")}
-									</Text>
-								)}
+								<Text size="sm" fw={500}>
+									{repository.name}
+								</Text>
+								<Group gap="xs" grow align="flex-start">
+									<Select
+										label={t("contexts.baseBranch")}
+										value={state.baseBranch || null}
+										onChange={(value) =>
+											updateRepositoryState(repository.id, { baseBranch: value ?? "" })
+										}
+										data={branches}
+										placeholder={t("contexts.selectExistingBranch")}
+										nothingFoundMessage={t("contexts.noBranchesFound")}
+										disabled={branchExists}
+										searchable
+										size="xs"
+									/>
+									<Autocomplete
+										label={t("contexts.contextBranch")}
+										description={
+											branchName
+												? branchExists
+													? t("contexts.branchExistsHint")
+													: t("contexts.branchNewHint")
+												: undefined
+										}
+										placeholder={suggestedBranchName || t("contexts.selectExistingBranch")}
+										value={syncBranchNames ? suggestedBranchName : state.branchName}
+										onChange={(value) =>
+											updateRepositoryState(repository.id, { branchName: value })
+										}
+										data={branches}
+										readOnly={syncBranchNames}
+										filter={fuzzySelectFilter}
+										size="xs"
+									/>
+								</Group>
 							</Stack>
 						</Box>
 					);
@@ -344,11 +273,7 @@ export function CreateFromContextModal({
 					<Button variant="subtle" onClick={onClose}>
 						{t("common.cancel")}
 					</Button>
-					<Button
-						onClick={handleSubmit}
-						loading={loading}
-						disabled={!contextName.trim() || !hasAtLeastOneBranch || hasErrors}
-					>
+					<Button onClick={handleSubmit} loading={createContext.isPending} disabled={!canSubmit}>
 						{t("common.create")}
 					</Button>
 				</Group>

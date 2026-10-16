@@ -1,23 +1,17 @@
 import { Handle, Position } from "@xyflow/react";
+import type { ContextView, ProjectView } from "@/bindings";
 import type { PullRequestLookup } from "@/hooks/useContextPullRequestStatus";
-import type { CreateContextParams } from "@/hooks/useContexts";
 import { type ContextStatus, IDLE_CONTEXT_STATUS } from "@/models/ContextStatus";
-import type { Context, Project } from "@/models/Project";
 import { CreateFromTasksColumnButton } from "./CreateFromTasksColumnButton";
 import { DraggableContextCard } from "./DraggableContextCard";
 import { KanbanColumn } from "./KanbanColumn";
 
 export type FlowBoardColumnData = {
 	status: ContextStatus;
-	contexts: Context[];
-	project: Project;
-	allContexts: Context[];
+	contexts: ContextView[];
+	project: ProjectView;
 	pullRequestLookup?: PullRequestLookup;
-	onDelete: (contextId: string) => void;
-	onCreate: (params: CreateContextParams) => Promise<void>;
-	onExpandedChange: (contextId: string, expanded: boolean) => void;
-	onStaticChange: (contextId: string, isStatic: boolean) => void;
-	onOpenKiro: (context: Context) => void;
+	onOpenKiro: (context: ContextView) => void;
 	isKiroRunning: (contextId: string) => boolean;
 	getKiroHistoryCount: (contextId: string) => number;
 	onCreateFromTasks?: () => void;
@@ -28,12 +22,7 @@ export function FlowBoardColumnNode({ data }: { data: FlowBoardColumnData }) {
 		status,
 		contexts,
 		project,
-		allContexts,
 		pullRequestLookup,
-		onDelete,
-		onCreate,
-		onExpandedChange,
-		onStaticChange,
 		onOpenKiro,
 		isKiroRunning,
 		getKiroHistoryCount,
@@ -66,12 +55,7 @@ export function FlowBoardColumnNode({ data }: { data: FlowBoardColumnData }) {
 						key={context.id}
 						context={context}
 						project={project}
-						allContexts={allContexts}
-						onDelete={onDelete}
-						onCreate={onCreate}
 						pullRequestLookup={pullRequestLookup}
-						onExpandedChange={onExpandedChange}
-						onStaticChange={onStaticChange}
 						onOpenKiro={onOpenKiro}
 						isKiroRunning={isKiroRunning(context.id)}
 						hasKiroHistory={getKiroHistoryCount(context.id) > 0}

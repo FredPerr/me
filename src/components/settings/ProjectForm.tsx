@@ -1,81 +1,70 @@
-import {
-	ActionIcon,
-	Button,
-	CopyButton,
-	Group,
-	Input,
-	Stack,
-	TextInput,
-	Tooltip,
-} from "@mantine/core";
-import {
-	CheckIcon,
-	CopyIcon,
-	FolderIcon,
-	GitBranchIcon,
-	PlusIcon,
-	TrashIcon,
-} from "@phosphor-icons/react";
+import { ActionIcon, Button, Group, Input, Stack, TextInput, Tooltip } from "@mantine/core";
+import { FolderIcon, GitBranchIcon, PlusIcon, TrashIcon } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { commands } from "@/bindings";
+import {
+	commands,
+	type ProjectSettingsInput,
+	type ProjectView,
+	type RemoteProjectLinkView,
+	type RepositoryInput,
+} from "@/bindings";
 import { IconPicker } from "@/components/shared/IconPicker";
 import { RemoteProjectLinks } from "@/domain/work-tracking/RemoteProjectLinks";
 import { pickFolder } from "@/hooks/useFolderPicker";
-import { BranchNamingPolicy, DEFAULT_BRANCH_PREFIXES } from "@/models/BranchNaming";
-import {
-	Context,
-	ContextBranch,
-	Project,
-	type ProjectData,
-	type RepositoryData,
-} from "@/models/Project";
-import { ProjectDirectory } from "@/models/ProjectDirectory";
 import { resolvePath } from "@/utils/resolvePath";
 import { BranchPrefixFormList } from "./BranchPrefixFormList";
 import { RemoteProjectLinksField } from "./RemoteProjectLinksField";
 import { RepositoryFormList } from "./RepositoryFormList";
 
+const DEFAULT_BRANCH_PREFIXES = ["feature", "fix", "chore", "refactor"];
+
 type ProjectFormProps = {
-	initialProject?: Project;
-	onSubmit: (project: Project) => void;
+	initialProject?: ProjectView;
+	submitting: boolean;
+	onSubmit: (projectTag: string, settings: ProjectSettingsInput) => void;
 	onCancel: () => void;
 };
 
-export function ProjectForm({ initialProject, onSubmit, onCancel }: ProjectFormProps) {
+function toRepositoryInputs(project: ProjectView | undefined): RepositoryInput[] {
+	return (project?.repositories ?? []).map(({ id, name, relativePath, postCheckoutCommand }) => ({
+		id,
+		name,
+		relativePath,
+		postCheckoutCommand,
+	}));
+}
+
+function toRemoteProjectLinkViews(links: RemoteProjectLinks): RemoteProjectLinkView[] {
+	return links
+		.toJSON()
+		.map((link) => ({ ...link, remoteProjectUrl: link.remoteProjectUrl ?? null }));
+}
+
+export function ProjectForm({ initialProject, submitting, onSubmit, onCancel }: ProjectFormProps) {
 	const { t } = useTranslation();
 	const [name, setName] = useState(initialProject?.name ?? "");
 	const [tag, setTag] = useState(initialProject?.tag ?? "");
 	const [path, setPath] = useState(initialProject?.path ?? "");
 	const [icon, setIcon] = useState(initialProject?.icon ?? "");
-	const [repositories, setRepositories] = useState<RepositoryData[]>(
-		initialProject?.repositories.map((r) => r.toJSON()) ?? [],
-	);
-	const [configPath, setConfigPath] = useState("");
+	const [repositories, setRepositories] = useState(() => toRepositoryInputs(initialProject));
 	const [isGitRoot, setIsGitRoot] = useState<boolean | null>(null);
 	const [repositoriesValid, setRepositoriesValid] = useState(true);
 	const [symlinks, setSymlinks] = useState<string[]>(initialProject?.symlinks ?? []);
 	const [branchPrefixes, setBranchPrefixes] = useState<string[]>(
-		initialProject?.branchNaming.prefixes ?? [...DEFAULT_BRANCH_PREFIXES],
+		initialProject?.branchNaming.prefixes ?? DEFAULT_BRANCH_PREFIXES,
 	);
 	const [allowNoBranchPrefix, setAllowNoBranchPrefix] = useState(
-		initialProject?.branchNaming.toJSON().allowNoPrefix ?? true,
+		initialProject?.branchNaming.allowsNoPrefix ?? true,
 	);
-	const [branchPrefixesValid, setBranchPrefixesValid] = useState(true);
-	const [remoteProjectLinks, setRemoteProjectLinks] = useState(
-		initialProject?.remoteProjectLinks ?? RemoteProjectLinks.empty(),
+	const [remoteProjectLinks, setRemoteProjectLinks] = useState(() =>
+		RemoteProjectLinks.fromJSON(initialProject?.remoteProjectLinks),
 	);
 
 	const isMultiRepo =
-		repositories.length > 1 || (repositories.length === 1 && repositories[0].relPath !== ".");
+		repositories.length > 1 || (repositories.length === 1 && repositories[0].relativePath !== ".");
 	const isEditing = !!initialProject;
-	const canSubmit = (isMultiRepo ? repositoriesValid : isGitRoot !== false) && branchPrefixesValid;
-
-	useEffect(() => {
-		if (initialProject) {
-			ProjectDirectory.getConfigFilePath(initialProject.tag).then(setConfigPath);
-		}
-	}, [initialProject]);
+	const canSubmit = (isMultiRepo ? repositoriesValid : isGitRoot !== false) && !submitting;
 
 	useEffect(() => {
 		if (path) {
@@ -99,44 +88,15 @@ export function ProjectForm({ initialProject, onSubmit, onCancel }: ProjectFormP
 	async function handleSubmit(event: React.FormEvent) {
 		event.preventDefault();
 		const resolvedPath = await resolvePath(path, { isFolder: true });
-
-		let contexts = initialProject?.contexts.map((c) => c.toJSON()) ?? [];
-
-		if (!isEditing) {
-			const defaultBranches = await Promise.all(
-				repositories.map(async (repo) => {
-					try {
-						const repoPath = await resolvePath(repo.relPath, { basePath: resolvedPath });
-						const branches = await commands.listBranches(repoPath);
-						const branch =
-							branches.find((b) => b === "main") ??
-							branches.find((b) => b === "master") ??
-							branches[0] ??
-							"main";
-						return new ContextBranch(repo.id, branch);
-					} catch {
-						return new ContextBranch(repo.id, "main");
-					}
-				}),
-			);
-
-			const defaultContext = new Context(crypto.randomUUID(), "default", defaultBranches, true);
-			contexts = [defaultContext.toJSON()];
-		}
-
-		const projectData: ProjectData = {
+		onSubmit(tag.trim(), {
 			name,
-			tag,
 			path: resolvedPath,
-			icon: icon || undefined,
+			icon: icon || null,
 			repositories,
-			contexts,
-			symlinks: symlinks.filter((s) => s.trim()),
-			remoteProjectLinks: remoteProjectLinks.toJSON(),
-			branchNaming: BranchNamingPolicy.create(branchPrefixes, allowNoBranchPrefix).toJSON(),
-		};
-
-		onSubmit(Project.fromJSON(projectData));
+			symlinks: symlinks.filter((symlink) => symlink.trim()),
+			branchNaming: { prefixes: branchPrefixes, allowNoPrefix: allowNoBranchPrefix },
+			remoteProjectLinks: toRemoteProjectLinkViews(remoteProjectLinks),
+		});
 	}
 
 	return (
@@ -253,40 +213,13 @@ export function ProjectForm({ initialProject, onSubmit, onCancel }: ProjectFormP
 					allowNoPrefix={allowNoBranchPrefix}
 					onPrefixesChange={setBranchPrefixes}
 					onAllowNoPrefixChange={setAllowNoBranchPrefix}
-					onValidityChange={setBranchPrefixesValid}
 				/>
 				<RemoteProjectLinksField value={remoteProjectLinks} onChange={setRemoteProjectLinks} />
-				{isEditing && configPath && (
-					<TextInput
-						label={t("settings.projectForm.configPath")}
-						readOnly
-						disabled
-						value={configPath}
-						rightSection={
-							<CopyButton value={configPath}>
-								{({ copied, copy }) => (
-									<Tooltip
-										label={copied ? t("common.copied") : t("settings.projectForm.copyConfigPath")}
-									>
-										<ActionIcon
-											variant="transparent"
-											size="xs"
-											onClick={copy}
-											aria-label="Copy config path"
-										>
-											{copied ? <CheckIcon size={12} /> : <CopyIcon size={12} />}
-										</ActionIcon>
-									</Tooltip>
-								)}
-							</CopyButton>
-						}
-					/>
-				)}
 				<Group justify="flex-end">
 					<Button variant="subtle" onClick={onCancel}>
 						{t("common.cancel")}
 					</Button>
-					<Button type="submit" disabled={!canSubmit}>
+					<Button type="submit" disabled={!canSubmit} loading={submitting}>
 						{isEditing ? t("common.save") : t("common.add")}
 					</Button>
 				</Group>

@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { commands } from "@/bindings";
+import { commands, type RepositoryView } from "@/bindings";
 import { useAppSettings } from "@/hooks/useAppSettings";
 import { describeError } from "@/infra/commandError";
 import { isTerminalStatus } from "@/models/ai-session/AiSession";
 import { extractAgentText } from "@/models/ai-session/acp/acpEvents";
 import { looksLikeAcpStream } from "@/models/ai-session/acp/acpStreamToParts";
 import { ensurePermissionFloor } from "@/models/ai-session/ensurePermissionFloor";
-import type { Context, Project, Repository } from "@/models/Project";
 import { buildPullRequestDescriptionPrompt } from "@/models/pull-request/pullRequestDescriptionPrompt";
 import { readPullRequestTemplate } from "@/models/pull-request/pullRequestTemplate";
 import { aiSessionService } from "@/services/aiSessionService";
@@ -31,8 +30,10 @@ const INITIAL_STATE: RepositoryDraftState = {
 };
 
 type GenerateInput = {
-	context: Context;
-	repository: Repository;
+	contextName: string;
+	repository: RepositoryView;
+	/** The context's checkout of the repository. */
+	worktreePath: string;
 	/** Branch the pull request targets; the diff is computed against it. */
 	baseBranch: string;
 };
@@ -54,9 +55,7 @@ type UsePullRequestDescriptionDraftResult = {
  * the ACP stream. Nothing is persisted here — the modal owns the drafts and
  * decides what to do with the generated text.
  */
-export function usePullRequestDescriptionDraft(
-	project: Project,
-): UsePullRequestDescriptionDraftResult {
+export function usePullRequestDescriptionDraft(): UsePullRequestDescriptionDraftResult {
 	const { settings } = useAppSettings();
 
 	const [statesByRepository, setStatesByRepository] = useState<
@@ -137,11 +136,9 @@ export function usePullRequestDescriptionDraft(
 	}, [setRepositoryState]);
 
 	const generate = useCallback(
-		async ({ context, repository, baseBranch }: GenerateInput) => {
+		async ({ contextName, repository, worktreePath, baseBranch }: GenerateInput) => {
 			const repositoryId = repository.id;
 			setRepositoryState(repositoryId, { status: "generating", error: null });
-
-			const worktreePath = context.getWorktreePath(project.path, repository);
 
 			try {
 				const [diff, template] = await Promise.all([
@@ -158,7 +155,7 @@ export function usePullRequestDescriptionDraft(
 				}
 
 				const prompt = buildPullRequestDescriptionPrompt({
-					contextName: context.name,
+					contextName,
 					repositoryName: repository.name,
 					diff,
 					template,
@@ -179,7 +176,7 @@ export function usePullRequestDescriptionDraft(
 				setRepositoryState(repositoryId, { status: "error", error: describeError(error) });
 			}
 		},
-		[project, settings?.shell, setRepositoryState],
+		[settings?.shell, setRepositoryState],
 	);
 
 	const consume = useCallback(

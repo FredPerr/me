@@ -3,16 +3,19 @@ import { notifications } from "@mantine/notifications";
 import { InfoIcon } from "@phosphor-icons/react";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import type { ProjectView } from "@/bindings";
 import type { WorkItem } from "@/domain/work-tracking/WorkItem";
-import { useContexts } from "@/hooks/useContexts";
-import { describeError } from "@/infra/commandError";
+import { useBranchNameSuggestion } from "@/hooks/workspace/useBranchNameSuggestion";
+import { useCreateContexts } from "@/hooks/workspace/useCreateContexts";
+import type { BulkContextSpec } from "@/models/bulk/BulkContextSpec";
 import { DEFAULT_TASKS_PREAMBLE, tasksToContextSpecs } from "@/models/bulk/tasksToContextSpecs";
-import type { Project } from "@/models/Project";
+import { findContext } from "@/models/projectView";
 
 type BulkCreateFromTasksModalProps = {
 	opened: boolean;
 	onClose: () => void;
-	project: Project;
+	project: ProjectView;
+	connectionId: string;
 	tasks: readonly WorkItem[];
 	onCreated: () => void;
 };
@@ -28,14 +31,14 @@ export function BulkCreateFromTasksModal({
 	opened,
 	onClose,
 	project,
+	connectionId,
 	tasks,
 	onCreated,
 }: BulkCreateFromTasksModalProps) {
 	const { t } = useTranslation();
-	const { createContextsBulk } = useContexts(project);
+	const { createContexts, creating } = useCreateContexts(project);
 	const [preamble, setPreamble] = useState(DEFAULT_TASKS_PREAMBLE);
-	const [baseContextName, setBaseContextName] = useState<string | null>(null);
-	const [creating, setCreating] = useState(false);
+	const [baseContextId, setBaseContextId] = useState<string | null>(null);
 
 	// Existing non-default contexts a new batch can branch off of.
 	const baseContextOptions = useMemo(
@@ -47,13 +50,13 @@ export function BulkCreateFromTasksModal({
 	useEffect(() => {
 		if (opened) {
 			setPreamble(DEFAULT_TASKS_PREAMBLE);
-			setBaseContextName(null);
+			setBaseContextId(null);
 		}
 	}, [opened]);
 
 	const specs = useMemo(
-		() => tasksToContextSpecs(tasks, preamble, project.branchNaming),
-		[tasks, preamble, project.branchNaming],
+		() => tasksToContextSpecs(tasks, preamble, connectionId),
+		[tasks, preamble, connectionId],
 	);
 
 	function handleClose() {
@@ -63,26 +66,19 @@ export function BulkCreateFromTasksModal({
 
 	async function handleCreate() {
 		if (specs.length === 0) return;
-		const baseContext = baseContextOptions.find((context) => context.name === baseContextName);
-		setCreating(true);
+		const baseContext = baseContextId ? findContext(project, baseContextId) : undefined;
 		try {
-			await createContextsBulk(specs, baseContext);
-			notifications.show({
-				title: t("workTracking.bulkCreate.createdTitle"),
-				message: t("workTracking.bulkCreate.createdMessage", { count: specs.length }),
-				color: "green",
-			});
-			onCreated();
-			onClose();
-		} catch (error) {
-			notifications.show({
-				title: t("workTracking.bulkCreate.createFailed"),
-				message: describeError(error),
-				color: "red",
-			});
-		} finally {
-			setCreating(false);
+			await createContexts(specs, baseContext);
+		} catch {
+			return;
 		}
+		notifications.show({
+			title: t("workTracking.bulkCreate.createdTitle"),
+			message: t("workTracking.bulkCreate.createdMessage", { count: specs.length }),
+			color: "green",
+		});
+		onCreated();
+		onClose();
 	}
 
 	return (
@@ -113,11 +109,11 @@ export function BulkCreateFromTasksModal({
 						description={t("workTracking.bulkCreate.baseContextHint")}
 						placeholder={t("workTracking.bulkCreate.baseContextDefault")}
 						data={baseContextOptions.map((context) => ({
-							value: context.name,
+							value: context.id,
 							label: context.name,
 						}))}
-						value={baseContextName}
-						onChange={setBaseContextName}
+						value={baseContextId}
+						onChange={setBaseContextId}
 						disabled={creating}
 						clearable
 						searchable
@@ -140,20 +136,7 @@ export function BulkCreateFromTasksModal({
 							style={{ listStyle: "none", maxHeight: 240, overflowY: "auto" }}
 						>
 							{specs.map((spec) => (
-								<Group
-									component="li"
-									key={spec.branchName}
-									justify="space-between"
-									wrap="nowrap"
-									gap="sm"
-								>
-									<Text size="sm" truncate>
-										{spec.contextName}
-									</Text>
-									<Badge variant="light" size="sm" style={{ flexShrink: 0 }}>
-										{spec.branchName}
-									</Badge>
-								</Group>
+								<SpecPreviewRow key={spec.task?.taskId} project={project} spec={spec} />
 							))}
 						</Stack>
 					)}
@@ -168,5 +151,30 @@ export function BulkCreateFromTasksModal({
 				</Group>
 			</Stack>
 		</Modal>
+	);
+}
+
+type SpecPreviewRowProps = {
+	project: ProjectView;
+	spec: BulkContextSpec;
+};
+
+function SpecPreviewRow({ project, spec }: SpecPreviewRowProps) {
+	const branchName = useBranchNameSuggestion(
+		project.tag,
+		spec.contextName,
+		project.branchNaming.defaultPrefix,
+	);
+	return (
+		<Group component="li" justify="space-between" wrap="nowrap" gap="sm">
+			<Text size="sm" truncate>
+				{spec.contextName}
+			</Text>
+			{branchName && (
+				<Badge variant="light" size="sm" style={{ flexShrink: 0 }}>
+					{branchName}
+				</Badge>
+			)}
+		</Group>
 	);
 }
