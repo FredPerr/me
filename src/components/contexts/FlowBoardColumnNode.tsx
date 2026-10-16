@@ -1,7 +1,7 @@
 import { Handle, Position } from "@xyflow/react";
 import type { ContextView, ProjectView } from "@/bindings";
-import type { PullRequestLookup } from "@/hooks/useContextPullRequestStatus";
 import { type ContextStatus, IDLE_CONTEXT_STATUS } from "@/models/ContextStatus";
+import type { PullRequestLookup } from "@/models/git-hosting/branchPullRequests";
 import { CreateFromTasksColumnButton } from "./CreateFromTasksColumnButton";
 import { DraggableContextCard } from "./DraggableContextCard";
 import { KanbanColumn } from "./KanbanColumn";
