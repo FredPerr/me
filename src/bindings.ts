@@ -60,6 +60,16 @@ export const commands = {
 	 *  pull request on the Git host of the repository's remote.
 	 */
 	gitHostingCreatePullRequest: (projectTag: string, repositoryId: string, input: NewPullRequestInput) => __TAURI_INVOKE<CreatedPullRequestView>("git_hosting_create_pull_request", { projectTag, repositoryId, input }),
+	/**
+	 *  The current settings, falling back to the defaults when none are stored or
+	 *  the store cannot be read.
+	 */
+	settingsGet: () => __TAURI_INVOKE<AppSettingsView>("settings_get"),
+	/**
+	 *  Sets whether "Assign me to these tasks" is checked by default and returns
+	 *  the updated settings.
+	 */
+	settingsSetAssignMeToTasks: (value: boolean) => __TAURI_INVOKE<AppSettingsView>("settings_set_assign_me_to_tasks", { value }),
 };
 
 /** Events */
@@ -74,6 +84,11 @@ export type AgentToolView = { tool: "kiro"; conversationId: string | null };
 export type AgentWorkView = {
 	prompt: string | null,
 	tool: AgentToolView,
+};
+
+/**  The app-wide settings on the wire. */
+export type AppSettingsView = {
+	assignMeToTasks: boolean,
 };
 
 /**  How the new context gets its branch in one repository. */
@@ -345,6 +360,17 @@ export type RepositoryView = {
 	/**  The repository's folder: its main checkout. */
 	path: string,
 };
+
+/**
+ *  A failed Settings command on the wire. `message` is a fixed English sentence
+ *  per kind.
+ */
+export type SettingsCommandError = {
+	kind: SettingsErrorKind,
+	message: string,
+};
+
+export type SettingsErrorKind = "storage";
 
 export type SignInProgressView = { status: "authorized" } | { status: "pending" } | { status: "slowDown"; intervalSeconds: number } | { status: "expired" } | { status: "denied" };
 
