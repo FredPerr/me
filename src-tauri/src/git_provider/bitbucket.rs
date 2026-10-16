@@ -7,7 +7,7 @@
 //! Two auth styles are used depending on the channel:
 //! - REST API calls here authenticate with `Authorization: Bearer <api_token>`,
 //!   which API tokens support and which needs no accompanying identifier.
-//! - `git` over HTTPS (in [`super::git_auth`]) uses HTTP Basic with
+//! - `git` over HTTPS (in `git_hosting`) uses HTTP Basic with
 //!   `username:api_token`, since git has no bearer concept.
 //!
 //! The credential is stored in the OS keychain as a single `username:token`
@@ -22,6 +22,7 @@ use serde::{Deserialize, Serialize};
 
 use super::token_store;
 use super::PROVIDER_BITBUCKET;
+use crate::git_hosting::domain::host_secret::HostSecret;
 
 const BITBUCKET_API_BASE: &str = "https://api.bitbucket.org/2.0";
 const USER_AGENT: &str = "me-app";
@@ -33,23 +34,16 @@ fn http_client() -> Result<reqwest::Client, String> {
         .map_err(|error| error.to_string())
 }
 
-/// Split a stored `username:token` credential into its two parts. The token may
-/// itself contain colons, so we split only on the first one.
-fn split_credential(credential: &str) -> Result<(String, String), String> {
-    match credential.split_once(':') {
-        Some((username, token)) if !username.is_empty() && !token.is_empty() => {
-            Ok((username.to_string(), token.to_string()))
-        }
-        _ => Err("Stored Bitbucket credential is malformed".to_string()),
-    }
-}
-
 /// Read the stored credential and return its (username, token) parts, or an
 /// error when the account is not connected.
 fn require_credential() -> Result<(String, String), String> {
     let credential = token_store::read_token(PROVIDER_BITBUCKET)?
         .ok_or_else(|| "Not authenticated".to_string())?;
-    split_credential(&credential)
+    let secret = HostSecret::new(credential);
+    let parts = secret
+        .bitbucket_credential()
+        .map_err(|_| "Stored Bitbucket credential is malformed".to_string())?;
+    Ok((parts.username.to_string(), parts.token.to_string()))
 }
 
 /// Read just the API token for REST calls (which use Bearer auth), or an error
@@ -563,34 +557,4 @@ pub async fn bitbucket_is_connected() -> Result<bool, String> {
 #[tauri::command]
 pub async fn bitbucket_disconnect() -> Result<(), String> {
     token_store::delete_token(PROVIDER_BITBUCKET)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn splits_credential_into_username_and_token() {
-        let (username, token) = split_credential("alice:app-pw").unwrap();
-        assert_eq!(username, "alice");
-        assert_eq!(token, "app-pw");
-    }
-
-    #[test]
-    fn splits_only_on_the_first_colon() {
-        let (username, token) = split_credential("alice:tok:en:with:colons").unwrap();
-        assert_eq!(username, "alice");
-        assert_eq!(token, "tok:en:with:colons");
-    }
-
-    #[test]
-    fn rejects_credential_without_a_colon() {
-        assert!(split_credential("no-colon").is_err());
-    }
-
-    #[test]
-    fn rejects_credential_with_empty_parts() {
-        assert!(split_credential(":token").is_err());
-        assert!(split_credential("username:").is_err());
-    }
 }
