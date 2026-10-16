@@ -259,15 +259,18 @@ export const en = {
 				createDraft: "Create draft pull request",
 				createAsDraft: "Create as draft",
 				viewPr: "View PR #{{number}}",
+				noRemote: "This repository has no remote, so a pull request cannot be created here.",
 				unsupportedRemote:
-					"This repository has no GitHub or Bitbucket remote, so a pull request cannot be created here.",
+					"This repository's remote is not on GitHub or Bitbucket, so a pull request cannot be created here.",
+				notConnected:
+					"Sign in to {{host}} in Settings → Integrations to create a pull request here.",
+				unknownGitHost: "its Git host",
 				noBaseBranch:
 					"No base branch found in the base context, so there is nothing to open the pull request against.",
 				sameBranch:
 					'The context branch "{{branch}}" is also the base branch, so there is nothing to compare. Pick a different base.',
 				missingTitle: "Title required",
 				missingTitleMessage: "Add a title before creating the pull request.",
-				pushFailed: "Could not push the branch",
 				createdTitle: "Pull request created",
 				createdMessage: "Opened pull request #{{number}}.",
 				createFailed: "Could not create the pull request",
