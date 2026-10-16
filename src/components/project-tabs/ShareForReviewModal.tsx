@@ -25,11 +25,18 @@ import {
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { ProjectView } from "@/bindings";
-import { ProviderBadge } from "@/components/shared/ProviderBadge";
+import { GitHostBadge } from "@/components/shared/GitHostBadge";
+import { PullRequestsNotices } from "@/components/shared/PullRequestsNotices";
+import { useProjectPullRequests } from "@/hooks/gitHosting/useProjectPullRequests";
+import { describeError } from "@/infra/commandError";
+import {
+	labeledByRepositoryName,
+	pullRequestsNotices,
+} from "@/models/git-hosting/repositoryPullRequests";
 import {
 	type ReviewPullRequest,
-	useProjectReviewPullRequests,
-} from "@/hooks/useProjectReviewPullRequests";
+	reviewPullRequests,
+} from "@/models/review-share/ReviewPullRequests";
 import {
 	inferDependencies,
 	moveItem,
@@ -44,14 +51,16 @@ type ShareForReviewModalProps = {
 	project: ProjectView;
 };
 
-function itemId(pullRequest: ReviewPullRequest): string {
-	return String(pullRequest.number);
-}
-
 export function ShareForReviewModal({ opened, onClose, project }: ShareForReviewModalProps) {
 	const { t } = useTranslation();
 	const clipboard = useClipboard({ timeout: 1500 });
-	const { connected, loading, pullRequests, error } = useProjectReviewPullRequests(project);
+	const projectPullRequests = useProjectPullRequests(project.tag);
+	const repositories = projectPullRequests.data;
+	const pullRequests = useMemo(() => reviewPullRequests(repositories ?? []), [repositories]);
+	const notices = useMemo(
+		() => pullRequestsNotices(labeledByRepositoryName(repositories ?? [])),
+		[repositories],
+	);
 
 	// Selection state: the ordered list of included PR ids, and per-PR manual
 	// dependency overrides. An entry of `undefined` means "use the dependencies
@@ -62,7 +71,7 @@ export function ShareForReviewModal({ opened, onClose, project }: ShareForReview
 	const pullRequestById = useMemo(() => {
 		const map = new Map<string, ReviewPullRequest>();
 		for (const pullRequest of pullRequests) {
-			map.set(itemId(pullRequest), pullRequest);
+			map.set(pullRequest.id, pullRequest);
 		}
 		return map;
 	}, [pullRequests]);
@@ -74,7 +83,7 @@ export function ShareForReviewModal({ opened, onClose, project }: ShareForReview
 		() =>
 			inferDependencies(
 				pullRequests.map((pullRequest) => ({
-					id: itemId(pullRequest),
+					id: pullRequest.id,
 					headBranch: pullRequest.headBranch,
 					baseBranch: pullRequest.baseBranch,
 				})),
@@ -142,7 +151,7 @@ export function ShareForReviewModal({ opened, onClose, project }: ShareForReview
 						id,
 						number: pullRequest.number,
 						title: pullRequest.title,
-						url: pullRequest.htmlUrl,
+						url: pullRequest.url,
 						dependsOn: effectiveDependencies[id] ?? [],
 					},
 				];
@@ -171,7 +180,7 @@ export function ShareForReviewModal({ opened, onClose, project }: ShareForReview
 	}
 
 	function renderBody() {
-		if (loading) {
+		if (projectPullRequests.isPending) {
 			return (
 				<Group justify="center" py="lg">
 					<Loader size="sm" />
@@ -179,17 +188,13 @@ export function ShareForReviewModal({ opened, onClose, project }: ShareForReview
 			);
 		}
 
-		if (!connected) {
-			return <Text size="sm">{t("review.notConnected")}</Text>;
-		}
-
-		if (error) {
+		if (projectPullRequests.isError) {
 			return (
 				<Alert color="red" title={t("common.error")}>
 					<Stack gap={4}>
 						<Text size="sm">{t("review.loadError")}</Text>
 						<Text size="xs" c="dimmed" style={{ wordBreak: "break-word" }}>
-							{error}
+							{describeError(projectPullRequests.error)}
 						</Text>
 					</Stack>
 				</Alert>
@@ -197,18 +202,24 @@ export function ShareForReviewModal({ opened, onClose, project }: ShareForReview
 		}
 
 		if (pullRequests.length === 0) {
-			return <Text size="sm">{t("review.noPullRequests")}</Text>;
+			return (
+				<Stack gap="md">
+					<PullRequestsNotices notices={notices} />
+					<Text size="sm">{t("review.noPullRequests")}</Text>
+				</Stack>
+			);
 		}
 
 		return (
 			<Stack gap="md">
+				<PullRequestsNotices notices={notices} />
 				<Text size="sm" c="dimmed">
 					{t("review.description")}
 				</Text>
 
 				<Stack gap="xs">
 					{pullRequests.map((pullRequest) => {
-						const id = itemId(pullRequest);
+						const id = pullRequest.id;
 						const included = orderedIds.includes(id);
 						const position = orderedIds.indexOf(id);
 						return (
@@ -230,7 +241,7 @@ export function ShareForReviewModal({ opened, onClose, project }: ShareForReview
 												<Badge size="sm" variant="light">
 													{pullRequest.repositoryName}
 												</Badge>
-												<ProviderBadge providerId={pullRequest.providerId} />
+												{pullRequest.host && <GitHostBadge host={pullRequest.host} />}
 											</Group>
 										}
 									/>

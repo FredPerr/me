@@ -28,7 +28,7 @@ import {
 import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { ContextView, ProjectView } from "@/bindings";
-import { useContextPullRequestStatus } from "@/hooks/useContextPullRequestStatus";
+import { useContextPullRequests } from "@/hooks/gitHosting/useContextPullRequests";
 import { useKiroPromptDrafts } from "@/hooks/useKiroPromptDrafts";
 import { useSetContextStatus } from "@/hooks/workspace/useContextMutations";
 import type { KiroConversation } from "@/models/ai-session/KiroConversation";
@@ -89,7 +89,7 @@ export function FlowBoard({
 	const { contexts } = project;
 	const { mutate: setContextStatus } = useSetContextStatus(project.tag);
 	const [activeId, setActiveId] = useState<string | null>(null);
-	const { lookup: pullRequestLookup } = useContextPullRequestStatus(project);
+	const { lookup: pullRequestLookup } = useContextPullRequests(project.tag);
 	const [openKiroContextId, setOpenKiroContextId] = useState<string | null>(null);
 	const { promptFor, changePrompt, keepPrompt } = useKiroPromptDrafts(project.tag);
 	const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));

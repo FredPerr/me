@@ -86,7 +86,8 @@ pub trait GitRepository {
     /// Fetches `name` from `origin` into a local branch of the same name. Does
     /// nothing when the local branch already exists.
     fn fetch_branch(&self, name: &BranchName) -> Result<(), GitError>;
-    /// Pushes the current branch to its upstream; returns git's report.
+    /// Pushes the current branch to its upstream; returns git's report. A
+    /// branch without one is published to `origin` and tracks it from then on.
     fn push(&self) -> Result<String, GitError>;
     /// Fast-forwards the current branch to its upstream; returns git's report.
     fn pull(&self) -> Result<String, GitError>;
@@ -103,4 +104,11 @@ pub struct RemoteAuth {
 /// Credentials for network operations on a remote.
 pub trait RemoteCredentials: Send + Sync {
     fn for_remote(&self, remote_url: &RemoteUrl) -> Option<RemoteAuth>;
+}
+
+/// Told about each branch the user pushed, e.g. so what is known about the
+/// branch on its Git host is read again.
+pub trait BranchPushListener: Send + Sync {
+    /// `remote` is the repository's `origin`.
+    fn branch_pushed(&self, remote: &RemoteUrl, branch: &BranchName);
 }

@@ -578,13 +578,32 @@ fn push_sends_commits_to_the_upstream() {
 }
 
 #[test]
-fn push_and_pull_need_an_upstream() {
+fn pull_needs_an_upstream() {
     let fixture = Fixture::new();
     git(&fixture.main_checkout, &["checkout", "-b", FEATURE]);
-    let repository = fixture.main_repository();
 
-    assert_eq!(repository.push(), Err(GitError::NoUpstream));
-    assert_eq!(repository.pull(), Err(GitError::NoUpstream));
+    assert_eq!(fixture.main_repository().pull(), Err(GitError::NoUpstream));
+}
+
+#[test]
+fn pushing_a_branch_without_upstream_publishes_it_to_origin() {
+    let fixture = Fixture::new();
+    git(&fixture.main_checkout, &["checkout", "-b", FEATURE]);
+    commit_file(&fixture.main_checkout, LOGIN_FILE, "login\n");
+
+    fixture.main_repository().push().unwrap();
+
+    assert_eq!(
+        git(&fixture.remote, &["rev-parse", FEATURE]),
+        git(&fixture.main_checkout, &["rev-parse", FEATURE])
+    );
+    assert_eq!(
+        git(
+            &fixture.main_checkout,
+            &["rev-parse", "--abbrev-ref", "@{upstream}"]
+        ),
+        format!("origin/{FEATURE}")
+    );
 }
 
 #[test]

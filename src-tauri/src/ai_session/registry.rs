@@ -15,8 +15,7 @@ use serde::Serialize;
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-/// The lifecycle state of a session, surfaced to the frontend as a tagged union
-/// (mirrors the `DevicePollResult` pattern in `git_provider::github`).
+/// The lifecycle state of a session, surfaced to the frontend as a tagged union.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum SessionStatus {

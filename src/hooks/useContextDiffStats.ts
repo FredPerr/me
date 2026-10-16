@@ -2,11 +2,9 @@ import { useEffect, useState } from "react";
 import { type ContextView, commands, type ProjectView, type WorktreeStatusView } from "@/bindings";
 import { findBaseContext, findContextBranch } from "@/models/projectView";
 
-export type RepositoryDiffStats = Omit<WorktreeStatusView, "prUrl">;
-
 export function useContextDiffStats(context: ContextView, project: ProjectView) {
 	const [statsByRepository, setStatsByRepository] = useState<
-		Record<string, RepositoryDiffStats | null>
+		Record<string, WorktreeStatusView | null>
 	>({});
 	const baseContext = findBaseContext(project, context);
 	const hasBaseContext = baseContext !== undefined;
@@ -17,7 +15,7 @@ export function useContextDiffStats(context: ContextView, project: ProjectView) 
 		let cancelled = false;
 
 		async function fetchStats(base: ContextView) {
-			const results: Record<string, RepositoryDiffStats | null> = {};
+			const results: Record<string, WorktreeStatusView | null> = {};
 
 			for (const branch of context.branches) {
 				const baseBranch = findContextBranch(base, branch.repositoryId)?.branch;
@@ -26,11 +24,10 @@ export function useContextDiffStats(context: ContextView, project: ProjectView) 
 					continue;
 				}
 				try {
-					const { prUrl: _prUrl, ...stats } = await commands.getWorktreeStatus(
+					results[branch.repositoryId] = await commands.getWorktreeStatus(
 						branch.worktreePath,
 						baseBranch,
 					);
-					results[branch.repositoryId] = stats;
 				} catch {
 					results[branch.repositoryId] = null;
 				}

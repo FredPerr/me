@@ -1,13 +1,17 @@
+use std::sync::Arc;
+
 use tauri::Manager;
 
 mod ai_session;
 mod binary_resolver;
+mod composition;
 mod git;
-mod git_provider;
+mod git_hosting;
 mod ide_launcher;
 mod pull_request_template;
 mod secret_store;
 mod shortcuts;
+mod storage;
 mod work_tracking;
 mod workspace;
 mod workspace_detector;
@@ -59,6 +63,14 @@ const TYPED_COMMANDS: &[&str] = &[
     "workspace_add_project",
     "workspace_delete_project",
     "workspace_suggest_branch_name",
+    "git_hosting_list_accounts",
+    "git_hosting_start_sign_in",
+    "git_hosting_poll_sign_in",
+    "git_hosting_sign_in_with_token",
+    "git_hosting_sign_out",
+    "git_hosting_project_pull_requests",
+    "git_hosting_context_pull_requests",
+    "git_hosting_create_pull_request",
 ];
 
 /// The typed commands, exported with their types to `src/bindings.ts`.
@@ -93,9 +105,18 @@ fn typed_commands() -> tauri_specta::Builder<tauri::Wry> {
             workspace::commands::workspace_add_project,
             workspace::commands::workspace_delete_project,
             workspace::commands::workspace_suggest_branch_name,
+            git_hosting::commands::git_hosting_list_accounts,
+            git_hosting::commands::git_hosting_start_sign_in,
+            git_hosting::commands::git_hosting_poll_sign_in,
+            git_hosting::commands::git_hosting_sign_in_with_token,
+            git_hosting::commands::git_hosting_sign_out,
+            git_hosting::commands::git_hosting_project_pull_requests,
+            git_hosting::commands::git_hosting_context_pull_requests,
+            git_hosting::commands::git_hosting_create_pull_request,
         ])
         .events(tauri_specta::collect_events![
-            workspace::infra::tauri_project_events::ProjectChanged
+            workspace::infra::tauri_project_events::ProjectChanged,
+            git_hosting::infra::tauri_git_hosting_events::GitHostingChanged
         ])
 }
 
@@ -108,21 +129,6 @@ pub fn run() {
         greet,
         open_in_ide,
         check_path_exists,
-        git_provider::github::github_start_device_authorization,
-        git_provider::github::github_poll_for_access_token,
-        git_provider::github::github_get_authenticated_user,
-        git_provider::github::github_list_repositories,
-        git_provider::github::github_list_pull_requests,
-        git_provider::github::github_create_pull_request,
-        git_provider::github::github_is_connected,
-        git_provider::github::github_disconnect,
-        git_provider::bitbucket::bitbucket_connect_with_token,
-        git_provider::bitbucket::bitbucket_get_authenticated_user,
-        git_provider::bitbucket::bitbucket_list_repositories,
-        git_provider::bitbucket::bitbucket_list_pull_requests,
-        git_provider::bitbucket::bitbucket_create_pull_request,
-        git_provider::bitbucket::bitbucket_is_connected,
-        git_provider::bitbucket::bitbucket_disconnect,
         work_tracking::commands::work_tracking_list_connections,
         work_tracking::commands::work_tracking_save_connection,
         work_tracking::commands::work_tracking_remove_connection,
@@ -169,13 +175,34 @@ pub fn run() {
             typed_builder.mount_events(app);
             tauri::Manager::manage(app, work_tracking::build_service(app.handle().clone()));
             app.manage(ai_session::registry::SessionRegistry::new());
-            let git = git::build();
+            let database = storage::open(&app.path().app_data_dir()?)?;
+            let git = git::build(git_hosting::remote_credentials());
             let workspace = workspace::build(
                 app.handle().clone(),
-                &app.path().app_data_dir()?,
+                Arc::clone(&database),
                 git.repositories(),
             )?;
+            let project_remotes =
+                composition::workspace_project_remotes::WorkspaceProjectRemotes::new(
+                    Arc::clone(&workspace.service),
+                    git.repositories(),
+                );
+            let worktree_pushes =
+                composition::git_worktree_pushes::GitWorktreePushes::new(git.repositories());
+            let git_hosting = git_hosting::build(
+                app.handle().clone(),
+                database,
+                Arc::new(project_remotes),
+                Arc::new(worktree_pushes),
+            )?;
+            let push_listener = git::PushListener::new(Arc::new(
+                composition::git_hosting_push_listener::GitHostingPushListener::new(Arc::clone(
+                    &git_hosting.service,
+                )),
+            ));
             app.manage(git);
+            app.manage(push_listener);
+            app.manage(git_hosting);
             app.manage(workspace);
             shortcuts::register(app.handle())?;
             Ok(())

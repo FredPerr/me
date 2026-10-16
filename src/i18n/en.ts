@@ -63,19 +63,19 @@ export const en = {
 				savedMessage: "Your settings have been saved successfully.",
 				saveError: "Failed to save settings.",
 			},
-			gitProvider: {
+			gitHosting: {
 				title: "Connected accounts",
-				description: "Connect a git provider to perform operations on your repositories from Me.",
+				description: "Connect a Git host to perform operations on your repositories from Me.",
 				github: "GitHub",
 				bitbucket: "Bitbucket",
 				notConnected: "Not connected",
 				connect: "Connect",
-				connectError: "Could not connect to the provider. Please try again.",
 				connectedAs: "Connected as {{login}}",
+				connectedWithoutAccount: "Connected. The account could not be loaded yet.",
+				loadError: "Could not load the connected accounts",
 				disconnect: "Disconnect",
 				disconnectedTitle: "Account disconnected",
-				disconnectedMessage: "Your {{provider}} account has been disconnected.",
-				disconnectError: "Failed to disconnect the account.",
+				disconnectedMessage: "Your {{host}} account has been disconnected.",
 				deviceInstructions:
 					"Enter this code on GitHub to authorize Me, then keep this window open.",
 				copyCode: "Copy code",
@@ -90,8 +90,6 @@ export const en = {
 				usernamePlaceholder: "your-bitbucket-username",
 				tokenLabel: "API token",
 				tokenPlaceholder: "API token",
-				tokenConnectError:
-					"Could not connect to Bitbucket. Check your username and API token, then try again.",
 			},
 			projects: {
 				title: "Projects",
@@ -200,8 +198,7 @@ export const en = {
 			selectPullRequest: "Select an open pull request",
 			noOpenPullRequests: "No open pull requests",
 			pullRequestBaseBranch: "Base: {{base}}",
-			pullRequestsNotConnected: "Connect a GitHub account in Settings to load pull requests.",
-			pullRequestsLoadError: "Could not load pull requests from GitHub.",
+			pullRequestsLoadError: "Could not load pull requests.",
 			bulk: {
 				button: "Bulk create",
 				title: "Bulk create contexts",
@@ -261,15 +258,18 @@ export const en = {
 				createDraft: "Create draft pull request",
 				createAsDraft: "Create as draft",
 				viewPr: "View PR #{{number}}",
+				noRemote: "This repository has no remote, so a pull request cannot be created here.",
 				unsupportedRemote:
-					"This repository has no GitHub or Bitbucket remote, so a pull request cannot be created here.",
+					"This repository's remote is not on GitHub or Bitbucket, so a pull request cannot be created here.",
+				notConnected:
+					"Sign in to {{host}} in Settings → Integrations to create a pull request here.",
+				unknownGitHost: "its Git host",
 				noBaseBranch:
 					"No base branch found in the base context, so there is nothing to open the pull request against.",
 				sameBranch:
 					'The context branch "{{branch}}" is also the base branch, so there is nothing to compare. Pick a different base.',
 				missingTitle: "Title required",
 				missingTitleMessage: "Add a title before creating the pull request.",
-				pushFailed: "Could not push the branch",
 				createdTitle: "Pull request created",
 				createdMessage: "Opened pull request #{{number}}.",
 				createFailed: "Could not create the pull request",
@@ -337,8 +337,7 @@ export const en = {
 			title: "Share pull requests for review",
 			description:
 				"Select the pull requests to share, order them, and mark dependencies. The message orders dependencies before the PRs that depend on them.",
-			notConnected: "Connect a GitHub account in Settings to load pull requests.",
-			loadError: "Could not load pull requests from GitHub.",
+			loadError: "Could not load pull requests.",
 			noPullRequests: "No open pull requests for this project.",
 			dependsOn: "Depends on",
 			dependsOnPlaceholder: "Pick prerequisite PRs",
@@ -377,16 +376,23 @@ export const en = {
 			draftsTab: "Drafts",
 			noDrafts: "No draft pull requests yet.",
 			untitledDraft: "Untitled draft",
-			notConnectedTitle: "No git provider connected",
+			notConnectedTitle: "No Git host connected",
 			notConnectedDescription:
-				"Connect a git provider like GitHub or Bitbucket to view your active pull requests here.",
+				"Connect a Git host like GitHub or Bitbucket to view your active pull requests here.",
 			goToSettings: "Connect an account in Settings",
-			loadError: "Could not load pull requests from GitHub.",
+			loadError: "Could not load pull requests.",
 			noOpen: "No open pull requests across your projects.",
-			noOpenForRepo: "No open pull requests.",
 			draftBadge: "Draft",
 			unknownAuthor: "unknown",
 			prMeta: "#{{number}} by {{author}} · {{branch}}",
+			notices: {
+				notConnected:
+					"Sign in to {{host}} in Settings to see the pull requests of {{repositories}}.",
+				failedTitle: "Some pull requests could not be loaded",
+				failed: "{{repository}}: {{message}}",
+				truncated:
+					"List cut short for {{repositories}}: only the most recently updated pull requests are shown.",
+			},
 		},
 		workspace: {
 			changeFailed: "Could not save the change",

@@ -26,6 +26,9 @@ dist-ssr
 # Git worktrees created by the app
 .worktrees/
 
+# Agent scratch artifacts (handoffs, exploration notes, reports)
+.agents/
+
 # CI analysis artifacts
 dep-graph.json
 bottleneck-comment.md

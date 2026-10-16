@@ -9,7 +9,6 @@ pub mod commands;
 pub mod domain;
 pub mod infra;
 
-use std::path::Path;
 use std::sync::Arc;
 
 use application::service::WorkspaceService;
@@ -20,8 +19,6 @@ use infra::tauri_project_events::TauriProjectEvents;
 
 use crate::git::domain::ports::GitRepositories;
 
-const DATABASE_FILE: &str = "me.redb";
-
 /// The workspace service, held in Tauri state.
 pub struct Workspace {
     pub service: Arc<WorkspaceService>,
@@ -29,13 +26,10 @@ pub struct Workspace {
 
 pub fn build(
     app: tauri::AppHandle,
-    app_data_folder: &Path,
+    database: Arc<redb::Database>,
     git: Arc<dyn GitRepositories>,
 ) -> Result<Workspace, Box<dyn std::error::Error>> {
-    std::fs::create_dir_all(app_data_folder)?;
-    let projects: Arc<dyn ProjectRepository> = Arc::new(RedbProjectRepository::open(
-        app_data_folder.join(DATABASE_FILE),
-    )?);
+    let projects: Arc<dyn ProjectRepository> = Arc::new(RedbProjectRepository::new(database)?);
     let service = WorkspaceService::new(
         projects,
         git,

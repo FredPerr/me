@@ -1,5 +1,5 @@
 use std::fmt::Display;
-use std::path::Path;
+use std::sync::Arc;
 
 use redb::{Database, ReadableDatabase, ReadableTable, TableDefinition};
 
@@ -33,16 +33,15 @@ fn decode(tag: &str, bytes: &[u8]) -> Result<Project, UnreadableProject> {
     })
 }
 
-/// Projects in one redb database file. redb allows one write transaction at a
-/// time, so every write, and every `update` as a whole, is serialized.
+/// Projects in the shared redb database. redb allows one write transaction at
+/// a time, so every write, and every `update` as a whole, is serialized.
 pub struct RedbProjectRepository {
-    database: Database,
+    database: Arc<Database>,
 }
 
 impl RedbProjectRepository {
-    /// Opens the database file, creating it and its `projects` table when missing.
-    pub fn open(path: impl AsRef<Path>) -> Result<Self, StorageError> {
-        let database = Database::create(path).map_err(unavailable)?;
+    /// Uses the shared database, creating its `projects` table when missing.
+    pub fn new(database: Arc<Database>) -> Result<Self, StorageError> {
         let transaction = database.begin_write().map_err(unavailable)?;
         transaction
             .open_table(PROJECTS_TABLE)
@@ -143,15 +142,18 @@ mod tests {
     use tempfile::TempDir;
 
     use super::*;
+    use crate::storage;
     use crate::workspace::domain::test_support::{project_with, PROJECT_TAG};
     use crate::workspace::infra::project_repository_contract::{
         project_repository_contract_tests, project_tagged, project_with_contexts,
     };
 
-    const DATABASE_FILE: &str = "me.redb";
     const READABLE_TAG: &str = "readable";
     const CORRUPT_TAG: &str = "corrupt";
     const CORRUPT_BYTES: &[u8] = b"not a project";
+    const OTHER_TABLE: TableDefinition<&str, &str> = TableDefinition::new("other");
+    const OTHER_KEY: &str = "account";
+    const OTHER_VALUE: &str = "summary";
     const NEWER_OPTIONAL_FIELDS: [&str; 3] = ["icon", "remoteProjectLinks", "branchNaming"];
 
     struct TemporaryDatabase {
@@ -162,8 +164,7 @@ mod tests {
     impl TemporaryDatabase {
         fn new() -> Self {
             let directory = tempfile::tempdir().unwrap();
-            let repository =
-                RedbProjectRepository::open(directory.path().join(DATABASE_FILE)).unwrap();
+            let repository = repository_in(&directory);
             Self {
                 directory,
                 repository,
@@ -176,8 +177,7 @@ mod tests {
                 repository,
             } = self;
             drop(repository);
-            let repository =
-                RedbProjectRepository::open(directory.path().join(DATABASE_FILE)).unwrap();
+            let repository = repository_in(&directory);
             Self {
                 directory,
                 repository,
@@ -192,6 +192,10 @@ mod tests {
                 })
                 .unwrap();
         }
+    }
+
+    fn repository_in(directory: &TempDir) -> RedbProjectRepository {
+        RedbProjectRepository::new(storage::open(directory.path()).unwrap()).unwrap()
     }
 
     fn with_repository(test: fn(&dyn ProjectRepository)) {
@@ -213,6 +217,41 @@ mod tests {
             reopened.repository.find(project.tag()).unwrap(),
             Some(project)
         );
+    }
+
+    #[test]
+    fn two_repositories_on_one_database_share_the_projects() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = storage::open(directory.path()).unwrap();
+        let writer = RedbProjectRepository::new(Arc::clone(&database)).unwrap();
+        let reader = RedbProjectRepository::new(database).unwrap();
+        let project = project_with_contexts();
+
+        writer.save(&project).unwrap();
+
+        assert_eq!(reader.find(project.tag()).unwrap(), Some(project));
+    }
+
+    #[test]
+    fn another_table_in_the_same_database_leaves_the_projects_alone() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = storage::open(directory.path()).unwrap();
+        let repository = RedbProjectRepository::new(Arc::clone(&database)).unwrap();
+        let project = project_with_contexts();
+        repository.save(&project).unwrap();
+
+        let transaction = database.begin_write().unwrap();
+        transaction
+            .open_table(OTHER_TABLE)
+            .unwrap()
+            .insert(OTHER_KEY, OTHER_VALUE)
+            .unwrap();
+        transaction.commit().unwrap();
+
+        assert_eq!(repository.find(project.tag()).unwrap(), Some(project));
+        let transaction = database.begin_read().unwrap();
+        let table = transaction.open_table(OTHER_TABLE).unwrap();
+        assert_eq!(table.get(OTHER_KEY).unwrap().unwrap().value(), OTHER_VALUE);
     }
 
     #[test]

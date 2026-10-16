@@ -9,7 +9,7 @@ use super::domain::branch_name::BranchName;
 use super::domain::error::GitError;
 use super::domain::paths::{RepositoryPath, WorktreePath};
 use super::domain::ports::{Checkout, DiffStats, GitRepository, LocalBranch};
-use super::{run_blocking, Git};
+use super::{run_blocking, Git, PushListener};
 
 const MAIN_CHECKOUT_NAME: &str = "default";
 
@@ -93,7 +93,6 @@ pub struct WorktreeStatusView {
     pub files_renamed: u32,
     pub insertions: u32,
     pub deletions: u32,
-    pub pr_url: Option<String>,
 }
 
 #[derive(Serialize, specta::Type)]
@@ -153,7 +152,7 @@ impl From<Checkout> for WorktreeView {
 }
 
 impl WorktreeStatusView {
-    fn new(stats: DiffStats, pr_url: Option<String>) -> Self {
+    fn new(stats: DiffStats) -> Self {
         Self {
             files_added: saturate(stats.files_added),
             files_modified: saturate(stats.files_modified),
@@ -161,7 +160,6 @@ impl WorktreeStatusView {
             files_renamed: saturate(stats.files_renamed),
             insertions: saturate(stats.insertions),
             deletions: saturate(stats.deletions),
-            pr_url,
         }
     }
 }
@@ -188,12 +186,6 @@ fn readable_worktree_name(worktree_path: &str) -> String {
 
 fn open(git: &Git, path: &str) -> Result<Box<dyn GitRepository>, GitError> {
     git.repositories().open(&RepositoryPath::new(path))
-}
-
-/// The pull request compare page for the current branch, on GitHub only.
-fn github_compare_url(repository: &dyn GitRepository) -> Option<String> {
-    let branch = repository.current_branch()?;
-    repository.remote_url()?.github_compare_url(&branch)
 }
 
 /// The text of a failure, keeping git's own output when there is any.
@@ -258,10 +250,7 @@ pub async fn get_worktree_status(
         let repository = open(&git, &path)?;
         let base = base_branch.as_deref().map(BranchName::parse).transpose()?;
         let stats = repository.diff_stats_against(base.as_ref())?;
-        Ok(WorktreeStatusView::new(
-            stats,
-            github_compare_url(repository.as_ref()),
-        ))
+        Ok(WorktreeStatusView::new(stats))
     })
     .await
 }
@@ -354,30 +343,47 @@ pub async fn delete_worktree(
     .await
 }
 
+/// Pushes the checkout's current branch to its upstream.
 #[tauri::command]
 #[specta::specta]
 pub async fn push_worktree(
     git: State<'_, Git>,
+    push_listener: State<'_, PushListener>,
     path: String,
 ) -> Result<PushResult, GitCommandError> {
     let git = git.inner().clone();
-    run_blocking(move || {
-        let display_path = RepositoryPath::new(&path).display();
-        match open(&git, &path)?.push() {
-            Ok(report) => Ok(PushResult {
+    let push_listener = push_listener.inner().clone();
+    run_blocking(move || push_checkout(&git, &push_listener, &path)).await
+}
+
+/// Once the branch is pushed, `push_listener` hears about it.
+fn push_checkout(
+    git: &Git,
+    push_listener: &PushListener,
+    path: &str,
+) -> Result<PushResult, GitCommandError> {
+    let display_path = RepositoryPath::new(path).display();
+    let repository = open(git, path)?;
+    match repository.push() {
+        Ok(report) => {
+            if let (Some(remote), Some(branch)) =
+                (repository.remote_url(), repository.current_branch())
+            {
+                push_listener.0.branch_pushed(&remote, &branch);
+            }
+            Ok(PushResult {
                 path: display_path,
                 pushed: true,
                 message: Some(report),
-            }),
-            Err(skipped @ (GitError::NoRemote | GitError::NoUpstream)) => Ok(PushResult {
-                path: display_path,
-                pushed: false,
-                message: Some(skipped.to_string()),
-            }),
-            Err(error) => Err(error.into()),
+            })
         }
-    })
-    .await
+        Err(skipped @ (GitError::NoRemote | GitError::NoUpstream)) => Ok(PushResult {
+            path: display_path,
+            pushed: false,
+            message: Some(skipped.to_string()),
+        }),
+        Err(error) => Err(error.into()),
+    }
 }
 
 #[tauri::command]
@@ -539,6 +545,108 @@ mod tests {
         let json = serde_json::to_value(wire(GitError::NoUpstream)).unwrap();
         assert_eq!(json["kind"], "noUpstream");
         assert_eq!(json["message"], "No upstream branch (not pushed yet)");
+    }
+
+    mod push_checkout {
+        use std::sync::{Arc, Mutex};
+
+        use super::*;
+        use crate::git::domain::ports::{BranchPushListener, GitRepositories};
+        use crate::git::domain::remote_url::RemoteUrl;
+        use crate::git::infra::in_memory::InMemoryGitRepositories;
+
+        const API: &str = "/work/api";
+        const LOGIN_CHECKOUT: &str = "/work/.worktrees/login/api";
+        const MAIN: &str = "main";
+        const LOGIN_BRANCH: &str = "feature/login";
+        const ORIGIN_URL: &str = "git@github.com:acme/api.git";
+
+        #[derive(Default)]
+        struct RecordingPushListener {
+            pushed: Mutex<Vec<(String, String)>>,
+        }
+
+        impl BranchPushListener for RecordingPushListener {
+            fn branch_pushed(&self, remote: &RemoteUrl, branch: &BranchName) {
+                self.pushed
+                    .lock()
+                    .unwrap()
+                    .push((remote.as_str().to_string(), branch.to_string()));
+            }
+        }
+
+        fn branch(raw: &str) -> BranchName {
+            BranchName::parse(raw).unwrap()
+        }
+
+        struct Fixture {
+            repositories: Arc<InMemoryGitRepositories>,
+            listener: Arc<RecordingPushListener>,
+        }
+
+        impl Fixture {
+            /// api with a remote, and the login branch checked out at its worktree.
+            fn new() -> Self {
+                let repositories = Arc::new(InMemoryGitRepositories::new());
+                let api = RepositoryPath::new(API);
+                repositories.add_repository(&api, &branch(MAIN));
+                repositories.set_remote(&api, RemoteUrl::new(ORIGIN_URL));
+                let repository = repositories.open(&api).unwrap();
+                repository
+                    .create_branch(&branch(LOGIN_BRANCH), &branch(MAIN))
+                    .unwrap();
+                repository
+                    .add_worktree(&WorktreePath::new(LOGIN_CHECKOUT), &branch(LOGIN_BRANCH))
+                    .unwrap();
+                Self {
+                    repositories,
+                    listener: Arc::new(RecordingPushListener::default()),
+                }
+            }
+
+            fn publish_login(&self) {
+                let api = RepositoryPath::new(API);
+                self.repositories.publish(&api, &branch(LOGIN_BRANCH));
+                self.repositories.commit(&api, &branch(LOGIN_BRANCH));
+            }
+
+            fn push(&self) -> Result<PushResult, GitCommandError> {
+                let git = Git(self.repositories.clone());
+                let listener = PushListener::new(self.listener.clone());
+                push_checkout(&git, &listener, LOGIN_CHECKOUT)
+            }
+
+            fn heard(&self) -> Vec<(String, String)> {
+                self.listener.pushed.lock().unwrap().clone()
+            }
+        }
+
+        #[test]
+        fn tells_the_listener_about_the_pushed_branch() {
+            let fixture = Fixture::new();
+            fixture.publish_login();
+
+            let pushed = fixture.push().unwrap();
+
+            assert!(pushed.pushed);
+            assert_eq!(
+                fixture.heard(),
+                vec![(ORIGIN_URL.to_string(), LOGIN_BRANCH.to_string())]
+            );
+        }
+
+        #[test]
+        fn a_branch_without_upstream_is_published_and_heard() {
+            let fixture = Fixture::new();
+
+            let pushed = fixture.push().unwrap();
+
+            assert!(pushed.pushed);
+            assert_eq!(
+                fixture.heard(),
+                vec![(ORIGIN_URL.to_string(), LOGIN_BRANCH.to_string())]
+            );
+        }
     }
 
     #[test]

@@ -18,6 +18,7 @@ export const commands = {
 	deleteWorktree: (repoPath: string, worktreePath: string) => __TAURI_INVOKE<null>("delete_worktree", { repoPath, worktreePath }),
 	pruneWorktrees: (path: string) => __TAURI_INVOKE<null>("prune_worktrees", { path }),
 	pullWorktree: (path: string) => __TAURI_INVOKE<PullResult>("pull_worktree", { path }),
+	/**  Pushes the checkout's current branch to its upstream. */
 	pushWorktree: (path: string) => __TAURI_INVOKE<PushResult>("push_worktree", { path }),
 	fetchPrBranch: (path: string, branch: string) => __TAURI_INVOKE<null>("fetch_pr_branch", { path, branch }),
 	workspaceListProjects: () => __TAURI_INVOKE<ProjectListView>("workspace_list_projects"),
@@ -42,10 +43,28 @@ export const commands = {
 	workspaceDeleteProject: (projectTag: string) => __TAURI_INVOKE<null>("workspace_delete_project", { projectTag }),
 	/**  `prefix: null` asks for a name without prefix. */
 	workspaceSuggestBranchName: (projectTag: string, title: string, prefix: string | null) => __TAURI_INVOKE<string>("workspace_suggest_branch_name", { projectTag, title, prefix }),
+	gitHostingListAccounts: () => __TAURI_INVOKE<SignedInHostView[]>("git_hosting_list_accounts"),
+	gitHostingStartSignIn: (host: HostKindView) => __TAURI_INVOKE<BrowserSignInStepView>("git_hosting_start_sign_in", { host }),
+	gitHostingPollSignIn: (host: HostKindView, deviceCode: string) => __TAURI_INVOKE<SignInProgressView>("git_hosting_poll_sign_in", { host, deviceCode }),
+	gitHostingSignInWithToken: (host: HostKindView, username: string, token: string) => __TAURI_INVOKE<HostedAccountView>("git_hosting_sign_in_with_token", { host, username, token }),
+	gitHostingSignOut: (host: HostKindView) => __TAURI_INVOKE<null>("git_hosting_sign_out", { host }),
+	/**  The open pull requests of each repository of the Project, in its order. */
+	gitHostingProjectPullRequests: (projectTag: string) => __TAURI_INVOKE<RepositoryPullRequestsView[]>("git_hosting_project_pull_requests", { projectTag }),
+	/**
+	 *  The pull request of each branch the Project's contexts use, once per
+	 *  repository and branch: one call for the whole board.
+	 */
+	gitHostingContextPullRequests: (projectTag: string) => __TAURI_INVOKE<BranchPullRequestView[]>("git_hosting_context_pull_requests", { projectTag }),
+	/**
+	 *  Pushes the context branch `input.head` of the repository, then opens its
+	 *  pull request on the Git host of the repository's remote.
+	 */
+	gitHostingCreatePullRequest: (projectTag: string, repositoryId: string, input: NewPullRequestInput) => __TAURI_INVOKE<CreatedPullRequestView>("git_hosting_create_pull_request", { projectTag, repositoryId, input }),
 };
 
 /** Events */
 export const events = {
+	gitHostingChanged: makeEvent<GitHostingChanged>("git-hosting-changed"),
 	projectChanged: makeEvent<ProjectChanged>("project-changed"),
 };
 
@@ -69,6 +88,27 @@ export type BranchNamingView = {
 	prefixes: string[],
 	allowsNoPrefix: boolean,
 	defaultPrefix: string | null,
+};
+
+/**
+ *  What became of looking up the pull request of one context branch.
+ *  `pullRequest` is null when the branch has none.
+ */
+export type BranchPullRequestStatusView = { kind: "noRemote" } | { kind: "unsupportedHost" } | { kind: "notConnected" } | { kind: "failed"; error: GitHostingCommandError } | { kind: "ok"; pullRequest: HostedPullRequestView | null };
+
+export type BranchPullRequestView = {
+	repositoryId: string,
+	branch: string,
+	host: HostKindView | null,
+	status: BranchPullRequestStatusView,
+};
+
+export type BrowserSignInStepView = {
+	userCode: string,
+	verificationUrl: string,
+	deviceCode: string,
+	intervalSeconds: number,
+	expiresInSeconds: number,
 };
 
 export type ContextBranchView = {
@@ -117,6 +157,11 @@ export type CreateContextInput = {
 	branches: RepositoryBranchInput[],
 };
 
+export type CreatedPullRequestView = {
+	number: number,
+	url: string,
+};
+
 /**
  *  A failed git command on the wire. `message` is readable and may name local
  *  branches and repeat git's output: it only describes the user's own repositories.
@@ -129,6 +174,48 @@ export type GitCommandError = {
 /**  The kind of a git failure, as the frontend sees it. */
 export type GitErrorKind = "notARepository" | "invalidBranchName" | "branchNotFound" | "branchAlreadyExists" | "branchCheckedOut" | "noRemote" | "noUpstream" | "detachedHead" | "notFastForward" | "authenticationFailed" | "network" | "io" | "commandFailed";
 
+/**
+ *  Emitted as `git-hosting-changed` after signing in to or out of a Git host,
+ *  so every Git hosting view refetches.
+ */
+export type GitHostingChanged = {
+	host: HostKindView,
+};
+
+/**
+ *  A failed Git Hosting command on the wire. `message` is a fixed English
+ *  sentence per kind and never holds a response body or a secret.
+ */
+export type GitHostingCommandError = {
+	kind: GitHostingErrorKind,
+	message: string,
+	retryAfterSeconds: number | null,
+	status: number | null,
+};
+
+export type GitHostingErrorKind = "notConnected" | "invalidInput" | "unauthorized" | "forbidden" | "notFound" | "rateLimited" | "network" | "timeout" | "providerError" | "invalidResponse" | "storage" | "noRemote" | "unsupportedHost" | "pushSkipped" | "pushFailed";
+
+export type HostKindView = "github" | "bitbucket";
+
+export type HostedAccountView = {
+	host: HostKindView,
+	login: string,
+	name: string | null,
+	avatarUrl: string | null,
+};
+
+export type HostedPullRequestView = {
+	number: number,
+	title: string,
+	url: string,
+	author: string | null,
+	headBranch: string,
+	baseBranch: string,
+	draft: boolean,
+	state: PullRequestStateView,
+	updatedAt: string,
+};
+
 export type LocalBranchView = {
 	name: string,
 	isCurrent: boolean,
@@ -136,6 +223,15 @@ export type LocalBranchView = {
 	hasUpstream: boolean,
 	upstreamGone: boolean,
 	isMerged: boolean,
+};
+
+/**  A pull request to open from the context branch `head` into `base`. */
+export type NewPullRequestInput = {
+	title: string,
+	body: string,
+	head: string,
+	base: string,
+	draft: boolean,
 };
 
 /**
@@ -192,6 +288,14 @@ export type PullRequestDraftView = {
 	description: string,
 };
 
+export type PullRequestStateView = "open" | "merged" | "closed";
+
+/**
+ *  What became of loading one repository's open pull requests. `truncated`
+ *  says the list was cut short after the page limit.
+ */
+export type PullRequestsStatusView = { kind: "noRemote" } | { kind: "unsupportedHost" } | { kind: "notConnected" } | { kind: "failed"; error: GitHostingCommandError } | { kind: "ok"; pullRequests: HostedPullRequestView[]; truncated: boolean };
+
 export type PullResult = {
 	path: string,
 	pulled: boolean,
@@ -226,6 +330,13 @@ export type RepositoryInput = {
 	postCheckoutCommand: string | null,
 };
 
+export type RepositoryPullRequestsView = {
+	repositoryId: string,
+	repositoryName: string,
+	host: HostKindView | null,
+	status: PullRequestsStatusView,
+};
+
 export type RepositoryView = {
 	id: string,
 	name: string,
@@ -233,6 +344,17 @@ export type RepositoryView = {
 	postCheckoutCommand: string | null,
 	/**  The repository's folder: its main checkout. */
 	path: string,
+};
+
+export type SignInProgressView = { status: "authorized" } | { status: "pending" } | { status: "slowDown"; intervalSeconds: number } | { status: "expired" } | { status: "denied" };
+
+/**
+ *  A Git host with a stored secret. `account` is null when it could not be
+ *  fetched yet, e.g. while offline.
+ */
+export type SignedInHostView = {
+	host: HostKindView,
+	account: HostedAccountView | null,
 };
 
 export type UnreadableProjectView = {
@@ -263,7 +385,6 @@ export type WorktreeStatusView = {
 	filesRenamed: number,
 	insertions: number,
 	deletions: number,
-	prUrl: string | null,
 };
 
 export type WorktreeView = {
