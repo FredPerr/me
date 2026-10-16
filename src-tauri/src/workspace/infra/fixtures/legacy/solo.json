@@ -1,0 +1,21 @@
+{
+  "project": {
+    "name": "Solo",
+    "tag": "solo",
+    "path": "/Users/me/projects/solo",
+    "contexts": [
+      {
+        "id": "5d0c7f3e-0000-4000-8000-000000000001",
+        "name": "default",
+        "branches": [{ "repositoryId": "solo", "branch": "master" }],
+        "isDefault": true
+      },
+      {
+        "id": "5d0c7f3e-0000-4000-8000-000000000002",
+        "name": "Spike",
+        "branches": [{ "repositoryId": "solo", "branch": "spike" }],
+        "preprompt": "Try the new parser"
+      }
+    ]
+  }
+}

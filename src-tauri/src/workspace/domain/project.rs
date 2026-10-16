@@ -144,7 +144,23 @@ impl Project {
     /// Adds a context after checking its name, folder, base context and
     /// branches. A default context is only accepted while there is none, and
     /// is made idle and static.
-    pub fn add_context(mut self, context: Context) -> Result<Self, WorkspaceError> {
+    pub fn add_context(self, context: Context) -> Result<Self, WorkspaceError> {
+        if let Some(linked) = context.branches.iter().find(|branch| branch.is_linked()) {
+            return Err(WorkspaceError::LinkedRepositoryIsReadOnly {
+                repository: linked.repository.clone(),
+            });
+        }
+        self.add_checked_context(context)
+    }
+
+    // TEMPORARY(legacy import): remove with `infra::legacy_project_import`.
+    /// Adds a context read from an old project file, which may hold linked
+    /// repositories. Every other rule of `add_context` applies.
+    pub fn add_legacy_context(self, context: Context) -> Result<Self, WorkspaceError> {
+        self.add_checked_context(context)
+    }
+
+    fn add_checked_context(mut self, context: Context) -> Result<Self, WorkspaceError> {
         self.check_new_context(&context)?;
         let context = if context.is_default {
             Context {
@@ -202,11 +218,6 @@ impl Project {
                 .any(|earlier| earlier.repository == branch.repository)
             {
                 return Err(WorkspaceError::DuplicateContextBranch {
-                    repository: branch.repository.clone(),
-                });
-            }
-            if branch.is_linked() {
-                return Err(WorkspaceError::LinkedRepositoryIsReadOnly {
                     repository: branch.repository.clone(),
                 });
             }
@@ -583,6 +594,34 @@ mod tests {
                 project_with(vec![api()]).add_context(context),
                 Err(WorkspaceError::LinkedRepositoryIsReadOnly {
                     repository: repository_id(API_ID)
+                })
+            );
+        }
+
+        #[test]
+        fn accepts_a_linked_repository_from_an_old_project_file() {
+            let linked = ContextBranch {
+                checkout: ContextCheckout::Linked,
+                ..branch_on(API_ID, FEATURE_BRANCH)
+            };
+            let context = Context {
+                branches: vec![linked],
+                ..context_named(FEATURE_NAME)
+            };
+            let id = context.id.clone();
+            let project = project_with(vec![api()])
+                .add_legacy_context(context)
+                .unwrap();
+            assert!(project.find_context(&id).unwrap().branches[0].is_linked());
+        }
+
+        #[test]
+        fn refuses_a_duplicate_name_from_an_old_project_file() {
+            let (project, _) = project_with_feature();
+            assert_eq!(
+                project.add_legacy_context(context_named(FEATURE_NAME)),
+                Err(WorkspaceError::DuplicateContextName {
+                    name: FEATURE_NAME.to_string()
                 })
             );
         }
