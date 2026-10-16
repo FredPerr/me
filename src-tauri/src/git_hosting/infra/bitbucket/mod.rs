@@ -3,6 +3,7 @@
 mod adapter;
 mod client;
 mod mapping;
+mod new_pull_request_mapping;
 mod pull_request_mapping;
 mod wire;
 

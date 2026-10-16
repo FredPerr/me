@@ -5,8 +5,9 @@
 //! and Bitbucket adapters, the keychain, the redb account store, the system
 //! clock, the Tauri event adapter and the credentials handed to the `git`
 //! module. The repositories of a Project and the branches its contexts use
-//! come in as a `ProjectRemotes` built by the application setup, so this
-//! context never names `workspace`.
+//! come in as a `ProjectRemotes`, and pushing a branch as `WorktreePushes`,
+//! both built by the application setup, so this context never names
+//! `workspace`.
 
 pub mod application;
 pub mod commands;
@@ -18,7 +19,7 @@ use std::sync::Arc;
 use application::registry::GitHostRegistry;
 use application::service::GitHostingService;
 use domain::host_kind::HostKind;
-use domain::ports::ProjectRemotes;
+use domain::ports::{ProjectRemotes, WorktreePushes};
 use infra::host_token_credentials::HostTokenCredentials;
 use infra::keychain_host_tokens::KeychainHostTokens;
 use infra::redb_hosted_accounts::RedbHostedAccounts;
@@ -36,6 +37,7 @@ pub fn build(
     app: tauri::AppHandle,
     database: Arc<redb::Database>,
     project_remotes: Arc<dyn ProjectRemotes>,
+    worktree_pushes: Arc<dyn WorktreePushes>,
 ) -> Result<GitHosting, Box<dyn std::error::Error>> {
     let accounts = RedbHostedAccounts::new(database)
         .map_err(|_| "the Git hosting account table could not be opened")?;
@@ -51,6 +53,7 @@ pub fn build(
         Arc::new(accounts),
         Arc::new(TauriGitHostingEvents::new(app)),
         project_remotes,
+        worktree_pushes,
         Arc::new(SystemClock),
     );
     Ok(GitHosting {

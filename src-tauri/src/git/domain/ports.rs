@@ -104,3 +104,10 @@ pub struct RemoteAuth {
 pub trait RemoteCredentials: Send + Sync {
     fn for_remote(&self, remote_url: &RemoteUrl) -> Option<RemoteAuth>;
 }
+
+/// Told about each branch the user pushed, e.g. so what is known about the
+/// branch on its Git host is read again.
+pub trait BranchPushListener: Send + Sync {
+    /// `remote` is the repository's `origin`.
+    fn branch_pushed(&self, remote: &RemoteUrl, branch: &BranchName);
+}

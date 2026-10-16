@@ -1,13 +1,14 @@
 use async_trait::async_trait;
 
 use super::client::{BitbucketClient, API_BASE, USER_URL};
-use super::wire::{PullRequestPage, UserResponse};
-use super::{mapping, pull_request_mapping};
+use super::wire::{CreatedPullRequestResponse, PullRequestPage, UserResponse};
+use super::{mapping, new_pull_request_mapping, pull_request_mapping};
 use crate::git_hosting::domain::capped::Capped;
 use crate::git_hosting::domain::error::GitHostingError;
 use crate::git_hosting::domain::hosted_account::HostedAccount;
 use crate::git_hosting::domain::hosted_pull_request::HostedPullRequest;
 use crate::git_hosting::domain::hosted_repository::HostedRepository;
+use crate::git_hosting::domain::new_pull_request::{CreatedPullRequest, NewPullRequest};
 use crate::git_hosting::domain::ports::GitHost;
 use crate::git_hosting::infra::paging::{api_url, follow_pages, Page};
 
@@ -94,5 +95,33 @@ impl GitHost for BitbucketHost {
             .get_json(&url, "find_branch_pull_request")
             .await?;
         Ok(pull_request_mapping::branch_pull_request(page.values))
+    }
+
+    async fn create_pull_request(
+        &self,
+        repository: &HostedRepository,
+        pull_request: &NewPullRequest,
+    ) -> Result<CreatedPullRequest, GitHostingError> {
+        let url = api_url(
+            API_BASE,
+            &[
+                "repositories",
+                &repository.owner,
+                &repository.name,
+                "pullrequests",
+            ],
+            &[],
+        )?;
+        let created: CreatedPullRequestResponse = self
+            .client
+            .post_json(
+                &url,
+                &new_pull_request_mapping::create_pull_request_request(pull_request),
+                "create_pull_request",
+            )
+            .await?;
+        new_pull_request_mapping::created_pull_request(created).inspect_err(|_| {
+            eprintln!("[git_hosting] bitbucket create_pull_request answered without a web link");
+        })
     }
 }

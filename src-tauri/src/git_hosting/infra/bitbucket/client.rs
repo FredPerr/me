@@ -3,10 +3,11 @@
 
 use reqwest::header::ACCEPT;
 use serde::de::DeserializeOwned;
+use serde::Serialize;
 
 use super::mapping::status_error;
 use crate::git_hosting::domain::error::GitHostingError;
-use crate::git_hosting::infra::http;
+use crate::git_hosting::infra::http::{self, Answer};
 
 const HOST_LABEL: &str = "bitbucket";
 const JSON: &str = "application/json";
@@ -38,11 +39,29 @@ impl BitbucketClient {
             .get(url)
             .bearer_auth(&self.token)
             .header(ACCEPT, JSON);
-        let answer = http::send(request).await?;
-        if let Some(error) = status_error(answer.status, answer.header(RETRY_AFTER)) {
-            answer.log_failure(HOST_LABEL, context);
-            return Err(error);
-        }
-        http::decode(&answer, HOST_LABEL, context)
+        read(http::send(request).await?, context)
     }
+
+    pub async fn post_json<Body: Serialize, T: DeserializeOwned>(
+        &self,
+        url: &str,
+        body: &Body,
+        context: &str,
+    ) -> Result<T, GitHostingError> {
+        let request = self
+            .http
+            .post(url)
+            .bearer_auth(&self.token)
+            .header(ACCEPT, JSON)
+            .json(body);
+        read(http::send(request).await?, context)
+    }
+}
+
+fn read<T: DeserializeOwned>(answer: Answer, context: &str) -> Result<T, GitHostingError> {
+    if let Some(error) = status_error(answer.status, answer.header(RETRY_AFTER)) {
+        answer.log_failure(HOST_LABEL, context);
+        return Err(error);
+    }
+    http::decode(&answer, HOST_LABEL, context)
 }

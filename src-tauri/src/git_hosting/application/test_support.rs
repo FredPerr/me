@@ -16,11 +16,14 @@ use crate::git_hosting::domain::host_secret::HostSecret;
 use crate::git_hosting::domain::hosted_account::HostedAccount;
 use crate::git_hosting::domain::hosted_pull_request::{HostedPullRequest, PullRequestState};
 use crate::git_hosting::domain::hosted_repository::HostedRepository;
+use crate::git_hosting::domain::new_pull_request::{CreatedPullRequest, NewPullRequest};
 use crate::git_hosting::domain::ports::{
     BrowserSignIn, Clock, GitHost, GitHostingEvents, HostTokens, HostTokensUnavailable,
-    ProjectRemotes,
+    ProjectRemotes, PushFailure, WorktreePushes,
 };
-use crate::git_hosting::domain::project_pull_requests::ProjectRepositoryRemote;
+use crate::git_hosting::domain::project_pull_requests::{
+    ProjectRepositoryRemote, RepositoryBranchCheckout,
+};
 use crate::git_hosting::domain::sign_in::{BrowserSignInStep, SignInPoll};
 
 pub const GITHUB_LOGIN: &str = "octocat";
@@ -134,20 +137,46 @@ impl HostTokens for FakeHostTokens {
 /// The repository name and branch of a branch pull request lookup.
 pub type RepositoryBranch = (String, String);
 
+/// A push or a pull request creation, in the order they happened.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Step {
+    Pushed {
+        worktree_path: String,
+    },
+    Created {
+        repository_name: String,
+        pull_request: NewPullRequest,
+    },
+}
+
+/// Pushes and creations shared by a Git host script and a push fake.
+pub type Steps = Arc<Mutex<Vec<Step>>>;
+
+pub fn created_pull_request(number: u32) -> CreatedPullRequest {
+    CreatedPullRequest {
+        number,
+        url: format!("https://github.com/acme/api/pull/{number}"),
+    }
+}
+
 /// Scripted answers of one Git host, plus a log of the secrets its adapters
-/// were built with, of the account fetches and of the branch lookups. A
-/// repository without a scripted pull request answer has no open pull
-/// requests, and a branch without one has no pull request.
+/// were built with, of the account fetches, of the branch lookups and of the
+/// pull requests created. A repository without a scripted pull request answer
+/// has no open pull requests, and a branch without one has no pull request.
 pub struct HostScript {
     pub account_result: Result<HostedAccount, GitHostingError>,
     pub pull_requests_by_repository:
         HashMap<String, Result<Capped<HostedPullRequest>, GitHostingError>>,
     pub pull_request_by_branch:
         HashMap<RepositoryBranch, Result<Option<HostedPullRequest>, GitHostingError>>,
+    pub create_result: Result<CreatedPullRequest, GitHostingError>,
     pub created_with_secrets: Vec<String>,
     pub account_fetches: usize,
     pub branch_lookups: Vec<RepositoryBranch>,
+    pub steps: Steps,
 }
+
+pub const CREATED_NUMBER: u32 = 12;
 
 impl HostScript {
     pub fn shared(account_result: Result<HostedAccount, GitHostingError>) -> Arc<Mutex<Self>> {
@@ -155,9 +184,11 @@ impl HostScript {
             account_result,
             pull_requests_by_repository: HashMap::new(),
             pull_request_by_branch: HashMap::new(),
+            create_result: Ok(created_pull_request(CREATED_NUMBER)),
             created_with_secrets: Vec::new(),
             account_fetches: 0,
             branch_lookups: Vec::new(),
+            steps: Steps::default(),
         }))
     }
 
@@ -217,6 +248,48 @@ impl GitHost for ScriptedGitHost {
             .get(&repository_branch)
             .cloned()
             .unwrap_or(Ok(None))
+    }
+
+    async fn create_pull_request(
+        &self,
+        repository: &HostedRepository,
+        pull_request: &NewPullRequest,
+    ) -> Result<CreatedPullRequest, GitHostingError> {
+        let script = self.script.lock().unwrap();
+        script.steps.lock().unwrap().push(Step::Created {
+            repository_name: repository.name.clone(),
+            pull_request: pull_request.clone(),
+        });
+        script.create_result.clone()
+    }
+}
+
+/// Records each push in `steps`; every push fails with `failure` when set.
+#[derive(Default)]
+pub struct FakeWorktreePushes {
+    steps: Steps,
+    failure: Option<PushFailure>,
+}
+
+impl FakeWorktreePushes {
+    pub fn recording(steps: &Steps, failure: Option<PushFailure>) -> Self {
+        Self {
+            steps: Arc::clone(steps),
+            failure,
+        }
+    }
+}
+
+#[async_trait]
+impl WorktreePushes for FakeWorktreePushes {
+    async fn push(&self, worktree_path: &str) -> Result<(), PushFailure> {
+        if let Some(failure) = self.failure {
+            return Err(failure);
+        }
+        self.steps.lock().unwrap().push(Step::Pushed {
+            worktree_path: worktree_path.to_string(),
+        });
+        Ok(())
     }
 }
 
@@ -327,6 +400,34 @@ impl ProjectRemotes for FakeProjectRemotes {
             Err(GitHostingError::NotFound)
         }
     }
+
+    /// The checkout of a context branch is at [`worktree_path_of`].
+    async fn branch_checkout(
+        &self,
+        project_tag: &str,
+        repository_id: &str,
+        branch: &str,
+    ) -> Result<RepositoryBranchCheckout, GitHostingError> {
+        self.repositories(project_tag)
+            .await?
+            .into_iter()
+            .find(|repository| {
+                repository.repository_id == repository_id
+                    && repository
+                        .context_branches
+                        .iter()
+                        .any(|context_branch| context_branch == branch)
+            })
+            .map(|repository| RepositoryBranchCheckout {
+                worktree_path: worktree_path_of(&repository.repository_name, branch),
+                remote: repository.remote,
+            })
+            .ok_or(GitHostingError::NotFound)
+    }
+}
+
+pub fn worktree_path_of(repository_name: &str, branch: &str) -> String {
+    format!("/projects/acme/.worktrees/{branch}/{repository_name}")
 }
 
 /// A clock that only moves when told to.

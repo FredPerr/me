@@ -8,12 +8,17 @@ use async_trait::async_trait;
 
 use crate::git::domain::paths::RepositoryPath;
 use crate::git::domain::ports::GitRepositories;
+use crate::git::domain::remote_url::RemoteUrl;
 use crate::git_hosting::domain::error::GitHostingError;
 use crate::git_hosting::domain::ports::ProjectRemotes;
-use crate::git_hosting::domain::project_pull_requests::ProjectRepositoryRemote;
+use crate::git_hosting::domain::project_pull_requests::{
+    ProjectRepositoryRemote, RepositoryBranchCheckout,
+};
 use crate::workspace::application::error::WorkspaceServiceError;
 use crate::workspace::application::service::WorkspaceService;
+use crate::workspace::domain::project::Project;
 use crate::workspace::domain::project_tag::ProjectTag;
+use crate::workspace::domain::repository::Repository;
 
 #[derive(Clone)]
 pub struct WorkspaceProjectRemotes {
@@ -26,21 +31,15 @@ impl WorkspaceProjectRemotes {
         Self { workspace, git }
     }
 
-    /// A repository that cannot be opened has no remote to list.
     fn read(&self, project_tag: &str) -> Result<Vec<ProjectRepositoryRemote>, GitHostingError> {
-        let tag = ProjectTag::parse(project_tag).map_err(|_| GitHostingError::NotFound)?;
-        let project = self.workspace.find_project(&tag).map_err(project_error)?;
+        let project = self.project(project_tag)?;
         Ok(project
             .effective_repositories()
             .iter()
             .map(|repository| ProjectRepositoryRemote {
                 repository_id: repository.id.as_str().to_string(),
                 repository_name: repository.name.clone(),
-                remote: self
-                    .git
-                    .open(&RepositoryPath::new(project.repository_path(repository)))
-                    .ok()
-                    .and_then(|opened| opened.remote_url()),
+                remote: self.remote_of(&project, repository),
                 context_branches: project
                     .contexts()
                     .iter()
@@ -49,6 +48,62 @@ impl WorkspaceProjectRemotes {
                     .collect(),
             })
             .collect())
+    }
+
+    fn read_branch_checkout(
+        &self,
+        project_tag: &str,
+        repository_id: &str,
+        branch: &str,
+    ) -> Result<RepositoryBranchCheckout, GitHostingError> {
+        let project = self.project(project_tag)?;
+        let repository = project
+            .effective_repositories()
+            .iter()
+            .find(|repository| repository.id.as_str() == repository_id)
+            .cloned()
+            .ok_or(GitHostingError::NotFound)?;
+        let worktree_path = project
+            .contexts()
+            .iter()
+            .find(|context| {
+                context
+                    .branch_for(&repository.id)
+                    .is_some_and(|context_branch| context_branch.branch.as_str() == branch)
+            })
+            .map(|context| project.worktree_path(context, &repository))
+            .ok_or(GitHostingError::NotFound)?;
+        Ok(RepositoryBranchCheckout {
+            remote: self.remote_of(&project, &repository),
+            worktree_path,
+        })
+    }
+
+    fn project(&self, project_tag: &str) -> Result<Project, GitHostingError> {
+        let tag = ProjectTag::parse(project_tag).map_err(|_| GitHostingError::NotFound)?;
+        self.workspace.find_project(&tag).map_err(project_error)
+    }
+
+    /// A repository that cannot be opened has no remote.
+    fn remote_of(&self, project: &Project, repository: &Repository) -> Option<RemoteUrl> {
+        self.git
+            .open(&RepositoryPath::new(project.repository_path(repository)))
+            .ok()
+            .and_then(|opened| opened.remote_url())
+    }
+
+    /// Runs `read` off the async runtime: the Workspace and git read from disk.
+    async fn read_blocking<T: Send + 'static>(
+        &self,
+        read: impl FnOnce(Self) -> Result<T, GitHostingError> + Send + 'static,
+    ) -> Result<T, GitHostingError> {
+        let project_remotes = self.clone();
+        tauri::async_runtime::spawn_blocking(move || read(project_remotes))
+            .await
+            .map_err(|error| {
+                eprintln!("[git_hosting] project repositories task failed: {error}");
+                GitHostingError::Storage
+            })?
     }
 }
 
@@ -68,14 +123,26 @@ impl ProjectRemotes for WorkspaceProjectRemotes {
         &self,
         project_tag: &str,
     ) -> Result<Vec<ProjectRepositoryRemote>, GitHostingError> {
-        let project_remotes = self.clone();
         let project_tag = project_tag.to_string();
-        tauri::async_runtime::spawn_blocking(move || project_remotes.read(&project_tag))
+        self.read_blocking(move |project_remotes| project_remotes.read(&project_tag))
             .await
-            .map_err(|error| {
-                eprintln!("[git_hosting] project repositories task failed: {error}");
-                GitHostingError::Storage
-            })?
+    }
+
+    async fn branch_checkout(
+        &self,
+        project_tag: &str,
+        repository_id: &str,
+        branch: &str,
+    ) -> Result<RepositoryBranchCheckout, GitHostingError> {
+        let (project_tag, repository_id, branch) = (
+            project_tag.to_string(),
+            repository_id.to_string(),
+            branch.to_string(),
+        );
+        self.read_blocking(move |project_remotes| {
+            project_remotes.read_branch_checkout(&project_tag, &repository_id, &branch)
+        })
+        .await
     }
 }
 
@@ -201,6 +268,55 @@ mod tests {
                 Err(GitHostingError::NotFound),
                 "{project_tag}"
             );
+        }
+    }
+
+    mod branch_checkout {
+        use super::*;
+
+        const UNKNOWN_REPOSITORY_ID: &str = "unknown-id";
+        const UNUSED_BRANCH: &str = "feature/unused";
+
+        #[tokio::test]
+        async fn finds_the_remote_and_worktree_of_a_context_branch() {
+            let checkout = project_remotes()
+                .branch_checkout(PROJECT_TAG, API_ID, SEARCH_BRANCH)
+                .await;
+
+            assert_eq!(
+                checkout,
+                Ok(RepositoryBranchCheckout {
+                    remote: Some(RemoteUrl::new(API_REMOTE)),
+                    worktree_path: format!("{PROJECT_PATH}/.worktrees/{SEARCH_CONTEXT}/{API_NAME}"),
+                })
+            );
+        }
+
+        #[tokio::test]
+        async fn a_repository_without_remote_has_none() {
+            let checkout = project_remotes()
+                .branch_checkout(PROJECT_TAG, WEB_ID, LOGIN_BRANCH)
+                .await;
+
+            assert_eq!(checkout.map(|checkout| checkout.remote), Ok(None));
+        }
+
+        #[tokio::test]
+        async fn an_unknown_project_repository_or_branch_is_not_found() {
+            for (project_tag, repository_id, branch) in [
+                (UNKNOWN_PROJECT_TAG, API_ID, LOGIN_BRANCH),
+                (PROJECT_TAG, UNKNOWN_REPOSITORY_ID, LOGIN_BRANCH),
+                (PROJECT_TAG, API_ID, UNUSED_BRANCH),
+                (PROJECT_TAG, DOCS_ID, LOGIN_BRANCH),
+            ] {
+                assert_eq!(
+                    project_remotes()
+                        .branch_checkout(project_tag, repository_id, branch)
+                        .await,
+                    Err(GitHostingError::NotFound),
+                    "{project_tag} {repository_id} {branch}"
+                );
+            }
         }
     }
 }

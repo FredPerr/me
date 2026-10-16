@@ -11,9 +11,10 @@ use crate::git_hosting::domain::host_kind::HostKind;
 use crate::git_hosting::domain::host_secret::HostSecret;
 use crate::git_hosting::domain::hosted_account::{HostedAccount, SignedInHost};
 use crate::git_hosting::domain::hosted_repository::HostedRepository;
+use crate::git_hosting::domain::new_pull_request::{CreatedPullRequest, NewPullRequest};
 use crate::git_hosting::domain::ports::{
     Clock, GitHost, GitHostingEvents, HostTokens, HostTokensUnavailable, HostedAccounts,
-    HostedAccountsUnavailable, ProjectRemotes,
+    HostedAccountsUnavailable, ProjectRemotes, PushFailure, WorktreePushes,
 };
 use crate::git_hosting::domain::project_pull_requests::{
     BranchPullRequest, BranchPullRequestStatus, ProjectRepositoryRemote, PullRequestsStatus,
@@ -35,12 +36,22 @@ impl From<HostedAccountsUnavailable> for GitHostingError {
     }
 }
 
+impl From<PushFailure> for GitHostingError {
+    fn from(failure: PushFailure) -> Self {
+        match failure {
+            PushFailure::Skipped => Self::PushSkipped,
+            PushFailure::Failed(reason) => Self::PushFailed { reason },
+        }
+    }
+}
+
 pub struct GitHostingService {
     registry: GitHostRegistry,
     host_tokens: Arc<dyn HostTokens>,
     accounts: Arc<dyn HostedAccounts>,
     events: Arc<dyn GitHostingEvents>,
     project_remotes: Arc<dyn ProjectRemotes>,
+    worktree_pushes: Arc<dyn WorktreePushes>,
     branch_lookups: BranchPullRequestCache,
 }
 
@@ -51,6 +62,7 @@ impl GitHostingService {
         accounts: Arc<dyn HostedAccounts>,
         events: Arc<dyn GitHostingEvents>,
         project_remotes: Arc<dyn ProjectRemotes>,
+        worktree_pushes: Arc<dyn WorktreePushes>,
         clock: Arc<dyn Clock>,
     ) -> Self {
         Self {
@@ -59,6 +71,7 @@ impl GitHostingService {
             accounts,
             events,
             project_remotes,
+            worktree_pushes,
             branch_lookups: BranchPullRequestCache::new(clock),
         }
     }
@@ -195,10 +208,64 @@ impl GitHostingService {
         Ok(join_all(loads).await.into_iter().flatten().collect())
     }
 
+    /// Opens a pull request from the branch a context of the Project uses in
+    /// one of its repositories: the Git host comes from the repository's
+    /// remote, and the branch is pushed first so the Git host has it. The
+    /// branch's cached lookup is forgotten, so the board shows the new pull
+    /// request right away.
+    pub async fn create_pull_request(
+        &self,
+        project_tag: &str,
+        repository_id: &str,
+        pull_request: NewPullRequest,
+    ) -> Result<CreatedPullRequest, GitHostingError> {
+        let pull_request = pull_request.validated()?;
+        let checkout = self
+            .project_remotes
+            .branch_checkout(project_tag, repository_id, &pull_request.head)
+            .await?;
+        let repository = match checkout.remote.as_ref().map(HostedRepository::from_remote) {
+            None => return Err(GitHostingError::NoRemote),
+            Some(Err(_)) => return Err(GitHostingError::UnsupportedHost),
+            Some(Ok(repository)) => repository,
+        };
+        let git_host = self.connected_host(repository.host)?;
+        self.worktree_pushes
+            .push(&checkout.worktree_path)
+            .await
+            .map_err(|failure| {
+                eprintln!(
+                    "[git_hosting] branch {} of {} not pushed: {failure:?}",
+                    pull_request.head,
+                    describe(&repository)
+                );
+                GitHostingError::from(failure)
+            })?;
+        let created = git_host
+            .create_pull_request(&repository, &pull_request)
+            .await
+            .inspect_err(|error| {
+                eprintln!(
+                    "[git_hosting] pull request from {} of {} not created: {error:?}",
+                    pull_request.head,
+                    describe(&repository)
+                );
+            })?;
+        self.forget_branch(&repository, &pull_request.head);
+        Ok(created)
+    }
+
+    /// `git` pushed `branch` to `remote`: its pull request may have changed,
+    /// so the next lookup asks the Git host again. A remote on no supported
+    /// Git host has nothing cached.
+    pub fn branch_pushed(&self, remote: &RemoteUrl, branch: &str) {
+        if let Ok(repository) = HostedRepository::from_remote(remote) {
+            self.forget_branch(&repository, branch);
+        }
+    }
+
     /// Asks the Git host again on the next lookup, e.g. once a pull request
     /// was created from the branch or the branch was pushed.
-    // Tested; creating a pull request and pushing call it from #61.
-    #[allow(dead_code)]
     pub fn forget_branch(&self, repository: &HostedRepository, branch: &str) {
         self.branch_lookups.forget(repository, branch);
     }

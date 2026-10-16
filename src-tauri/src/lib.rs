@@ -71,6 +71,7 @@ const TYPED_COMMANDS: &[&str] = &[
     "git_hosting_sign_out",
     "git_hosting_project_pull_requests",
     "git_hosting_context_pull_requests",
+    "git_hosting_create_pull_request",
 ];
 
 /// The typed commands, exported with their types to `src/bindings.ts`.
@@ -112,6 +113,7 @@ fn typed_commands() -> tauri_specta::Builder<tauri::Wry> {
             git_hosting::commands::git_hosting_sign_out,
             git_hosting::commands::git_hosting_project_pull_requests,
             git_hosting::commands::git_hosting_context_pull_requests,
+            git_hosting::commands::git_hosting_create_pull_request,
         ])
         .events(tauri_specta::collect_events![
             workspace::infra::tauri_project_events::ProjectChanged,
@@ -201,9 +203,21 @@ pub fn run() {
                     Arc::clone(&workspace.service),
                     git.repositories(),
                 );
-            let git_hosting =
-                git_hosting::build(app.handle().clone(), database, Arc::new(project_remotes))?;
+            let worktree_pushes =
+                composition::git_worktree_pushes::GitWorktreePushes::new(git.repositories());
+            let git_hosting = git_hosting::build(
+                app.handle().clone(),
+                database,
+                Arc::new(project_remotes),
+                Arc::new(worktree_pushes),
+            )?;
+            let push_listener = git::PushListener::new(Arc::new(
+                composition::git_hosting_push_listener::GitHostingPushListener::new(Arc::clone(
+                    &git_hosting.service,
+                )),
+            ));
             app.manage(git);
+            app.manage(push_listener);
             app.manage(git_hosting);
             app.manage(workspace);
             shortcuts::register(app.handle())?;

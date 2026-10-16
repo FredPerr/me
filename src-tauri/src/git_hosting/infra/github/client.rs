@@ -2,6 +2,7 @@
 
 use reqwest::header::ACCEPT;
 use serde::de::DeserializeOwned;
+use serde::Serialize;
 
 use super::mapping::{status_error, RateLimitHeaders};
 use crate::git_hosting::domain::error::GitHostingError;
@@ -62,6 +63,22 @@ impl GithubClient {
         let answer = self.get(url, token).await?;
         let link_header = answer.header(LINK).map(str::to_string);
         Ok((read(answer, context)?, link_header))
+    }
+
+    pub async fn post_json<Body: Serialize, T: DeserializeOwned>(
+        &self,
+        url: &str,
+        token: &HostSecret,
+        body: &Body,
+        context: &str,
+    ) -> Result<T, GitHostingError> {
+        let request = self
+            .http
+            .post(url)
+            .bearer_auth(token.expose())
+            .header(ACCEPT, GITHUB_JSON)
+            .json(body);
+        read(http::send(request).await?, context)
     }
 
     async fn get(&self, url: &str, token: &HostSecret) -> Result<Answer, GitHostingError> {
