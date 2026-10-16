@@ -1,7 +1,7 @@
-import type { GitCommandError } from "@/bindings";
+import type { GitCommandError, WorkspaceCommandError } from "@/bindings";
 
 /** Any error a typed command throws. Grows as bounded contexts move to typed commands. */
-export type CommandError = GitCommandError;
+export type CommandError = GitCommandError | WorkspaceCommandError;
 
 export function isCommandError(value: unknown): value is CommandError {
 	if (typeof value !== "object" || value === null) return false;
