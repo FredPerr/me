@@ -2,7 +2,6 @@ use tauri::Manager;
 
 mod ai_session;
 mod binary_resolver;
-mod context_checkout;
 mod git;
 mod git_provider;
 mod ide_launcher;
@@ -44,8 +43,6 @@ const TYPED_COMMANDS: &[&str] = &[
     "delete_local_branch",
     "delete_worktree",
     "prune_worktrees",
-    "create_context",
-    "delete_context",
     "pull_worktree",
     "push_worktree",
     "fetch_pr_branch",
@@ -80,8 +77,6 @@ fn typed_commands() -> tauri_specta::Builder<tauri::Wry> {
             git::commands::delete_local_branch,
             git::commands::delete_worktree,
             git::commands::prune_worktrees,
-            context_checkout::create_context,
-            context_checkout::delete_context,
             git::commands::pull_worktree,
             git::commands::push_worktree,
             git::commands::fetch_pr_branch,

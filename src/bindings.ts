@@ -17,8 +17,6 @@ export const commands = {
 	deleteLocalBranch: (path: string, branch: string, force: boolean) => __TAURI_INVOKE<null>("delete_local_branch", { path, branch, force }),
 	deleteWorktree: (repoPath: string, worktreePath: string) => __TAURI_INVOKE<null>("delete_worktree", { repoPath, worktreePath }),
 	pruneWorktrees: (path: string) => __TAURI_INVOKE<null>("prune_worktrees", { path }),
-	createContext: (projectPath: string, contextName: string, repos: ContextRepositoryInput[], symlinks: string[], baseContextName: string | null) => __TAURI_INVOKE<ContextRepositoryResult[]>("create_context", { projectPath, contextName, repos, symlinks, baseContextName }),
-	deleteContext: (projectPath: string, contextName: string, repos: ContextRepositoryInput[], symlinks: string[]) => __TAURI_INVOKE<null>("delete_context", { projectPath, contextName, repos, symlinks }),
 	pullWorktree: (path: string) => __TAURI_INVOKE<PullResult>("pull_worktree", { path }),
 	pushWorktree: (path: string) => __TAURI_INVOKE<PushResult>("push_worktree", { path }),
 	fetchPrBranch: (path: string, branch: string) => __TAURI_INVOKE<null>("fetch_pr_branch", { path, branch }),
@@ -89,22 +87,6 @@ export type ContextBranchView = {
 export type ContextCheckoutView = "worktree" | "linked";
 
 export type ContextOriginView = { kind: "manual" } | { kind: "fromContext" } | { kind: "fromBranches" } | { kind: "fromPullRequests" } | { kind: "fromTask"; connectionId: string; taskId: string };
-
-/**  One repository of a context, as sent by the frontend. Field names are the wire format. */
-export type ContextRepositoryInput = {
-	rel_path: string,
-	name: string,
-	branch: string,
-	base_branch: string,
-	linked?: boolean,
-	post_checkout_command?: string | null,
-};
-
-export type ContextRepositoryResult = {
-	rel_path: string,
-	worktree_path: string,
-	branch: string,
-};
 
 export type ContextStatusView = "idle" | "ready" | "inProgress" | "needsHuman" | "review" | "done";
 

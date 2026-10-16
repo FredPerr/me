@@ -42,14 +42,6 @@ pub struct GitCommandError {
 }
 
 impl GitCommandError {
-    /// A failure outside git itself, such as creating a folder or a symlink.
-    pub fn io(message: impl Into<String>) -> Self {
-        Self {
-            kind: GitErrorKind::Io,
-            message: message.into(),
-        }
-    }
-
     /// Keeps the kind and replaces the message, e.g. to name the repository.
     pub fn with_message(self, message: impl Into<String>) -> Self {
         Self {

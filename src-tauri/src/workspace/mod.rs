@@ -24,10 +24,9 @@ use crate::git::domain::ports::GitRepositories;
 const DATABASE_FILE: &str = "me.redb";
 const LEGACY_PROJECTS_FOLDER: &str = "projects";
 
-// TEMPORARY: switched on in #43 when the frontend reads projects from Rust.
-// Until then the frontend still reads and writes `projects/<tag>.json`, which
-// the import would rename to `.json.imported`.
-const RUN_LEGACY_IMPORT_AT_STARTUP: bool = false;
+/// Imports the old `projects/<tag>.json` files once, on first launch, renaming
+/// each imported file to `.json.imported`.
+const RUN_LEGACY_IMPORT_AT_STARTUP: bool = true;
 
 /// The workspace service and what the one-time import couldn't read, held in Tauri state.
 pub struct Workspace {
@@ -64,6 +63,7 @@ pub fn build(
     })
 }
 
+/// TEMPORARY(legacy import): remove with `infra::legacy_project_import`.
 fn import_legacy_projects(
     projects_folder: &Path,
     projects: &dyn ProjectRepository,
