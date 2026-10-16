@@ -29,8 +29,7 @@ pub fn build() -> Git {
     ))))
 }
 
-/// Runs blocking git work off the async runtime. `E` is the command's error
-/// type: plain text for commands not yet typed, `GitCommandError` for typed ones.
+/// Runs blocking git work off the async runtime, reporting a failed task as `E`.
 pub async fn run_blocking<T, E, F>(work: F) -> Result<T, E>
 where
     T: Send + 'static,
