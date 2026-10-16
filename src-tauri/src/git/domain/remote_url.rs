@@ -1,6 +1,3 @@
-use super::branch_name::BranchName;
-
-const GITHUB_HOST: &str = "github.com";
 const SSH_PREFIX: &str = "git@";
 const GIT_SUFFIX: &str = ".git";
 
@@ -27,17 +24,6 @@ impl RemoteUrl {
             return format!("https://{trimmed}");
         }
         url.strip_suffix(GIT_SUFFIX).unwrap_or(url).to_string()
-    }
-
-    pub fn is_github(&self) -> bool {
-        self.web_url().contains(GITHUB_HOST)
-    }
-
-    /// GitHub's page for opening a pull request from `branch`; `None` for
-    /// other hosts.
-    pub fn github_compare_url(&self, branch: &BranchName) -> Option<String> {
-        self.is_github()
-            .then(|| format!("{}/compare/{branch}?expand=1", self.web_url()))
     }
 }
 
@@ -95,24 +81,5 @@ mod tests {
             web_url("git@github.com:org/team/repo.git"),
             "https://github.com/org/team/repo"
         );
-    }
-
-    #[test]
-    fn builds_the_github_compare_url_for_a_branch() {
-        let branch = BranchName::parse("feature/login").unwrap();
-        assert_eq!(
-            RemoteUrl::new("git@github.com:user/repo.git").github_compare_url(&branch),
-            Some("https://github.com/user/repo/compare/feature/login?expand=1".to_string())
-        );
-        assert_eq!(
-            RemoteUrl::new("https://bitbucket.org/team/repo.git").github_compare_url(&branch),
-            None
-        );
-    }
-
-    #[test]
-    fn recognizes_github_remotes() {
-        assert!(RemoteUrl::new("git@github.com:user/repo.git").is_github());
-        assert!(!RemoteUrl::new("https://bitbucket.org/team/repo.git").is_github());
     }
 }

@@ -5,7 +5,6 @@
 //! they are kept in the OS keychain via [`token_store`], keyed by provider id.
 
 pub mod bitbucket;
-pub mod git_auth;
 pub mod github;
 pub mod token_store;
 

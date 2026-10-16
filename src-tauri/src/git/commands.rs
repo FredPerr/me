@@ -93,7 +93,6 @@ pub struct WorktreeStatusView {
     pub files_renamed: u32,
     pub insertions: u32,
     pub deletions: u32,
-    pub pr_url: Option<String>,
 }
 
 #[derive(Serialize, specta::Type)]
@@ -153,7 +152,7 @@ impl From<Checkout> for WorktreeView {
 }
 
 impl WorktreeStatusView {
-    fn new(stats: DiffStats, pr_url: Option<String>) -> Self {
+    fn new(stats: DiffStats) -> Self {
         Self {
             files_added: saturate(stats.files_added),
             files_modified: saturate(stats.files_modified),
@@ -161,7 +160,6 @@ impl WorktreeStatusView {
             files_renamed: saturate(stats.files_renamed),
             insertions: saturate(stats.insertions),
             deletions: saturate(stats.deletions),
-            pr_url,
         }
     }
 }
@@ -188,12 +186,6 @@ fn readable_worktree_name(worktree_path: &str) -> String {
 
 fn open(git: &Git, path: &str) -> Result<Box<dyn GitRepository>, GitError> {
     git.repositories().open(&RepositoryPath::new(path))
-}
-
-/// The pull request compare page for the current branch, on GitHub only.
-fn github_compare_url(repository: &dyn GitRepository) -> Option<String> {
-    let branch = repository.current_branch()?;
-    repository.remote_url()?.github_compare_url(&branch)
 }
 
 /// The text of a failure, keeping git's own output when there is any.
@@ -258,10 +250,7 @@ pub async fn get_worktree_status(
         let repository = open(&git, &path)?;
         let base = base_branch.as_deref().map(BranchName::parse).transpose()?;
         let stats = repository.diff_stats_against(base.as_ref())?;
-        Ok(WorktreeStatusView::new(
-            stats,
-            github_compare_url(repository.as_ref()),
-        ))
+        Ok(WorktreeStatusView::new(stats))
     })
     .await
 }

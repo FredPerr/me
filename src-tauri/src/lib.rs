@@ -3,6 +3,7 @@ use tauri::Manager;
 mod ai_session;
 mod binary_resolver;
 mod git;
+mod git_hosting;
 mod git_provider;
 mod ide_launcher;
 mod pull_request_template;
@@ -169,7 +170,7 @@ pub fn run() {
             typed_builder.mount_events(app);
             tauri::Manager::manage(app, work_tracking::build_service(app.handle().clone()));
             app.manage(ai_session::registry::SessionRegistry::new());
-            let git = git::build();
+            let git = git::build(git_hosting::remote_credentials());
             let workspace = workspace::build(
                 app.handle().clone(),
                 &app.path().app_data_dir()?,

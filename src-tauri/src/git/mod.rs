@@ -9,9 +9,8 @@ pub mod infra;
 
 use std::sync::Arc;
 
-use domain::ports::GitRepositories;
+use domain::ports::{GitRepositories, RemoteCredentials};
 use infra::git2_cli::Git2CliRepositories;
-use infra::provider_token_credentials::ProviderTokenCredentials;
 
 /// Shared access to repositories, held in Tauri state.
 #[derive(Clone)]
@@ -23,10 +22,8 @@ impl Git {
     }
 }
 
-pub fn build() -> Git {
-    Git(Arc::new(Git2CliRepositories::new(Arc::new(
-        ProviderTokenCredentials,
-    ))))
+pub fn build(credentials: Arc<dyn RemoteCredentials>) -> Git {
+    Git(Arc::new(Git2CliRepositories::new(credentials)))
 }
 
 /// Runs blocking git work off the async runtime, reporting a failed task as `E`.

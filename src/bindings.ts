@@ -263,7 +263,6 @@ export type WorktreeStatusView = {
 	filesRenamed: number,
 	insertions: number,
 	deletions: number,
-	prUrl: string | null,
 };
 
 export type WorktreeView = {
