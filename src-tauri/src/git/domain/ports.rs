@@ -71,8 +71,9 @@ pub trait GitRepository {
 
     fn create_branch(&self, name: &BranchName, from: &BranchName) -> Result<(), GitError>;
     fn delete_branch(&self, name: &BranchName, force: bool) -> Result<(), GitError>;
-    /// Checks `branch` out at `path`, or returns the existing worktree when the
-    /// branch is already checked out somewhere.
+    /// Checks `branch` out at `path`. Fails with `BranchCheckedOut` when the
+    /// branch is already checked out in the main checkout or another worktree;
+    /// worktrees whose folder was deleted are pruned first, so they don't count.
     fn add_worktree(
         &self,
         path: &WorktreePath,
