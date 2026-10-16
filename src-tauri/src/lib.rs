@@ -8,6 +8,7 @@ mod ide_launcher;
 mod pull_request_template;
 mod secret_store;
 mod shortcuts;
+mod storage;
 mod work_tracking;
 mod workspace;
 mod workspace_detector;
@@ -169,12 +170,9 @@ pub fn run() {
             typed_builder.mount_events(app);
             tauri::Manager::manage(app, work_tracking::build_service(app.handle().clone()));
             app.manage(ai_session::registry::SessionRegistry::new());
+            let database = storage::open(&app.path().app_data_dir()?)?;
             let git = git::build();
-            let workspace = workspace::build(
-                app.handle().clone(),
-                &app.path().app_data_dir()?,
-                git.repositories(),
-            )?;
+            let workspace = workspace::build(app.handle().clone(), database, git.repositories())?;
             app.manage(git);
             app.manage(workspace);
             shortcuts::register(app.handle())?;
