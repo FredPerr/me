@@ -2,6 +2,7 @@ import "@mantine/core/styles.css";
 import "./App.css";
 import { useEffect } from "react";
 import { RouterProvider } from "react-router";
+import { useGitHostingChangedInvalidation } from "@/hooks/gitHosting/useGitHostingChangedInvalidation";
 import { useAppUpdater } from "@/hooks/useAppUpdater";
 import { useProjectChangedInvalidation } from "@/hooks/workspace/useProjectChangedInvalidation";
 import { router } from "@/router";
@@ -9,6 +10,7 @@ import { router } from "@/router";
 function App() {
 	const { checkForUpdates } = useAppUpdater();
 	useProjectChangedInvalidation();
+	useGitHostingChangedInvalidation();
 
 	useEffect(() => {
 		if (import.meta.env.DEV) return;

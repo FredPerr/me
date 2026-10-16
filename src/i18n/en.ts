@@ -70,8 +70,9 @@ export const en = {
 				bitbucket: "Bitbucket",
 				notConnected: "Not connected",
 				connect: "Connect",
-				connectError: "Could not connect to the provider. Please try again.",
 				connectedAs: "Connected as {{login}}",
+				connectedWithoutAccount: "Connected. The account could not be loaded yet.",
+				loadError: "Could not load the connected accounts",
 				disconnect: "Disconnect",
 				disconnectedTitle: "Account disconnected",
 				disconnectedMessage: "Your {{provider}} account has been disconnected.",
@@ -90,8 +91,6 @@ export const en = {
 				usernamePlaceholder: "your-bitbucket-username",
 				tokenLabel: "API token",
 				tokenPlaceholder: "API token",
-				tokenConnectError:
-					"Could not connect to Bitbucket. Check your username and API token, then try again.",
 			},
 			projects: {
 				title: "Projects",

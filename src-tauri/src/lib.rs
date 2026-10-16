@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use tauri::Manager;
 
 mod ai_session;
@@ -61,6 +63,11 @@ const TYPED_COMMANDS: &[&str] = &[
     "workspace_add_project",
     "workspace_delete_project",
     "workspace_suggest_branch_name",
+    "git_hosting_list_accounts",
+    "git_hosting_start_sign_in",
+    "git_hosting_poll_sign_in",
+    "git_hosting_sign_in_with_token",
+    "git_hosting_sign_out",
 ];
 
 /// The typed commands, exported with their types to `src/bindings.ts`.
@@ -95,9 +102,15 @@ fn typed_commands() -> tauri_specta::Builder<tauri::Wry> {
             workspace::commands::workspace_add_project,
             workspace::commands::workspace_delete_project,
             workspace::commands::workspace_suggest_branch_name,
+            git_hosting::commands::git_hosting_list_accounts,
+            git_hosting::commands::git_hosting_start_sign_in,
+            git_hosting::commands::git_hosting_poll_sign_in,
+            git_hosting::commands::git_hosting_sign_in_with_token,
+            git_hosting::commands::git_hosting_sign_out,
         ])
         .events(tauri_specta::collect_events![
-            workspace::infra::tauri_project_events::ProjectChanged
+            workspace::infra::tauri_project_events::ProjectChanged,
+            git_hosting::infra::tauri_git_hosting_events::GitHostingChanged
         ])
 }
 
@@ -173,8 +186,10 @@ pub fn run() {
             app.manage(ai_session::registry::SessionRegistry::new());
             let database = storage::open(&app.path().app_data_dir()?)?;
             let git = git::build(git_hosting::remote_credentials());
+            let git_hosting = git_hosting::build(app.handle().clone(), Arc::clone(&database))?;
             let workspace = workspace::build(app.handle().clone(), database, git.repositories())?;
             app.manage(git);
+            app.manage(git_hosting);
             app.manage(workspace);
             shortcuts::register(app.handle())?;
             Ok(())

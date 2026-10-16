@@ -3,7 +3,7 @@ import { FolderIcon, GearIcon, PlugsConnectedIcon } from "@phosphor-icons/react"
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router";
 import { GeneralSettings } from "@/components/settings/GeneralSettings";
-import { GitProviderSettings } from "@/components/settings/GitProviderSettings";
+import { GitHostingSettings } from "@/components/settings/git-hosting/GitHostingSettings";
 import { ProjectSettings } from "@/components/settings/ProjectSettings";
 import { WorkTrackerSettings } from "@/components/settings/WorkTrackerSettings";
 import { isSettingsTab, SETTINGS_TAB_PARAM, SettingsTab } from "./settingsTabs";
@@ -42,7 +42,7 @@ export function SettingsPage() {
 					</Tabs.Panel>
 					<Tabs.Panel value={SettingsTab.Integrations} pt="lg">
 						<Stack gap="xl">
-							<GitProviderSettings />
+							<GitHostingSettings />
 							<Divider />
 							<WorkTrackerSettings />
 						</Stack>

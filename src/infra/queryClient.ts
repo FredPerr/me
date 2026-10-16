@@ -3,6 +3,9 @@ import { MutationCache, QueryClient } from "@tanstack/react-query";
 import i18n from "@/i18n";
 import { describeError } from "@/infra/commandError";
 
+/** Mutation `meta` flag for a mutation whose screen shows the error itself. */
+export const SHOWS_ITS_OWN_ERROR = "showsItsOwnError";
+
 /**
  * Queries call local Tauri commands, so failures are not retried and window
  * focus doesn't refetch: Rust announces every change with `project-changed`.
@@ -15,7 +18,8 @@ export function createQueryClient(): QueryClient {
 			mutations: { retry: false },
 		},
 		mutationCache: new MutationCache({
-			onError: (error) => {
+			onError: (error, _variables, _context, mutation) => {
+				if (mutation.meta?.[SHOWS_ITS_OWN_ERROR]) return;
 				notifications.show({
 					title: i18n.t("workspace.changeFailed"),
 					message: describeError(error),
