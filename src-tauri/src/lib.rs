@@ -10,6 +10,7 @@ mod git_hosting;
 mod ide_launcher;
 mod pull_request_template;
 mod secret_store;
+mod settings;
 mod shortcuts;
 mod storage;
 mod work_tracking;
@@ -71,6 +72,8 @@ const TYPED_COMMANDS: &[&str] = &[
     "git_hosting_project_pull_requests",
     "git_hosting_context_pull_requests",
     "git_hosting_create_pull_request",
+    "settings_get",
+    "settings_set_assign_me_to_tasks",
 ];
 
 /// The typed commands, exported with their types to `src/bindings.ts`.
@@ -113,6 +116,8 @@ fn typed_commands() -> tauri_specta::Builder<tauri::Wry> {
             git_hosting::commands::git_hosting_project_pull_requests,
             git_hosting::commands::git_hosting_context_pull_requests,
             git_hosting::commands::git_hosting_create_pull_request,
+            settings::commands::settings_get,
+            settings::commands::settings_set_assign_me_to_tasks,
         ])
         .events(tauri_specta::collect_events![
             workspace::infra::tauri_project_events::ProjectChanged,
@@ -176,6 +181,7 @@ pub fn run() {
             tauri::Manager::manage(app, work_tracking::build_service(app.handle().clone()));
             app.manage(ai_session::registry::SessionRegistry::new());
             let database = storage::open(&app.path().app_data_dir()?)?;
+            let settings = settings::build(Arc::clone(&database))?;
             let git = git::build(git_hosting::remote_credentials());
             let workspace = workspace::build(
                 app.handle().clone(),
@@ -204,6 +210,7 @@ pub fn run() {
             app.manage(push_listener);
             app.manage(git_hosting);
             app.manage(workspace);
+            app.manage(settings);
             shortcuts::register(app.handle())?;
             Ok(())
         })
