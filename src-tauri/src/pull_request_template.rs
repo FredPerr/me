@@ -3,6 +3,13 @@
 //! in arbitrary project folders).
 use std::path::{Path, PathBuf};
 
+use crate::git::commands::GitCommandError;
+use crate::git::domain::error::GitError;
+
+fn read_failure(error: std::io::Error) -> GitCommandError {
+    GitError::io("read the pull request template", error).into()
+}
+
 /// Single-file pull request template locations GitHub recognizes, relative to
 /// the repository root (the root, `.github/`, or `docs/`; name is case-insensitive on GitHub).
 const TEMPLATE_FILE_CANDIDATES: &[&str] = &[
@@ -24,7 +31,8 @@ const TEMPLATE_FOLDER_CANDIDATES: &[&str] = &[
 
 /// The pull request template of the worktree at `path`, or `None` when it has none.
 #[tauri::command]
-pub async fn read_pull_request_template(path: String) -> Result<Option<String>, String> {
+#[specta::specta]
+pub async fn read_pull_request_template(path: String) -> Result<Option<String>, GitCommandError> {
     let root = Path::new(&path);
 
     for candidate in TEMPLATE_FILE_CANDIDATES {
@@ -32,7 +40,7 @@ pub async fn read_pull_request_template(path: String) -> Result<Option<String>, 
         if file.is_file() {
             return std::fs::read_to_string(&file)
                 .map(Some)
-                .map_err(|error| error.to_string());
+                .map_err(read_failure);
         }
     }
 
@@ -42,7 +50,7 @@ pub async fn read_pull_request_template(path: String) -> Result<Option<String>, 
             continue;
         }
         let mut markdown_files: Vec<PathBuf> = std::fs::read_dir(&dir)
-            .map_err(|error| error.to_string())?
+            .map_err(read_failure)?
             .filter_map(Result::ok)
             .map(|entry| entry.path())
             .filter(|p| {
@@ -55,7 +63,7 @@ pub async fn read_pull_request_template(path: String) -> Result<Option<String>, 
         if let Some(first) = markdown_files.first() {
             return std::fs::read_to_string(first)
                 .map(Some)
-                .map_err(|error| error.to_string());
+                .map_err(read_failure);
         }
     }
 

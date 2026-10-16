@@ -1,5 +1,5 @@
-import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useState } from "react";
+import { commands } from "@/bindings";
 import type { ProviderPullRequest } from "@/models/git-provider/GitProvider";
 import {
 	listGitProviders,
@@ -33,7 +33,7 @@ function projectRepositories(project: Project): Repository[] {
 async function resolveRemoteUrl(project: Project, repository: Repository): Promise<string | null> {
 	try {
 		const resolvedPath = await repository.resolveAbsolutePath(project.path);
-		return await invoke<string | null>("get_git_remote_url", { path: resolvedPath });
+		return await commands.getGitRemoteUrl(resolvedPath);
 	} catch {
 		return null;
 	}

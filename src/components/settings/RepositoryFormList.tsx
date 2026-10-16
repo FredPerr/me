@@ -1,8 +1,8 @@
 import { ActionIcon, Alert, Button, Group, Stack, Switch, TextInput, Tooltip } from "@mantine/core";
 import { FolderIcon, GitBranchIcon, PlusIcon, TrashIcon, WarningIcon } from "@phosphor-icons/react";
-import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { commands } from "@/bindings";
 import { pickRepositoryFolder } from "@/hooks/useFolderPicker";
 import type { RepositoryData } from "@/models/Project";
 import { resolvePath } from "@/utils/resolvePath";
@@ -38,7 +38,7 @@ export function RepositoryFormList({
 		async (repoId: string, relPath: string) => {
 			try {
 				const resolved = await resolvePath(relPath, { basePath: projectPath });
-				const isGit = await invoke<boolean>("check_is_git_repository", { path: resolved });
+				const isGit = await commands.checkIsGitRepository(resolved);
 				setGitStatus((prev) => ({ ...prev, [repoId]: isGit }));
 			} catch {
 				setGitStatus((prev) => ({ ...prev, [repoId]: false }));

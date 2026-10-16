@@ -1,5 +1,5 @@
-import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useState } from "react";
+import { commands } from "@/bindings";
 import { type Project, Repository } from "@/models/Project";
 
 export type RepositoryRemote = {
@@ -16,9 +16,7 @@ export function useProjectRemotes(project: Project) {
 		async function resolveRemote(repository: Repository): Promise<RepositoryRemote | null> {
 			try {
 				const resolvedPath = await repository.resolveAbsolutePath(project.path);
-				const remoteUrl = await invoke<string | null>("get_git_remote_url", {
-					path: resolvedPath,
-				});
+				const remoteUrl = await commands.getGitRemoteUrl(resolvedPath);
 				return remoteUrl ? { repository, remoteUrl } : null;
 			} catch {
 				return null;
@@ -27,9 +25,7 @@ export function useProjectRemotes(project: Project) {
 
 		async function resolveProjectRootRemote(): Promise<RepositoryRemote | null> {
 			try {
-				const remoteUrl = await invoke<string | null>("get_git_remote_url", {
-					path: project.path,
-				});
+				const remoteUrl = await commands.getGitRemoteUrl(project.path);
 				if (!remoteUrl) return null;
 				const repository = new Repository(project.tag, project.name, ".");
 				return { repository, remoteUrl };

@@ -11,9 +11,9 @@ import {
 	Tooltip,
 } from "@mantine/core";
 import { PaintBrushHouseholdIcon } from "@phosphor-icons/react";
-import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { commands } from "@/bindings";
 import type { CreateContextFromBranchesParams, ExistingBranchConfig } from "@/hooks/useContexts";
 import type { Project } from "@/models/Project";
 import { fuzzySelectFilter } from "@/utils/fuzzySelectFilter";
@@ -24,8 +24,6 @@ type CreateFromBranchesModalProps = {
 	project: Project;
 	onCreate: (params: CreateContextFromBranchesParams) => Promise<void>;
 };
-
-type Worktree = { branch: string | null; path: string };
 
 export function CreateFromBranchesModal({
 	opened,
@@ -51,7 +49,7 @@ export function CreateFromBranchesModal({
 			for (const repo of project.effectiveRepositories()) {
 				try {
 					const resolvedPath = await repo.resolveAbsolutePath(project.path);
-					options[repo.id] = await invoke<string[]>("list_branches", { path: resolvedPath });
+					options[repo.id] = await commands.listBranches(resolvedPath);
 				} catch {
 					options[repo.id] = [];
 				}
@@ -91,7 +89,7 @@ export function CreateFromBranchesModal({
 
 			try {
 				const resolvedPath = await repo.resolveAbsolutePath(project.path);
-				const worktrees = await invoke<Worktree[]>("list_worktrees", { path: resolvedPath });
+				const worktrees = await commands.listWorktrees(resolvedPath);
 				const conflicting = worktrees.find((wt) => wt.branch === branch);
 				if (conflicting) {
 					errors[repo.id] = t("contexts.branchAlreadyInUse", {

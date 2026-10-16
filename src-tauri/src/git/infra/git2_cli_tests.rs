@@ -16,6 +16,8 @@ const ALPHA: &str = "alpha";
 const ZETA: &str = "zeta";
 const LOGIN_CHECKOUT: &str = "login/repo";
 const LOGIN_FILE: &str = "login.txt";
+const FIRST_CHECKOUT: &str = "first/repo";
+const SECOND_CHECKOUT: &str = "second/repo";
 
 struct NoCredentials;
 
@@ -208,22 +210,62 @@ fn adds_a_worktree_checked_out_on_the_branch() {
 }
 
 #[test]
-fn reuses_the_worktree_of_a_branch_already_checked_out() {
+fn refuses_a_worktree_for_a_branch_checked_out_in_another_worktree() {
     let fixture = Fixture::new();
     let repository = fixture.main_repository();
     repository
         .create_branch(&name(FEATURE), &name(MAIN))
         .unwrap();
     let first = repository
-        .add_worktree(&fixture.worktree_path("first/repo"), &name(FEATURE))
+        .add_worktree(&fixture.worktree_path(FIRST_CHECKOUT), &name(FEATURE))
         .unwrap();
+    let second = fixture.worktree_path(SECOND_CHECKOUT);
 
-    let second = repository
-        .add_worktree(&fixture.worktree_path("second/repo"), &name(FEATURE))
+    let result = repository.add_worktree(&second, &name(FEATURE));
+
+    assert_eq!(
+        result,
+        Err(GitError::BranchCheckedOut {
+            name: FEATURE.into(),
+            worktree: first.display()
+        })
+    );
+    assert!(!second.as_path().exists());
+}
+
+#[test]
+fn refuses_a_worktree_for_the_branch_of_the_main_checkout() {
+    let fixture = Fixture::new();
+
+    let result = fixture
+        .main_repository()
+        .add_worktree(&fixture.worktree_path(FIRST_CHECKOUT), &name(MAIN));
+
+    assert_eq!(
+        result,
+        Err(GitError::BranchCheckedOut {
+            name: MAIN.into(),
+            worktree: fixture.main_checkout.to_string_lossy().into_owned()
+        })
+    );
+}
+
+#[test]
+fn checks_out_a_branch_whose_previous_worktree_folder_was_deleted() {
+    let fixture = Fixture::new();
+    let repository = fixture.main_repository();
+    repository
+        .create_branch(&name(FEATURE), &name(MAIN))
         .unwrap();
+    let first = fixture.worktree_path(FIRST_CHECKOUT);
+    repository.add_worktree(&first, &name(FEATURE)).unwrap();
+    std::fs::remove_dir_all(first.as_path()).unwrap();
+    let second = fixture.worktree_path(SECOND_CHECKOUT);
 
-    assert_eq!(second.display(), first.display());
-    assert!(!fixture.worktree_path("second/repo").as_path().exists());
+    let worktree = repository.add_worktree(&second, &name(FEATURE)).unwrap();
+
+    assert_eq!(worktree, second);
+    assert!(second.as_path().join(README).is_file());
 }
 
 #[test]

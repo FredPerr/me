@@ -478,7 +478,10 @@ impl GitRepository for Git2CliRepository {
         }
         self.prune_unlocked()?;
         if let Some(existing) = self.worktree_for_unlocked(branch)? {
-            return Ok(existing);
+            return Err(GitError::BranchCheckedOut {
+                name: branch.to_string(),
+                worktree: existing.display(),
+            });
         }
         let target = path.as_path().to_string_lossy().to_string();
         self.git(

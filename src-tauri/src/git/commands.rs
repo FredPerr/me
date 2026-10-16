@@ -13,7 +13,78 @@ use super::{run_blocking, Git};
 
 const MAIN_CHECKOUT_NAME: &str = "default";
 
-#[derive(Serialize)]
+/// The kind of a git failure, as the frontend sees it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub enum GitErrorKind {
+    NotARepository,
+    InvalidBranchName,
+    BranchNotFound,
+    BranchAlreadyExists,
+    BranchCheckedOut,
+    NoRemote,
+    NoUpstream,
+    DetachedHead,
+    NotFastForward,
+    AuthenticationFailed,
+    Network,
+    Io,
+    CommandFailed,
+}
+
+/// A failed git command on the wire. `message` is readable and may name local
+/// branches and repeat git's output: it only describes the user's own repositories.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct GitCommandError {
+    pub kind: GitErrorKind,
+    pub message: String,
+}
+
+impl GitCommandError {
+    /// A failure outside git itself, such as creating a folder or a symlink.
+    pub fn io(message: impl Into<String>) -> Self {
+        Self {
+            kind: GitErrorKind::Io,
+            message: message.into(),
+        }
+    }
+
+    /// Keeps the kind and replaces the message, e.g. to name the repository.
+    pub fn with_message(self, message: impl Into<String>) -> Self {
+        Self {
+            kind: self.kind,
+            message: message.into(),
+        }
+    }
+}
+
+impl From<GitError> for GitCommandError {
+    fn from(error: GitError) -> Self {
+        let kind = match &error {
+            GitError::NotARepository { .. } => GitErrorKind::NotARepository,
+            GitError::InvalidBranchName { .. } => GitErrorKind::InvalidBranchName,
+            GitError::BranchNotFound { .. } => GitErrorKind::BranchNotFound,
+            GitError::BranchAlreadyExists { .. } => GitErrorKind::BranchAlreadyExists,
+            GitError::BranchCheckedOut { .. } => GitErrorKind::BranchCheckedOut,
+            GitError::NoRemote => GitErrorKind::NoRemote,
+            GitError::NoUpstream => GitErrorKind::NoUpstream,
+            GitError::DetachedHead => GitErrorKind::DetachedHead,
+            GitError::NotFastForward { .. } => GitErrorKind::NotFastForward,
+            GitError::AuthenticationFailed { .. } => GitErrorKind::AuthenticationFailed,
+            GitError::Network { .. } => GitErrorKind::Network,
+            GitError::Io { .. } => GitErrorKind::Io,
+            GitError::CommandFailed { .. } => GitErrorKind::CommandFailed,
+        };
+        Self {
+            kind,
+            message: error.to_string(),
+        }
+    }
+}
+
+#[derive(Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
 pub struct WorktreeView {
     pub name: String,
     pub path: String,
@@ -21,18 +92,20 @@ pub struct WorktreeView {
     pub is_default: bool,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
 pub struct WorktreeStatusView {
-    pub files_added: usize,
-    pub files_modified: usize,
-    pub files_deleted: usize,
-    pub files_renamed: usize,
-    pub insertions: usize,
-    pub deletions: usize,
+    pub files_added: u32,
+    pub files_modified: u32,
+    pub files_deleted: u32,
+    pub files_renamed: u32,
+    pub insertions: u32,
+    pub deletions: u32,
     pub pr_url: Option<String>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
 pub struct LocalBranchView {
     pub name: String,
     pub is_current: bool,
@@ -42,14 +115,16 @@ pub struct LocalBranchView {
     pub is_merged: bool,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
 pub struct PushResult {
     pub path: String,
     pub pushed: bool,
     pub message: Option<String>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
 pub struct PullResult {
     pub path: String,
     pub pulled: bool,
@@ -88,15 +163,20 @@ impl From<Checkout> for WorktreeView {
 impl WorktreeStatusView {
     fn new(stats: DiffStats, pr_url: Option<String>) -> Self {
         Self {
-            files_added: stats.files_added,
-            files_modified: stats.files_modified,
-            files_deleted: stats.files_deleted,
-            files_renamed: stats.files_renamed,
-            insertions: stats.insertions,
-            deletions: stats.deletions,
+            files_added: saturate(stats.files_added),
+            files_modified: saturate(stats.files_modified),
+            files_deleted: saturate(stats.files_deleted),
+            files_renamed: saturate(stats.files_renamed),
+            insertions: saturate(stats.insertions),
+            deletions: saturate(stats.deletions),
             pr_url,
         }
     }
+}
+
+/// Counts beyond `u32` (over four billion) are shown as the maximum.
+fn saturate(count: usize) -> u32 {
+    u32::try_from(count).unwrap_or(u32::MAX)
 }
 
 /// git's internal worktree name is not meaningful; the app's layout
@@ -133,10 +213,11 @@ fn failure_detail(error: &GitError) -> String {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn get_git_remote_url(
     git: State<'_, Git>,
     path: String,
-) -> Result<Option<String>, String> {
+) -> Result<Option<String>, GitCommandError> {
     let git = git.inner().clone();
     run_blocking(move || {
         if !git.repositories().is_repository_root(Path::new(&path)) {
@@ -151,15 +232,20 @@ pub async fn get_git_remote_url(
 }
 
 #[tauri::command]
-pub async fn check_is_git_repository(git: State<'_, Git>, path: String) -> Result<bool, String> {
+#[specta::specta]
+pub async fn check_is_git_repository(
+    git: State<'_, Git>,
+    path: String,
+) -> Result<bool, GitCommandError> {
     Ok(git.repositories().is_repository_root(Path::new(&path)))
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn list_worktrees(
     git: State<'_, Git>,
     path: String,
-) -> Result<Vec<WorktreeView>, String> {
+) -> Result<Vec<WorktreeView>, GitCommandError> {
     let git = git.inner().clone();
     run_blocking(move || {
         let worktrees = open(&git, &path)?.worktrees()?;
@@ -169,11 +255,12 @@ pub async fn list_worktrees(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn get_worktree_status(
     git: State<'_, Git>,
     path: String,
     base_branch: Option<String>,
-) -> Result<WorktreeStatusView, String> {
+) -> Result<WorktreeStatusView, GitCommandError> {
     let git = git.inner().clone();
     run_blocking(move || {
         let repository = open(&git, &path)?;
@@ -188,11 +275,12 @@ pub async fn get_worktree_status(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn get_worktree_diff(
     git: State<'_, Git>,
     path: String,
     base_branch: String,
-) -> Result<String, String> {
+) -> Result<String, GitCommandError> {
     let git = git.inner().clone();
     run_blocking(move || {
         let base = BranchName::parse(&base_branch)?;
@@ -202,7 +290,11 @@ pub async fn get_worktree_diff(
 }
 
 #[tauri::command]
-pub async fn list_branches(git: State<'_, Git>, path: String) -> Result<Vec<String>, String> {
+#[specta::specta]
+pub async fn list_branches(
+    git: State<'_, Git>,
+    path: String,
+) -> Result<Vec<String>, GitCommandError> {
     let git = git.inner().clone();
     run_blocking(move || {
         let names = open(&git, &path)?.branch_names()?;
@@ -212,10 +304,11 @@ pub async fn list_branches(git: State<'_, Git>, path: String) -> Result<Vec<Stri
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn list_local_branches(
     git: State<'_, Git>,
     path: String,
-) -> Result<Vec<LocalBranchView>, String> {
+) -> Result<Vec<LocalBranchView>, GitCommandError> {
     let git = git.inner().clone();
     run_blocking(move || {
         let branches = open(&git, &path)?.branches()?;
@@ -225,39 +318,43 @@ pub async fn list_local_branches(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn delete_local_branch(
     git: State<'_, Git>,
     path: String,
     branch: String,
     force: bool,
-) -> Result<(), String> {
+) -> Result<(), GitCommandError> {
     let git = git.inner().clone();
     run_blocking(move || {
         let name = BranchName::parse(&branch)?;
         open(&git, &path)?
             .delete_branch(&name, force)
             .map_err(|error| {
-                format!(
+                let message = format!(
                     "Failed to delete branch '{branch}': {}",
                     failure_detail(&error)
-                )
+                );
+                GitCommandError::from(error).with_message(message)
             })
     })
     .await
 }
 
 #[tauri::command]
-pub async fn prune_worktrees(git: State<'_, Git>, path: String) -> Result<(), String> {
+#[specta::specta]
+pub async fn prune_worktrees(git: State<'_, Git>, path: String) -> Result<(), GitCommandError> {
     let git = git.inner().clone();
     run_blocking(move || Ok(open(&git, &path)?.prune_worktrees()?)).await
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn delete_worktree(
     git: State<'_, Git>,
     repo_path: String,
     worktree_path: String,
-) -> Result<(), String> {
+) -> Result<(), GitCommandError> {
     let git = git.inner().clone();
     run_blocking(move || {
         Ok(open(&git, &repo_path)?.remove_worktree(&WorktreePath::new(&worktree_path))?)
@@ -266,7 +363,11 @@ pub async fn delete_worktree(
 }
 
 #[tauri::command]
-pub async fn push_worktree(git: State<'_, Git>, path: String) -> Result<PushResult, String> {
+#[specta::specta]
+pub async fn push_worktree(
+    git: State<'_, Git>,
+    path: String,
+) -> Result<PushResult, GitCommandError> {
     let git = git.inner().clone();
     run_blocking(move || {
         let display_path = RepositoryPath::new(&path).display();
@@ -288,7 +389,11 @@ pub async fn push_worktree(git: State<'_, Git>, path: String) -> Result<PushResu
 }
 
 #[tauri::command]
-pub async fn pull_worktree(git: State<'_, Git>, path: String) -> Result<PullResult, String> {
+#[specta::specta]
+pub async fn pull_worktree(
+    git: State<'_, Git>,
+    path: String,
+) -> Result<PullResult, GitCommandError> {
     let git = git.inner().clone();
     run_blocking(move || {
         let display_path = RepositoryPath::new(&path).display();
@@ -310,23 +415,25 @@ pub async fn pull_worktree(git: State<'_, Git>, path: String) -> Result<PullResu
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn fetch_pr_branch(
     git: State<'_, Git>,
     path: String,
     branch: String,
-) -> Result<(), String> {
+) -> Result<(), GitCommandError> {
     let git = git.inner().clone();
     run_blocking(move || {
         let name = BranchName::parse(&branch)?;
-        open(&git, &path)?
-            .fetch_branch(&name)
-            .map_err(|error| match error {
+        open(&git, &path)?.fetch_branch(&name).map_err(|error| {
+            let message = match &error {
                 GitError::NoRemote => "No 'origin' remote configured".to_string(),
                 other => format!(
                     "Could not fetch branch '{branch}' from origin: {}",
-                    failure_detail(&other)
+                    failure_detail(other)
                 ),
-            })
+            };
+            GitCommandError::from(error).with_message(message)
+        })
     })
     .await
 }
@@ -334,6 +441,113 @@ pub async fn fetch_pr_branch(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn wire(error: GitError) -> GitCommandError {
+        GitCommandError::from(error)
+    }
+
+    #[test]
+    fn every_git_error_maps_to_its_kind() {
+        let output = || "fatal: details".to_string();
+        let operation = || "push".to_string();
+        let cases = [
+            (
+                GitError::NotARepository {
+                    path: "/tmp/x".into(),
+                },
+                GitErrorKind::NotARepository,
+            ),
+            (
+                GitError::InvalidBranchName {
+                    name: "a..b".into(),
+                    reason: "contains \"..\"",
+                },
+                GitErrorKind::InvalidBranchName,
+            ),
+            (
+                GitError::BranchNotFound {
+                    name: "main".into(),
+                },
+                GitErrorKind::BranchNotFound,
+            ),
+            (
+                GitError::BranchAlreadyExists {
+                    name: "main".into(),
+                },
+                GitErrorKind::BranchAlreadyExists,
+            ),
+            (
+                GitError::BranchCheckedOut {
+                    name: "main".into(),
+                    worktree: "/w".into(),
+                },
+                GitErrorKind::BranchCheckedOut,
+            ),
+            (GitError::NoRemote, GitErrorKind::NoRemote),
+            (GitError::NoUpstream, GitErrorKind::NoUpstream),
+            (GitError::DetachedHead, GitErrorKind::DetachedHead),
+            (
+                GitError::NotFastForward {
+                    operation: operation(),
+                    output: output(),
+                },
+                GitErrorKind::NotFastForward,
+            ),
+            (
+                GitError::AuthenticationFailed {
+                    operation: operation(),
+                    output: output(),
+                },
+                GitErrorKind::AuthenticationFailed,
+            ),
+            (
+                GitError::Network {
+                    operation: operation(),
+                    output: output(),
+                },
+                GitErrorKind::Network,
+            ),
+            (
+                GitError::Io {
+                    action: "read".into(),
+                    detail: "denied".into(),
+                },
+                GitErrorKind::Io,
+            ),
+            (
+                GitError::CommandFailed {
+                    operation: operation(),
+                    output: output(),
+                },
+                GitErrorKind::CommandFailed,
+            ),
+        ];
+        for (error, kind) in cases {
+            let message = error.to_string();
+            let wire_error = wire(error);
+            assert_eq!(wire_error.kind, kind);
+            assert_eq!(wire_error.message, message);
+        }
+    }
+
+    #[test]
+    fn keeps_branch_names_and_git_output_in_the_message() {
+        let wire_error = wire(GitError::CommandFailed {
+            operation: "push".into(),
+            output: "rejected feature/login".into(),
+        });
+        assert_eq!(
+            wire_error.message,
+            "git push failed: rejected feature/login"
+        );
+    }
+
+    #[test]
+    fn serializes_kind_in_camel_case() {
+        let json = serde_json::to_value(wire(GitError::NoUpstream)).unwrap();
+        assert_eq!(json["kind"], "noUpstream");
+        assert_eq!(json["message"], "No upstream branch (not pushed yet)");
+    }
 
     #[test]
     fn worktree_names_follow_the_context_layout() {

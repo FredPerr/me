@@ -1,5 +1,5 @@
-import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { commands } from "@/bindings";
 import { getLastPathSegment } from "@/utils/segmentPath";
 import { slugify } from "@/utils/slugify";
 
@@ -27,7 +27,7 @@ export async function pickRepositoryFolder(): Promise<RepoFolderPickerResult | n
 	const result = await pickFolder();
 	if (!result) return null;
 
-	const isGitRepository = await invoke<boolean>("check_is_git_repository", { path: result.path });
+	const isGitRepository = await commands.checkIsGitRepository(result.path);
 
 	return { ...result, isGitRepository };
 }

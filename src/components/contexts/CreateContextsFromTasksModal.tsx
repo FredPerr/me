@@ -16,6 +16,7 @@ import { selectPendingTasks } from "@/application/work-tracking/selectPendingTas
 import { toWorkItemId } from "@/domain/work-tracking/identifiers";
 import type { BulkContextSpec } from "@/hooks/useContexts";
 import { useLinkedProjectTasks } from "@/hooks/work-tracking/useLinkedProjectTasks";
+import { describeError } from "@/infra/commandError";
 import { workTrackingGateway } from "@/infra/work-tracking/workTracking";
 import {
 	draftTaskContext,
@@ -146,7 +147,7 @@ export function CreateContextsFromTasksModal({
 		} catch (error) {
 			notifications.show({
 				title: t("contexts.fromTasks.createFailed"),
-				message: String(error),
+				message: describeError(error),
 				color: "red",
 			});
 		} finally {
