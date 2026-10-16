@@ -11,3 +11,7 @@ The five default labels: needs-triage, needs-info, ready-for-agent, ready-for-hu
 ### Domain docs
 
 Single-context: `GLOSSARY.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+
+## Branching
+
+Base every new branch on `develop` and open pull requests against `develop`. Never target `main`: the maintainer merges `develop` into `main` by hand.
