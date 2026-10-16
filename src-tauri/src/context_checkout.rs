@@ -2,9 +2,10 @@
 //! `.worktrees/<context>/<repository>`, the post-checkout command, and the
 //! project's configured symlinks.
 //!
-//! Temporary home: these steps belong to the future `workspace` module, which
-//! will also undo them on failure. They are built on the `git` module's
-//! interface so that move is mechanical.
+//! TEMPORARY: superseded by the `workspace` service's create and delete use
+//! cases, which also undo them on failure; removed once the frontend calls
+//! those (#43). The symlink and post-checkout helpers already live in
+//! `workspace::infra::file_system_checkout_files`.
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 
@@ -17,6 +18,7 @@ use crate::git::domain::error::GitError;
 use crate::git::domain::paths::{RepositoryPath, WorktreePath};
 use crate::git::domain::ports::{GitRepositories, GitRepository};
 use crate::git::{run_blocking, Git};
+use crate::workspace::infra::file_system_checkout_files::{create_symlink, run_post_checkout};
 
 const WORKTREES_FOLDER: &str = ".worktrees";
 const DEFAULT_CONTEXT_FOLDER: &str = "default";
@@ -97,21 +99,6 @@ impl ContextFolder {
     }
 }
 
-fn create_symlink(target: &Path, link: &Path) -> std::io::Result<()> {
-    #[cfg(unix)]
-    {
-        std::os::unix::fs::symlink(target, link)
-    }
-    #[cfg(windows)]
-    {
-        if target.is_dir() {
-            std::os::windows::fs::symlink_dir(target, link)
-        } else {
-            std::os::windows::fs::symlink_file(target, link)
-        }
-    }
-}
-
 /// Removes whatever is at `path`; a symlink is removed as a link, not followed.
 fn remove_existing_path(path: &Path) -> std::io::Result<()> {
     match std::fs::symlink_metadata(path) {
@@ -184,19 +171,6 @@ fn check_out_repository(
     Ok(worktree.as_path().to_path_buf())
 }
 
-/// Runs the repository's post-checkout command (e.g. installing dependencies)
-/// in the folder git actually used. A failing command does not fail the
-/// context: the checkout is still usable.
-fn run_post_checkout(command: Option<&str>, checkout: &Path) {
-    let Some(command) = command.filter(|command| !command.is_empty()) else {
-        return;
-    };
-    let _ = std::process::Command::new("sh")
-        .args(["-c", command])
-        .current_dir(checkout)
-        .output();
-}
-
 fn link_configured_paths(
     context_folder: &ContextFolder,
     symlinks: &[String],
@@ -251,7 +225,9 @@ pub async fn create_context(
         // Only once every repository is checked out, so a failure above runs no command.
         for (repository_input, checkout) in repos.iter().zip(&checkouts) {
             if !repository_input.linked {
-                run_post_checkout(repository_input.post_checkout_command.as_deref(), checkout);
+                if let Some(command) = &repository_input.post_checkout_command {
+                    run_post_checkout(command, checkout);
+                }
             }
         }
 

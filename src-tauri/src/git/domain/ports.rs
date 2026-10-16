@@ -59,7 +59,6 @@ pub trait GitRepository {
     /// The main checkout first, then every linked worktree.
     fn worktrees(&self) -> Result<Vec<Checkout>, GitError>;
     /// Where `branch` is checked out, if anywhere.
-    #[allow(dead_code)] // first caller arrives with the workspace module
     fn worktree_for(&self, branch: &BranchName) -> Result<Option<WorktreePath>, GitError>;
     /// The `origin` remote, if configured.
     fn remote_url(&self) -> Option<RemoteUrl>;
@@ -71,6 +70,8 @@ pub trait GitRepository {
 
     fn create_branch(&self, name: &BranchName, from: &BranchName) -> Result<(), GitError>;
     fn delete_branch(&self, name: &BranchName, force: bool) -> Result<(), GitError>;
+    /// Whether `branch` has commits that `base` doesn't contain.
+    fn has_commits_beyond(&self, branch: &BranchName, base: &BranchName) -> Result<bool, GitError>;
     /// Checks `branch` out at `path`. Fails with `BranchCheckedOut` when the
     /// branch is already checked out in the main checkout or another worktree;
     /// worktrees whose folder was deleted are pruned first, so they don't count.

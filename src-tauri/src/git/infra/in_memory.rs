@@ -27,6 +27,7 @@ pub enum Operation {
     Diff,
     CreateBranch,
     DeleteBranch,
+    HasCommitsBeyond,
     AddWorktree,
     RemoveWorktree,
     PruneWorktrees,
@@ -563,6 +564,17 @@ impl GitRepository for InMemoryGitRepository {
             }
             repository.branches.remove(name.as_str());
             Ok(())
+        })
+    }
+
+    fn has_commits_beyond(&self, branch: &BranchName, base: &BranchName) -> Result<bool, GitError> {
+        self.run(Operation::HasCommitsBeyond, |repository, _| {
+            let base_history = &repository.branch(base)?.history;
+            Ok(repository
+                .branch(branch)?
+                .history
+                .iter()
+                .any(|commit| !base_history.contains(commit)))
         })
     }
 

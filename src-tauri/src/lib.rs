@@ -10,7 +10,6 @@ mod pull_request_template;
 mod secret_store;
 mod shortcuts;
 mod work_tracking;
-#[allow(dead_code)] // used by the workspace commands in later tickets
 mod workspace;
 mod workspace_detector;
 
@@ -50,6 +49,10 @@ const TYPED_COMMANDS: &[&str] = &[
     "pull_worktree",
     "push_worktree",
     "fetch_pr_branch",
+    "workspace_list_projects",
+    "workspace_get_project",
+    "workspace_create_context",
+    "workspace_delete_context",
 ];
 
 /// The typed commands, exported with their types to `src/bindings.ts`.
@@ -73,12 +76,20 @@ fn typed_commands() -> tauri_specta::Builder<tauri::Wry> {
             git::commands::pull_worktree,
             git::commands::push_worktree,
             git::commands::fetch_pr_branch,
+            workspace::commands::workspace_list_projects,
+            workspace::commands::workspace_get_project,
+            workspace::commands::workspace_create_context,
+            workspace::commands::workspace_delete_context,
+        ])
+        .events(tauri_specta::collect_events![
+            workspace::infra::tauri_project_events::ProjectChanged
         ])
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let typed_handler = typed_commands().invoke_handler();
+    let typed_builder = typed_commands();
+    let typed_handler = typed_builder.invoke_handler();
     // TEMPORARY: see TYPED_COMMANDS.
     let legacy_handler: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool = tauri::generate_handler![
         greet,
@@ -141,10 +152,18 @@ pub fn run() {
                 legacy_handler(invoke)
             }
         })
-        .setup(|app| {
+        .setup(move |app| {
+            typed_builder.mount_events(app);
             tauri::Manager::manage(app, work_tracking::build_service(app.handle().clone()));
             app.manage(ai_session::registry::SessionRegistry::new());
-            app.manage(git::build());
+            let git = git::build();
+            let workspace = workspace::build(
+                app.handle().clone(),
+                &app.path().app_data_dir()?,
+                git.repositories(),
+            )?;
+            app.manage(git);
+            app.manage(workspace);
             shortcuts::register(app.handle())?;
             Ok(())
         })

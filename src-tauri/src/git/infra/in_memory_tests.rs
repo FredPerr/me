@@ -143,6 +143,28 @@ fn a_commit_puts_a_branch_beyond_its_base() {
 }
 
 #[test]
+fn a_branch_has_commits_beyond_a_base_only_once_committed_on() {
+    let fixture = Fixture::new();
+    let repository = fixture.with_feature();
+    fixture.git.commit(&api(), &name(MAIN));
+    let behind = repository.has_commits_beyond(&name(FEATURE), &name(MAIN));
+
+    fixture.git.commit(&api(), &name(FEATURE));
+
+    assert_eq!(behind, Ok(false));
+    assert_eq!(
+        repository.has_commits_beyond(&name(FEATURE), &name(MAIN)),
+        Ok(true)
+    );
+    assert_eq!(
+        repository.has_commits_beyond(&name(MISSING), &name(MAIN)),
+        Err(GitError::BranchNotFound {
+            name: MISSING.into()
+        })
+    );
+}
+
+#[test]
 fn refuses_to_create_a_branch_twice_or_from_a_missing_base() {
     let fixture = Fixture::new();
     let repository = fixture.with_feature();

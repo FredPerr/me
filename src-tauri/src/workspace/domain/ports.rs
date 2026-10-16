@@ -1,4 +1,5 @@
 use std::fmt;
+use std::path::Path;
 
 use super::error::WorkspaceError;
 use super::project::Project;
@@ -98,3 +99,43 @@ impl fmt::Display for UpdateError {
 }
 
 impl std::error::Error for UpdateError {}
+
+/// The steps of a context checkout on disk that aren't git: the project's
+/// configured symlinks and the repositories' post-checkout commands. A port so
+/// the service's undo and ordering can be tested without touching the disk.
+pub trait CheckoutFiles: Send + Sync {
+    /// Links `link` to `target`, creating its parent folders. Returns `false`
+    /// and leaves things as they are when something is already at `link`.
+    fn create_symlink(&self, target: &Path, link: &Path) -> Result<bool, CheckoutFilesError>;
+    /// Removes the symlink at `link`; does nothing when there is no symlink there.
+    fn remove_symlink(&self, link: &Path) -> Result<(), CheckoutFilesError>;
+    /// Removes `folder` when it exists and is empty.
+    fn remove_folder_if_empty(&self, folder: &Path);
+    /// Runs a repository's post-checkout command (e.g. installing
+    /// dependencies) in `checkout`. A failing command doesn't fail the
+    /// context: the checkout is still usable.
+    fn run_post_checkout(&self, command: &str, checkout: &Path);
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CheckoutFilesError {
+    pub path: String,
+    pub reason: String,
+}
+
+impl fmt::Display for CheckoutFilesError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "'{}' couldn't be changed: {}",
+            self.path, self.reason
+        )
+    }
+}
+
+impl std::error::Error for CheckoutFilesError {}
+
+/// Tells every open view that a Project changed.
+pub trait ProjectEvents: Send + Sync {
+    fn project_changed(&self, tag: &ProjectTag);
+}

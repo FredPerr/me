@@ -430,6 +430,50 @@ fn deletes_merged_branches_and_needs_force_for_unmerged_ones() {
 }
 
 #[test]
+fn tells_whether_a_branch_has_commits_beyond_its_base() {
+    let fixture = Fixture::new();
+    let repository = fixture.main_repository();
+    repository
+        .create_branch(&name(FEATURE), &name(MAIN))
+        .unwrap();
+    let without_work = repository.has_commits_beyond(&name(FEATURE), &name(MAIN));
+    let target = fixture.worktree_path(LOGIN_CHECKOUT);
+    repository.add_worktree(&target, &name(FEATURE)).unwrap();
+    commit_file(target.as_path(), LOGIN_FILE, "login\n");
+
+    assert_eq!(without_work, Ok(false));
+    assert_eq!(
+        repository.has_commits_beyond(&name(FEATURE), &name(MAIN)),
+        Ok(true)
+    );
+    assert_eq!(
+        repository.has_commits_beyond(&name(MAIN), &name(FEATURE)),
+        Ok(false)
+    );
+}
+
+#[test]
+fn a_branch_behind_its_base_has_no_commits_beyond_it() {
+    let fixture = Fixture::new();
+    let repository = fixture.main_repository();
+    repository
+        .create_branch(&name(FEATURE), &name(MAIN))
+        .unwrap();
+    commit_file(&fixture.main_checkout, LOGIN_FILE, "login\n");
+
+    assert_eq!(
+        repository.has_commits_beyond(&name(FEATURE), &name(MAIN)),
+        Ok(false)
+    );
+    assert_eq!(
+        repository.has_commits_beyond(&name(MISSING), &name(MAIN)),
+        Err(GitError::BranchNotFound {
+            name: MISSING.into()
+        })
+    );
+}
+
+#[test]
 fn refuses_to_delete_a_checked_out_branch() {
     let fixture = Fixture::new();
     let repository = fixture.main_repository();

@@ -2,12 +2,21 @@
 //! nothing here touches the filesystem. Paths starting with `~` are kept as
 //! they are; expanding them belongs to the adapters.
 
+use std::path::Path;
+
 use super::context::Context;
 use super::context_branch::ContextBranch;
 use super::project::Project;
 use super::repository::Repository;
 
 const WORKTREES_FOLDER: &str = ".worktrees";
+
+/// A symlink in a context folder to a path of the project folder.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConfiguredLink {
+    pub target: String,
+    pub link: String,
+}
 
 impl Project {
     /// `<project>/.worktrees/<context folder>`.
@@ -50,6 +59,27 @@ impl Project {
             "" | "." => project_folder.to_string(),
             inside => format!("{project_folder}/{inside}"),
         }
+    }
+
+    /// The project's configured symlinks as linked in the context: each path,
+    /// relative to the project folder, is linked in the context folder under
+    /// its file name.
+    pub fn configured_links(&self, context: &Context) -> Vec<ConfiguredLink> {
+        let context_folder = self.context_folder_path(context);
+        self.symlinks()
+            .iter()
+            .map(|relative| {
+                let link_name = Path::new(relative)
+                    .file_name()
+                    .map(|name| name.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| relative.clone());
+                let inside = relative.strip_prefix("./").unwrap_or(relative);
+                ConfiguredLink {
+                    target: format!("{}/{inside}", self.folder_path()),
+                    link: format!("{context_folder}/{link_name}"),
+                }
+            })
+            .collect()
     }
 
     /// The folders to open the context in, best first: the repository's
@@ -384,6 +414,28 @@ mod tests {
         fn are_the_project_folder_when_the_project_has_no_configured_repositories() {
             let project = project_with(vec![]);
             assert_eq!(project.root_ide_path_candidates(), [PROJECT_PATH]);
+        }
+    }
+
+    mod configured_links {
+        use super::*;
+
+        const NESTED_SYMLINK: &str = "./config/.env";
+
+        #[test]
+        fn link_each_project_path_into_the_context_folder_under_its_file_name() {
+            let project = project_with(vec![]).update_settings(ProjectSettings {
+                symlinks: vec![NESTED_SYMLINK.to_string()],
+                ..settings(vec![])
+            });
+
+            assert_eq!(
+                project.configured_links(&context_named(CONTEXT_NAME)),
+                [ConfiguredLink {
+                    target: format!("{PROJECT_PATH}/config/.env"),
+                    link: format!("{}/.env", context_folder()),
+                }]
+            );
         }
     }
 }
