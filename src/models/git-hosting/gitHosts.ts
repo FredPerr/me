@@ -8,8 +8,8 @@ type GitHostDisplay = {
 };
 
 export const GIT_HOSTS: Record<HostKindView, GitHostDisplay> = {
-	github: { displayNameKey: "settings.gitProvider.github", signInMethod: "browser" },
-	bitbucket: { displayNameKey: "settings.gitProvider.bitbucket", signInMethod: "token" },
+	github: { displayNameKey: "settings.gitHosting.github", signInMethod: "browser" },
+	bitbucket: { displayNameKey: "settings.gitHosting.bitbucket", signInMethod: "token" },
 };
 
 export const GIT_HOST_KINDS: readonly HostKindView[] = ["github", "bitbucket"];

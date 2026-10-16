@@ -31,7 +31,7 @@ export function TokenSignInForm({ host, onClose }: TokenSignInFormProps) {
 
 	return (
 		<Stack gap="xs" mt="md">
-			<Text size="sm">{t("settings.gitProvider.tokenInstructions")}</Text>
+			<Text size="sm">{t("settings.gitHosting.tokenInstructions")}</Text>
 			<Button
 				variant="subtle"
 				size="xs"
@@ -39,17 +39,17 @@ export function TokenSignInForm({ host, onClose }: TokenSignInFormProps) {
 				onClick={() => openUrl(API_TOKENS_URL)}
 				style={{ alignSelf: "flex-start" }}
 			>
-				{t("settings.gitProvider.createAppPassword")}
+				{t("settings.gitHosting.createAppPassword")}
 			</Button>
 			<TextInput
-				label={t("settings.gitProvider.usernameLabel")}
-				placeholder={t("settings.gitProvider.usernamePlaceholder")}
+				label={t("settings.gitHosting.usernameLabel")}
+				placeholder={t("settings.gitHosting.usernamePlaceholder")}
 				value={username}
 				onChange={(event) => setUsername(event.currentTarget.value)}
 			/>
 			<PasswordInput
-				label={t("settings.gitProvider.tokenLabel")}
-				placeholder={t("settings.gitProvider.tokenPlaceholder")}
+				label={t("settings.gitHosting.tokenLabel")}
+				placeholder={t("settings.gitHosting.tokenPlaceholder")}
 				value={token}
 				onChange={(event) => setToken(event.currentTarget.value)}
 			/>
@@ -63,7 +63,7 @@ export function TokenSignInForm({ host, onClose }: TokenSignInFormProps) {
 					{t("common.cancel")}
 				</Button>
 				<Button onClick={handleSignIn} loading={signIn.isPending} disabled={!isComplete}>
-					{t("settings.gitProvider.connect")}
+					{t("settings.gitHosting.connect")}
 				</Button>
 			</Group>
 		</Stack>
@@ -84,7 +84,7 @@ export function TokenSignInCard({ host }: { host: HostKindView }) {
 					leftSection={<GitHostIcon host={host} size={BUTTON_ICON_SIZE} />}
 					onClick={() => setShowsForm((shown) => !shown)}
 				>
-					{t("settings.gitProvider.connect")}
+					{t("settings.gitHosting.connect")}
 				</Button>
 			}
 		>
