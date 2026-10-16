@@ -11,15 +11,15 @@ use crate::work_tracking::domain::api_key::ApiKey;
 use crate::work_tracking::domain::base_url::BaseUrl;
 use crate::work_tracking::domain::error::WorkTrackingError;
 use crate::work_tracking::domain::identifiers::{
-    ConnectionId, PersonId, WorkItemGroupId, WorkItemId, WorkProjectId,
+    ConnectionId, PersonId, RemoteProjectId, TaskGroupId, TaskId,
 };
 use crate::work_tracking::domain::page::{Page, PageRequest};
 use crate::work_tracking::domain::ports::{ConnectionRepository, CredentialStore, WorkTracker};
 use crate::work_tracking::domain::provider_connection::{DisplayName, ProviderConnection};
 use crate::work_tracking::domain::provider_kind::ProviderKind;
-use crate::work_tracking::domain::work_item::WorkItem;
-use crate::work_tracking::domain::work_item_group::WorkItemGroup;
-use crate::work_tracking::domain::work_project::WorkProject;
+use crate::work_tracking::domain::remote_project::RemoteProject;
+use crate::work_tracking::domain::task::Task;
+use crate::work_tracking::domain::task_group::TaskGroup;
 
 pub fn sample_connection() -> ProviderConnection {
     let base_url = BaseUrl::parse("https://acme.teamwork.com").unwrap();
@@ -37,9 +37,9 @@ fn empty_page<T>() -> Page<T> {
 /// Scripted adapter results plus a log of factory and adapter calls.
 pub struct Script {
     pub verify_result: Result<(), WorkTrackingError>,
-    pub projects_result: Result<Page<WorkProject>, WorkTrackingError>,
-    pub groups_result: Result<Page<WorkItemGroup>, WorkTrackingError>,
-    pub items_result: Result<Page<WorkItem>, WorkTrackingError>,
+    pub projects_result: Result<Page<RemoteProject>, WorkTrackingError>,
+    pub groups_result: Result<Page<TaskGroup>, WorkTrackingError>,
+    pub items_result: Result<Page<Task>, WorkTrackingError>,
     pub current_user_result: Result<PersonId, WorkTrackingError>,
     pub assign_result: Result<(), WorkTrackingError>,
     pub created_with_keys: Vec<String>,
@@ -103,7 +103,7 @@ impl WorkTracker for FakeWorkTracker {
 
     async fn assign_user_to_task(
         &self,
-        item_id: &WorkItemId,
+        item_id: &TaskId,
         user_id: &PersonId,
     ) -> Result<(), WorkTrackingError> {
         let mut script = self.script.lock().unwrap();
@@ -118,7 +118,7 @@ impl WorkTracker for FakeWorkTracker {
     async fn list_projects(
         &self,
         page: PageRequest,
-    ) -> Result<Page<WorkProject>, WorkTrackingError> {
+    ) -> Result<Page<RemoteProject>, WorkTrackingError> {
         let mut script = self.script.lock().unwrap();
         script
             .calls
@@ -128,9 +128,9 @@ impl WorkTracker for FakeWorkTracker {
 
     async fn list_groups(
         &self,
-        project_id: &WorkProjectId,
+        project_id: &RemoteProjectId,
         page: PageRequest,
-    ) -> Result<Page<WorkItemGroup>, WorkTrackingError> {
+    ) -> Result<Page<TaskGroup>, WorkTrackingError> {
         let mut script = self.script.lock().unwrap();
         script.calls.push(format!(
             "list_groups project={} {}",
@@ -142,10 +142,10 @@ impl WorkTracker for FakeWorkTracker {
 
     async fn list_items(
         &self,
-        project_id: &WorkProjectId,
-        group_id: &WorkItemGroupId,
+        project_id: &RemoteProjectId,
+        group_id: &TaskGroupId,
         page: PageRequest,
-    ) -> Result<Page<WorkItem>, WorkTrackingError> {
+    ) -> Result<Page<Task>, WorkTrackingError> {
         let mut script = self.script.lock().unwrap();
         script.calls.push(format!(
             "list_items project={} group={} {}",
@@ -158,9 +158,9 @@ impl WorkTracker for FakeWorkTracker {
 
     async fn list_project_items(
         &self,
-        project_id: &WorkProjectId,
+        project_id: &RemoteProjectId,
         page: PageRequest,
-    ) -> Result<Page<WorkItem>, WorkTrackingError> {
+    ) -> Result<Page<Task>, WorkTrackingError> {
         let mut script = self.script.lock().unwrap();
         script.calls.push(format!(
             "list_project_items project={} {}",

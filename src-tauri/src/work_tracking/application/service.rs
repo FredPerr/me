@@ -10,15 +10,15 @@ use crate::work_tracking::domain::api_key::ApiKey;
 use crate::work_tracking::domain::base_url::BaseUrl;
 use crate::work_tracking::domain::error::{InputField, WorkTrackingError};
 use crate::work_tracking::domain::identifiers::{
-    ConnectionId, WorkItemGroupId, WorkItemId, WorkProjectId,
+    ConnectionId, RemoteProjectId, TaskGroupId, TaskId,
 };
 use crate::work_tracking::domain::page::{Cursor, Page, PageRequest, DEFAULT_PAGE_SIZE};
 use crate::work_tracking::domain::ports::{ConnectionRepository, CredentialStore, WorkTracker};
 use crate::work_tracking::domain::provider_connection::{DisplayName, ProviderConnection};
 use crate::work_tracking::domain::provider_kind::ProviderKind;
-use crate::work_tracking::domain::work_item::WorkItem;
-use crate::work_tracking::domain::work_item_group::WorkItemGroup;
-use crate::work_tracking::domain::work_project::WorkProject;
+use crate::work_tracking::domain::remote_project::RemoteProject;
+use crate::work_tracking::domain::task::Task;
+use crate::work_tracking::domain::task_group::TaskGroup;
 
 // No Debug derive: holds a raw secret until parsed.
 pub struct SaveConnectionCommand {
@@ -154,7 +154,7 @@ impl WorkTrackingService {
         &self,
         raw_connection_id: &str,
         raw_cursor: Option<&str>,
-    ) -> Result<Page<WorkProject>, WorkTrackingError> {
+    ) -> Result<Page<RemoteProject>, WorkTrackingError> {
         let id = ConnectionId::parse(raw_connection_id, InputField::ConnectionId)?;
         let page = default_page(raw_cursor)?;
         self.resolve(&id)?.list_projects(page).await
@@ -165,9 +165,9 @@ impl WorkTrackingService {
         raw_connection_id: &str,
         raw_project_id: &str,
         raw_cursor: Option<&str>,
-    ) -> Result<Page<WorkItemGroup>, WorkTrackingError> {
+    ) -> Result<Page<TaskGroup>, WorkTrackingError> {
         let id = ConnectionId::parse(raw_connection_id, InputField::ConnectionId)?;
-        let project_id = WorkProjectId::parse(raw_project_id, InputField::ProjectId)?;
+        let project_id = RemoteProjectId::parse(raw_project_id, InputField::ProjectId)?;
         let page = default_page(raw_cursor)?;
         self.resolve(&id)?.list_groups(&project_id, page).await
     }
@@ -178,10 +178,10 @@ impl WorkTrackingService {
         raw_project_id: &str,
         raw_group_id: &str,
         raw_cursor: Option<&str>,
-    ) -> Result<Page<WorkItem>, WorkTrackingError> {
+    ) -> Result<Page<Task>, WorkTrackingError> {
         let id = ConnectionId::parse(raw_connection_id, InputField::ConnectionId)?;
-        let project_id = WorkProjectId::parse(raw_project_id, InputField::ProjectId)?;
-        let group_id = WorkItemGroupId::parse(raw_group_id, InputField::GroupId)?;
+        let project_id = RemoteProjectId::parse(raw_project_id, InputField::ProjectId)?;
+        let group_id = TaskGroupId::parse(raw_group_id, InputField::GroupId)?;
         let page = default_page(raw_cursor)?;
         self.resolve(&id)?
             .list_items(&project_id, &group_id, page)
@@ -193,9 +193,9 @@ impl WorkTrackingService {
         raw_connection_id: &str,
         raw_project_id: &str,
         raw_cursor: Option<&str>,
-    ) -> Result<Page<WorkItem>, WorkTrackingError> {
+    ) -> Result<Page<Task>, WorkTrackingError> {
         let id = ConnectionId::parse(raw_connection_id, InputField::ConnectionId)?;
-        let project_id = WorkProjectId::parse(raw_project_id, InputField::ProjectId)?;
+        let project_id = RemoteProjectId::parse(raw_project_id, InputField::ProjectId)?;
         let page = default_page(raw_cursor)?;
         self.resolve(&id)?
             .list_project_items(&project_id, page)
@@ -210,7 +210,7 @@ impl WorkTrackingService {
         raw_item_id: &str,
     ) -> Result<(), WorkTrackingError> {
         let id = ConnectionId::parse(raw_connection_id, InputField::ConnectionId)?;
-        let item_id = WorkItemId::parse(raw_item_id, InputField::ItemId)?;
+        let item_id = TaskId::parse(raw_item_id, InputField::ItemId)?;
         let tracker = self.resolve(&id)?;
         let user_id = tracker.current_user_id().await?;
         tracker.assign_user_to_task(&item_id, &user_id).await
