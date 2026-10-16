@@ -1,12 +1,5 @@
-import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useState } from "react";
-
-/** Mirrors the Rust `PushResult` returned by the `push_worktree` command. */
-export type PushResult = {
-	path: string;
-	pushed: boolean;
-	message: string | null;
-};
+import { commands, type PushResult } from "@/bindings";
 
 /**
  * Pushes a single worktree's current branch to its upstream. The backend
@@ -19,7 +12,7 @@ export function usePushWorktree() {
 	const push = useCallback(async (worktreePath: string): Promise<PushResult> => {
 		setPushing(true);
 		try {
-			return await invoke<PushResult>("push_worktree", { path: worktreePath });
+			return await commands.pushWorktree(worktreePath);
 		} finally {
 			setPushing(false);
 		}

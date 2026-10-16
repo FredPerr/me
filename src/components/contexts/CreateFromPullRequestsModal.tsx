@@ -22,6 +22,7 @@ import {
 	type RepositoryPullRequests,
 	useProjectPullRequests,
 } from "@/hooks/useProjectPullRequests";
+import { describeError } from "@/infra/commandError";
 import type { ProviderPullRequest } from "@/models/git-provider/GitProvider";
 import type { Project } from "@/models/Project";
 import { fuzzySelectFilter } from "@/utils/fuzzySelectFilter";
@@ -165,7 +166,7 @@ export function CreateFromPullRequestsModal({
 			reset();
 			onClose();
 		} catch (createError) {
-			setSubmitError(String(createError));
+			setSubmitError(describeError(createError));
 		} finally {
 			setLoading(false);
 		}

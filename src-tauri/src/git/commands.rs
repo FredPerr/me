@@ -41,6 +41,24 @@ pub struct GitCommandError {
     pub message: String,
 }
 
+impl GitCommandError {
+    /// A failure outside git itself, such as creating a folder or a symlink.
+    pub fn io(message: impl Into<String>) -> Self {
+        Self {
+            kind: GitErrorKind::Io,
+            message: message.into(),
+        }
+    }
+
+    /// Keeps the kind and replaces the message, e.g. to name the repository.
+    pub fn with_message(self, message: impl Into<String>) -> Self {
+        Self {
+            kind: self.kind,
+            message: message.into(),
+        }
+    }
+}
+
 impl From<GitError> for GitCommandError {
     fn from(error: GitError) -> Self {
         let kind = match &error {
@@ -97,14 +115,16 @@ pub struct LocalBranchView {
     pub is_merged: bool,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
 pub struct PushResult {
     pub path: String,
     pub pushed: bool,
     pub message: Option<String>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
 pub struct PullResult {
     pub path: String,
     pub pulled: bool,
@@ -298,39 +318,43 @@ pub async fn list_local_branches(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn delete_local_branch(
     git: State<'_, Git>,
     path: String,
     branch: String,
     force: bool,
-) -> Result<(), String> {
+) -> Result<(), GitCommandError> {
     let git = git.inner().clone();
     run_blocking(move || {
         let name = BranchName::parse(&branch)?;
         open(&git, &path)?
             .delete_branch(&name, force)
             .map_err(|error| {
-                format!(
+                let message = format!(
                     "Failed to delete branch '{branch}': {}",
                     failure_detail(&error)
-                )
+                );
+                GitCommandError::from(error).with_message(message)
             })
     })
     .await
 }
 
 #[tauri::command]
-pub async fn prune_worktrees(git: State<'_, Git>, path: String) -> Result<(), String> {
+#[specta::specta]
+pub async fn prune_worktrees(git: State<'_, Git>, path: String) -> Result<(), GitCommandError> {
     let git = git.inner().clone();
     run_blocking(move || Ok(open(&git, &path)?.prune_worktrees()?)).await
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn delete_worktree(
     git: State<'_, Git>,
     repo_path: String,
     worktree_path: String,
-) -> Result<(), String> {
+) -> Result<(), GitCommandError> {
     let git = git.inner().clone();
     run_blocking(move || {
         Ok(open(&git, &repo_path)?.remove_worktree(&WorktreePath::new(&worktree_path))?)
@@ -339,7 +363,11 @@ pub async fn delete_worktree(
 }
 
 #[tauri::command]
-pub async fn push_worktree(git: State<'_, Git>, path: String) -> Result<PushResult, String> {
+#[specta::specta]
+pub async fn push_worktree(
+    git: State<'_, Git>,
+    path: String,
+) -> Result<PushResult, GitCommandError> {
     let git = git.inner().clone();
     run_blocking(move || {
         let display_path = RepositoryPath::new(&path).display();
@@ -361,7 +389,11 @@ pub async fn push_worktree(git: State<'_, Git>, path: String) -> Result<PushResu
 }
 
 #[tauri::command]
-pub async fn pull_worktree(git: State<'_, Git>, path: String) -> Result<PullResult, String> {
+#[specta::specta]
+pub async fn pull_worktree(
+    git: State<'_, Git>,
+    path: String,
+) -> Result<PullResult, GitCommandError> {
     let git = git.inner().clone();
     run_blocking(move || {
         let display_path = RepositoryPath::new(&path).display();
@@ -383,23 +415,25 @@ pub async fn pull_worktree(git: State<'_, Git>, path: String) -> Result<PullResu
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn fetch_pr_branch(
     git: State<'_, Git>,
     path: String,
     branch: String,
-) -> Result<(), String> {
+) -> Result<(), GitCommandError> {
     let git = git.inner().clone();
     run_blocking(move || {
         let name = BranchName::parse(&branch)?;
-        open(&git, &path)?
-            .fetch_branch(&name)
-            .map_err(|error| match error {
+        open(&git, &path)?.fetch_branch(&name).map_err(|error| {
+            let message = match &error {
                 GitError::NoRemote => "No 'origin' remote configured".to_string(),
                 other => format!(
                     "Could not fetch branch '{branch}' from origin: {}",
-                    failure_detail(&other)
+                    failure_detail(other)
                 ),
-            })
+            };
+            GitCommandError::from(error).with_message(message)
+        })
     })
     .await
 }

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { commands } from "@/bindings";
+import { describeError } from "@/infra/commandError";
 import type { GitProviderId, ProviderPullRequest } from "@/models/git-provider/GitProvider";
 import {
 	listGitProviders,
@@ -106,7 +107,7 @@ async function loadRepositorySafely(
 			`[pull-requests] listPullRequests failed for ${project.name}/${repository.name}:`,
 			error,
 		);
-		return { ok: false, error: String(error) };
+		return { ok: false, error: describeError(error) };
 	}
 }
 

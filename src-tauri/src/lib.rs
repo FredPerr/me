@@ -40,6 +40,14 @@ const TYPED_COMMANDS: &[&str] = &[
     "read_pull_request_template",
     "list_branches",
     "list_local_branches",
+    "delete_local_branch",
+    "delete_worktree",
+    "prune_worktrees",
+    "create_context",
+    "delete_context",
+    "pull_worktree",
+    "push_worktree",
+    "fetch_pr_branch",
 ];
 
 /// The typed commands, exported with their types to `src/bindings.ts`.
@@ -55,6 +63,14 @@ fn typed_commands() -> tauri_specta::Builder<tauri::Wry> {
             pull_request_template::read_pull_request_template,
             git::commands::list_branches,
             git::commands::list_local_branches,
+            git::commands::delete_local_branch,
+            git::commands::delete_worktree,
+            git::commands::prune_worktrees,
+            context_checkout::create_context,
+            context_checkout::delete_context,
+            git::commands::pull_worktree,
+            git::commands::push_worktree,
+            git::commands::fetch_pr_branch,
         ])
 }
 
@@ -66,14 +82,6 @@ pub fn run() {
         greet,
         open_in_ide,
         check_path_exists,
-        git::commands::delete_local_branch,
-        git::commands::delete_worktree,
-        git::commands::prune_worktrees,
-        context_checkout::create_context,
-        context_checkout::delete_context,
-        git::commands::pull_worktree,
-        git::commands::push_worktree,
-        git::commands::fetch_pr_branch,
         git_provider::github::github_start_device_authorization,
         git_provider::github::github_poll_for_access_token,
         git_provider::github::github_get_authenticated_user,

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { GitCommandError } from "@/bindings";
-import { isCommandError } from "./commandError";
+import { describeError, isCommandError } from "./commandError";
 
 const NO_UPSTREAM_ERROR: GitCommandError = {
 	kind: "noUpstream",
@@ -31,5 +31,19 @@ describe("isCommandError", () => {
 
 	it("rejects null", () => {
 		expect(isCommandError(null)).toBe(false);
+	});
+});
+
+describe("describeError", () => {
+	it("shows the message of a typed command error", () => {
+		expect(describeError(NO_UPSTREAM_ERROR)).toBe(NO_UPSTREAM_ERROR.message);
+	});
+
+	it("shows the message of a JavaScript error", () => {
+		expect(describeError(new Error(RAW_MESSAGE))).toBe(RAW_MESSAGE);
+	});
+
+	it("shows a thrown string as is", () => {
+		expect(describeError(RAW_MESSAGE)).toBe(RAW_MESSAGE);
 	});
 });

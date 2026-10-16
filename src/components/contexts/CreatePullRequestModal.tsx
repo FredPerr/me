@@ -21,6 +21,7 @@ import { useTranslation } from "react-i18next";
 import { commands } from "@/bindings";
 import { usePullRequestDescriptionDraft } from "@/hooks/usePullRequestDescriptionDraft";
 import { usePushWorktree } from "@/hooks/usePushWorktree";
+import { describeError } from "@/infra/commandError";
 import type {
 	CreatedPullRequest,
 	GitProvider,
@@ -233,7 +234,7 @@ export function CreatePullRequestModal({
 			notifications.show({
 				color: "red",
 				title: t("contexts.createPr.createFailed"),
-				message: String(error),
+				message: describeError(error),
 			});
 		} finally {
 			setCreatingRepositoryId(null);

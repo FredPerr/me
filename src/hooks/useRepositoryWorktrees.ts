@@ -1,6 +1,6 @@
-import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useState } from "react";
 import { commands, type WorktreeView } from "@/bindings";
+import { describeError } from "@/infra/commandError";
 import type { Project, Repository } from "@/models/Project";
 
 export type Worktree = WorktreeView;
@@ -58,15 +58,12 @@ export function useRepositoryWorktrees(project: Project, enabled: boolean) {
 			const outcomes = await Promise.all(
 				selections.map(async (selection) => {
 					try {
-						await invoke("delete_worktree", {
-							repoPath: selection.repositoryPath,
-							worktreePath: selection.worktreePath,
-						});
+						await commands.deleteWorktree(selection.repositoryPath, selection.worktreePath);
 						return null;
 					} catch (error) {
 						return {
 							selection,
-							message: error instanceof Error ? error.message : String(error),
+							message: describeError(error),
 						} satisfies WorktreeDeletionFailure;
 					}
 				}),

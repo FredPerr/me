@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { WorkItem } from "@/domain/work-tracking/WorkItem";
 import { useContexts } from "@/hooks/useContexts";
+import { describeError } from "@/infra/commandError";
 import { DEFAULT_TASKS_PREAMBLE, tasksToContextSpecs } from "@/models/bulk/tasksToContextSpecs";
 import type { Project } from "@/models/Project";
 
@@ -76,7 +77,7 @@ export function BulkCreateFromTasksModal({
 		} catch (error) {
 			notifications.show({
 				title: t("workTracking.bulkCreate.createFailed"),
-				message: String(error),
+				message: describeError(error),
 				color: "red",
 			});
 		} finally {

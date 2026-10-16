@@ -1,7 +1,7 @@
 import { notifications } from "@mantine/notifications";
-import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { commands } from "@/bindings";
+import { describeError } from "@/infra/commandError";
 import type { ContextStatus } from "@/models/ContextStatus";
 import {
 	Context,
@@ -148,13 +148,13 @@ export function useContexts(project: Project) {
 			const folderName = slugify(name);
 
 			if (repos.length > 0) {
-				await invoke("create_context", {
-					projectPath: project.path,
-					contextName: folderName,
+				await commands.createContext(
+					project.path,
+					folderName,
 					repos,
-					symlinks: project.symlinks,
-					baseContextName: baseContextName ? resolveFolderSegment(project, baseContextName) : null,
-				});
+					project.symlinks,
+					baseContextName ? resolveFolderSegment(project, baseContextName) : null,
+				);
 			}
 
 			const branches = repoConfigs.map(
@@ -195,13 +195,7 @@ export function useContexts(project: Project) {
 			const folderName = slugify(name);
 
 			if (repos.length > 0) {
-				await invoke("create_context", {
-					projectPath: project.path,
-					contextName: folderName,
-					repos,
-					symlinks: project.symlinks,
-					baseContextName: null,
-				});
+				await commands.createContext(project.path, folderName, repos, project.symlinks, null);
 			}
 
 			const branches = repos.map(
@@ -243,13 +237,7 @@ export function useContexts(project: Project) {
 			const folderName = slugify(name);
 
 			if (repos.length > 0) {
-				await invoke("create_context", {
-					projectPath: project.path,
-					contextName: folderName,
-					repos,
-					symlinks: project.symlinks,
-					baseContextName: null,
-				});
+				await commands.createContext(project.path, folderName, repos, project.symlinks, null);
 			}
 
 			const branches = repos.map(
@@ -294,13 +282,13 @@ export function useContexts(project: Project) {
 				if (repos.length === 0) continue;
 
 				const folderName = slugify(spec.contextName);
-				await invoke("create_context", {
-					projectPath: project.path,
-					contextName: folderName,
+				await commands.createContext(
+					project.path,
+					folderName,
 					repos,
-					symlinks: project.symlinks,
-					baseContextName: baseFolderSegment,
-				});
+					project.symlinks,
+					baseFolderSegment,
+				);
 
 				const branches = repos.map((repo) => new ContextBranch(repo.repository_id, repo.branch));
 				createdContexts.push(
@@ -339,16 +327,11 @@ export function useContexts(project: Project) {
 			const repos = await buildRepoInputsFromContext(project, context);
 
 			try {
-				await invoke("delete_context", {
-					projectPath: project.path,
-					contextName: context.folderSegment,
-					repos,
-					symlinks: project.symlinks,
-				});
+				await commands.deleteContext(project.path, context.folderSegment, repos, project.symlinks);
 			} catch (error) {
 				notifications.show({
 					title: "Failed to delete context",
-					message: String(error),
+					message: describeError(error),
 					color: "red",
 				});
 				return;
@@ -376,7 +359,7 @@ export function useContexts(project: Project) {
 			} catch (error) {
 				notifications.show({
 					title: "Failed to save pull request drafts",
-					message: String(error),
+					message: describeError(error),
 					color: "red",
 				});
 				return;
@@ -408,7 +391,7 @@ export function useContexts(project: Project) {
 				setPersistedContexts(previousContexts);
 				notifications.show({
 					title: "Failed to update context status",
-					message: String(error),
+					message: describeError(error),
 					color: "red",
 				});
 			}
@@ -437,7 +420,7 @@ export function useContexts(project: Project) {
 				setPersistedContexts(previousContexts);
 				notifications.show({
 					title: "Failed to update context",
-					message: String(error),
+					message: describeError(error),
 					color: "red",
 				});
 			}
@@ -463,7 +446,7 @@ export function useContexts(project: Project) {
 				setPersistedContexts(previousContexts);
 				notifications.show({
 					title: "Failed to update context",
-					message: String(error),
+					message: describeError(error),
 					color: "red",
 				});
 			}
@@ -492,7 +475,7 @@ export function useContexts(project: Project) {
 				setPersistedContexts(previousContexts);
 				notifications.show({
 					title: "Failed to save conversation",
-					message: String(error),
+					message: describeError(error),
 					color: "red",
 				});
 			}
@@ -743,7 +726,7 @@ async function fetchPullRequestBranches(
 		if (!repo) continue;
 
 		const resolvedPath = await repo.resolveAbsolutePath(project.path);
-		await invoke("fetch_pr_branch", { path: resolvedPath, branch: config.headBranch });
+		await commands.fetchPrBranch(resolvedPath, config.headBranch);
 	}
 }
 
