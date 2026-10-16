@@ -28,6 +28,7 @@
 			"*.json",
 			"!node_modules",
 			"!src-tauri/target",
+			"!src/bindings.ts",
 			"!dist",
 			"!.worktrees"
 		]

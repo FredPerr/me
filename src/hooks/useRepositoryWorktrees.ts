@@ -1,20 +1,9 @@
-import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useState } from "react";
+import { commands, type WorktreeView } from "@/bindings";
+import { describeError } from "@/infra/commandError";
 import type { Project, Repository } from "@/models/Project";
 
-export type Worktree = {
-	name: string;
-	path: string;
-	branch: string | null;
-	isDefault: boolean;
-};
-
-type WorktreeDto = {
-	name: string;
-	path: string;
-	branch: string | null;
-	is_default: boolean;
-};
+export type Worktree = WorktreeView;
 
 export type RepositoryWorktrees = {
 	repository: Repository;
@@ -32,15 +21,6 @@ export type WorktreeDeletionFailure = {
 	message: string;
 };
 
-function toWorktree(dto: WorktreeDto): Worktree {
-	return {
-		name: dto.name,
-		path: dto.path,
-		branch: dto.branch,
-		isDefault: dto.is_default,
-	};
-}
-
 export function useRepositoryWorktrees(project: Project, enabled: boolean) {
 	const [repositoryWorktrees, setRepositoryWorktrees] = useState<RepositoryWorktrees[]>([]);
 	const [loading, setLoading] = useState(false);
@@ -52,10 +32,8 @@ export function useRepositoryWorktrees(project: Project, enabled: boolean) {
 				project.repositories.map(async (repository) => {
 					try {
 						const resolvedPath = await repository.resolveAbsolutePath(project.path);
-						const dtos = await invoke<WorktreeDto[]>("list_worktrees", {
-							path: resolvedPath,
-						});
-						return { repository, resolvedPath, worktrees: dtos.map(toWorktree) };
+						const worktrees = await commands.listWorktrees(resolvedPath);
+						return { repository, resolvedPath, worktrees };
 					} catch {
 						return { repository, resolvedPath: "", worktrees: [] };
 					}
@@ -80,15 +58,12 @@ export function useRepositoryWorktrees(project: Project, enabled: boolean) {
 			const outcomes = await Promise.all(
 				selections.map(async (selection) => {
 					try {
-						await invoke("delete_worktree", {
-							repoPath: selection.repositoryPath,
-							worktreePath: selection.worktreePath,
-						});
+						await commands.deleteWorktree(selection.repositoryPath, selection.worktreePath);
 						return null;
 					} catch (error) {
 						return {
 							selection,
-							message: error instanceof Error ? error.message : String(error),
+							message: describeError(error),
 						} satisfies WorktreeDeletionFailure;
 					}
 				}),

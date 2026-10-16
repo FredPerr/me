@@ -19,6 +19,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { type BulkDraftError, useBulkContextDraft } from "@/hooks/useBulkContextDraft";
 import type { BulkContextSpec } from "@/hooks/useContexts";
+import { describeError } from "@/infra/commandError";
 import type { BulkContextDraft } from "@/models/bulk/BulkContextDraft";
 import type { Context, Project } from "@/models/Project";
 
@@ -168,7 +169,7 @@ export function BulkCreateContextsModal({
 		} catch (createError) {
 			notifications.show({
 				title: t("contexts.bulk.createFailed"),
-				message: String(createError),
+				message: describeError(createError),
 				color: "red",
 			});
 		} finally {

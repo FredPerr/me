@@ -16,9 +16,9 @@ import {
 	PlusIcon,
 	TrashIcon,
 } from "@phosphor-icons/react";
-import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { commands } from "@/bindings";
 import { IconPicker } from "@/components/shared/IconPicker";
 import { RemoteProjectLinks } from "@/domain/work-tracking/RemoteProjectLinks";
 import { pickFolder } from "@/hooks/useFolderPicker";
@@ -80,7 +80,7 @@ export function ProjectForm({ initialProject, onSubmit, onCancel }: ProjectFormP
 	useEffect(() => {
 		if (path) {
 			resolvePath(path, {}).then((resolved) => {
-				invoke<boolean>("check_is_git_repository", { path: resolved }).then(setIsGitRoot);
+				commands.checkIsGitRepository(resolved).then(setIsGitRoot);
 			});
 		} else {
 			setIsGitRoot(null);
@@ -107,7 +107,7 @@ export function ProjectForm({ initialProject, onSubmit, onCancel }: ProjectFormP
 				repositories.map(async (repo) => {
 					try {
 						const repoPath = await resolvePath(repo.relPath, { basePath: resolvedPath });
-						const branches = await invoke<string[]>("list_branches", { path: repoPath });
+						const branches = await commands.listBranches(repoPath);
 						const branch =
 							branches.find((b) => b === "main") ??
 							branches.find((b) => b === "master") ??

@@ -1,25 +1,8 @@
-import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useState } from "react";
+import { commands, type WorktreeStatusView } from "@/bindings";
 import type { Context, Project } from "@/models/Project";
 
-export type RepositoryDiffStats = {
-	filesAdded: number;
-	filesModified: number;
-	filesDeleted: number;
-	filesRenamed: number;
-	insertions: number;
-	deletions: number;
-};
-
-type WorktreeStatusResponse = {
-	files_added: number;
-	files_modified: number;
-	files_deleted: number;
-	files_renamed: number;
-	insertions: number;
-	deletions: number;
-	pr_url: string | null;
-};
+export type RepositoryDiffStats = Omit<WorktreeStatusView, "prUrl">;
 
 export function useContextDiffStats(context: Context, project: Project, allContexts: Context[]) {
 	const [statsByRepository, setStatsByRepository] = useState<
@@ -51,19 +34,10 @@ export function useContextDiffStats(context: Context, project: Project, allConte
 				}
 
 				try {
-					const status = await invoke<WorktreeStatusResponse>("get_worktree_status", {
-						path,
-						baseBranch,
-					});
+					const status = await commands.getWorktreeStatus(path, baseBranch);
 
-					results[branch.repositoryId] = {
-						filesAdded: status.files_added,
-						filesModified: status.files_modified,
-						filesDeleted: status.files_deleted,
-						filesRenamed: status.files_renamed,
-						insertions: status.insertions,
-						deletions: status.deletions,
-					};
+					const { prUrl: _prUrl, ...stats } = status;
+					results[branch.repositoryId] = stats;
 				} catch {
 					results[branch.repositoryId] = null;
 				}

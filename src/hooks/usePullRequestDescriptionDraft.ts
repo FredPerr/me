@@ -1,6 +1,7 @@
-import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { commands } from "@/bindings";
 import { useAppSettings } from "@/hooks/useAppSettings";
+import { describeError } from "@/infra/commandError";
 import { isTerminalStatus } from "@/models/ai-session/AiSession";
 import { extractAgentText } from "@/models/ai-session/acp/acpEvents";
 import { looksLikeAcpStream } from "@/models/ai-session/acp/acpStreamToParts";
@@ -144,7 +145,7 @@ export function usePullRequestDescriptionDraft(
 
 			try {
 				const [diff, template] = await Promise.all([
-					invoke<string>("get_worktree_diff", { path: worktreePath, baseBranch }),
+					commands.getWorktreeDiff(worktreePath, baseBranch),
 					readPullRequestTemplate(worktreePath),
 				]);
 
@@ -175,7 +176,7 @@ export function usePullRequestDescriptionDraft(
 				sessionToRepository.current.set(spawned.sessionId, repositoryId);
 				outputBuffers.current.set(spawned.sessionId, []);
 			} catch (error) {
-				setRepositoryState(repositoryId, { status: "error", error: String(error) });
+				setRepositoryState(repositoryId, { status: "error", error: describeError(error) });
 			}
 		},
 		[project, settings?.shell, setRepositoryState],

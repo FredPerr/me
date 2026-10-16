@@ -1,15 +1,10 @@
 import { notifications } from "@mantine/notifications";
-import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { commands } from "@/bindings";
 import { useErrorModal } from "@/components/shared/ErrorModalProvider";
+import { describeError } from "@/infra/commandError";
 import type { Project } from "@/models/Project";
-
-type PullResult = {
-	path: string;
-	pulled: boolean;
-	message: string | null;
-};
 
 function collectWorktreePaths(project: Project): string[] {
 	const paths = new Set<string>();
@@ -26,7 +21,7 @@ function collectWorktreePaths(project: Project): string[] {
 }
 
 function describeFailure(path: string, reason: unknown): string {
-	const message = reason instanceof Error ? reason.message : String(reason);
+	const message = describeError(reason);
 	return `• ${path}: ${message}`;
 }
 
@@ -39,9 +34,7 @@ export function usePullContexts(project: Project) {
 		setPulling(true);
 		try {
 			const paths = collectWorktreePaths(project);
-			const results = await Promise.allSettled(
-				paths.map((path) => invoke<PullResult>("pull_worktree", { path })),
-			);
+			const results = await Promise.allSettled(paths.map((path) => commands.pullWorktree(path)));
 
 			const pulledCount = results.filter(
 				(result) => result.status === "fulfilled" && result.value.pulled,

@@ -13,14 +13,15 @@ import {
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { ArrowSquareOutIcon, SparkleIcon, WarningIcon } from "@phosphor-icons/react";
-import { invoke } from "@tauri-apps/api/core";
 import MDEditor from "@uiw/react-md-editor";
 import "@uiw/react-md-editor/markdown-editor.css";
 import "./CreatePullRequestModal.css";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { commands } from "@/bindings";
 import { usePullRequestDescriptionDraft } from "@/hooks/usePullRequestDescriptionDraft";
 import { usePushWorktree } from "@/hooks/usePushWorktree";
+import { describeError } from "@/infra/commandError";
 import type {
 	CreatedPullRequest,
 	GitProvider,
@@ -67,7 +68,7 @@ async function resolveProvider(
 ): Promise<ResolvedProvider | null> {
 	try {
 		const resolvedPath = await repository.resolveAbsolutePath(project.path);
-		const remoteUrl = await invoke<string | null>("get_git_remote_url", { path: resolvedPath });
+		const remoteUrl = await commands.getGitRemoteUrl(resolvedPath);
 		return remoteUrl ? resolveProviderForRemote(remoteUrl) : null;
 	} catch {
 		return null;
@@ -84,7 +85,7 @@ async function resolveDefaultBranch(
 ): Promise<string | null> {
 	try {
 		const resolvedPath = await repository.resolveAbsolutePath(project.path);
-		const branches = await invoke<string[]>("list_branches", { path: resolvedPath });
+		const branches = await commands.listBranches(resolvedPath);
 		return (
 			branches.find((branch) => branch === "main") ??
 			branches.find((branch) => branch === "master") ??
@@ -233,7 +234,7 @@ export function CreatePullRequestModal({
 			notifications.show({
 				color: "red",
 				title: t("contexts.createPr.createFailed"),
-				message: String(error),
+				message: describeError(error),
 			});
 		} finally {
 			setCreatingRepositoryId(null);

@@ -29,13 +29,14 @@ pub fn build() -> Git {
     ))))
 }
 
-/// Runs blocking git work off the async runtime.
-pub async fn run_blocking<T, F>(work: F) -> Result<T, String>
+/// Runs blocking git work off the async runtime, reporting a failed task as `E`.
+pub async fn run_blocking<T, E, F>(work: F) -> Result<T, E>
 where
     T: Send + 'static,
-    F: FnOnce() -> Result<T, String> + Send + 'static,
+    E: From<domain::error::GitError> + Send + 'static,
+    F: FnOnce() -> Result<T, E> + Send + 'static,
 {
     tauri::async_runtime::spawn_blocking(work)
         .await
-        .map_err(|error| format!("Git task failed: {error}"))?
+        .map_err(|error| E::from(domain::error::GitError::io("run the git task", error)))?
 }

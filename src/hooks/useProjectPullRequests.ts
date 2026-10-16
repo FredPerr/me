@@ -1,5 +1,6 @@
-import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useState } from "react";
+import { commands } from "@/bindings";
+import { describeError } from "@/infra/commandError";
 import type { GitProviderId, ProviderPullRequest } from "@/models/git-provider/GitProvider";
 import {
 	listGitProviders,
@@ -26,7 +27,7 @@ type UseProjectPullRequestsResult = {
 async function resolveRemoteUrl(project: Project, repository: Repository): Promise<string | null> {
 	try {
 		const resolvedPath = await repository.resolveAbsolutePath(project.path);
-		const remoteUrl = await invoke<string | null>("get_git_remote_url", { path: resolvedPath });
+		const remoteUrl = await commands.getGitRemoteUrl(resolvedPath);
 		if (!remoteUrl) {
 			console.warn(
 				`[pull-requests] no git remote URL for ${project.name}/${repository.name} at ${resolvedPath}`,
@@ -106,7 +107,7 @@ async function loadRepositorySafely(
 			`[pull-requests] listPullRequests failed for ${project.name}/${repository.name}:`,
 			error,
 		);
-		return { ok: false, error: String(error) };
+		return { ok: false, error: describeError(error) };
 	}
 }
 

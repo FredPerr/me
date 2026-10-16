@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { commands } from "@/bindings";
 
 /**
  * Read the pull request template for the repository checked out at
@@ -12,8 +12,6 @@ import { invoke } from "@tauri-apps/api/core";
  * the single-file and multi-template-directory forms); the backend mirrors that.
  */
 export async function readPullRequestTemplate(worktreePath: string): Promise<string | undefined> {
-	const template = await invoke<string | null>("read_pull_request_template", {
-		path: worktreePath,
-	});
+	const template = await commands.readPullRequestTemplate(worktreePath);
 	return template ?? undefined;
 }

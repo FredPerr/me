@@ -68,10 +68,3 @@ impl fmt::Display for GitError {
 }
 
 impl std::error::Error for GitError {}
-
-/// Commands still report errors as text; the typed wire format comes later.
-impl From<GitError> for String {
-    fn from(error: GitError) -> Self {
-        error.to_string()
-    }
-}

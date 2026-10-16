@@ -1,24 +1,9 @@
-import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useState } from "react";
+import { commands, type LocalBranchView } from "@/bindings";
+import { describeError } from "@/infra/commandError";
 import type { Project, Repository } from "@/models/Project";
 
-export type LocalBranch = {
-	name: string;
-	isCurrent: boolean;
-	isCheckedOut: boolean;
-	hasUpstream: boolean;
-	upstreamGone: boolean;
-	isMerged: boolean;
-};
-
-type LocalBranchDto = {
-	name: string;
-	is_current: boolean;
-	is_checked_out: boolean;
-	has_upstream: boolean;
-	upstream_gone: boolean;
-	is_merged: boolean;
-};
+export type LocalBranch = LocalBranchView;
 
 export type RepositoryBranches = {
 	repository: Repository;
@@ -36,17 +21,6 @@ export type BranchDeletionFailure = {
 	message: string;
 };
 
-function toLocalBranch(dto: LocalBranchDto): LocalBranch {
-	return {
-		name: dto.name,
-		isCurrent: dto.is_current,
-		isCheckedOut: dto.is_checked_out,
-		hasUpstream: dto.has_upstream,
-		upstreamGone: dto.upstream_gone,
-		isMerged: dto.is_merged,
-	};
-}
-
 export function useLocalBranches(project: Project, enabled: boolean) {
 	const [repositoryBranches, setRepositoryBranches] = useState<RepositoryBranches[]>([]);
 	const [loading, setLoading] = useState(false);
@@ -58,10 +32,8 @@ export function useLocalBranches(project: Project, enabled: boolean) {
 				project.repositories.map(async (repository) => {
 					try {
 						const resolvedPath = await repository.resolveAbsolutePath(project.path);
-						const dtos = await invoke<LocalBranchDto[]>("list_local_branches", {
-							path: resolvedPath,
-						});
-						return { repository, resolvedPath, branches: dtos.map(toLocalBranch) };
+						const branches = await commands.listLocalBranches(resolvedPath);
+						return { repository, resolvedPath, branches };
 					} catch {
 						return { repository, resolvedPath: "", branches: [] };
 					}
@@ -97,16 +69,12 @@ export function useLocalBranches(project: Project, enabled: boolean) {
 			const outcomes = await Promise.all(
 				selections.map(async (selection) => {
 					try {
-						await invoke("delete_local_branch", {
-							path: selection.resolvedPath,
-							branch: selection.branchName,
-							force: true,
-						});
+						await commands.deleteLocalBranch(selection.resolvedPath, selection.branchName, true);
 						return null;
 					} catch (error) {
 						return {
 							selection,
-							message: error instanceof Error ? error.message : String(error),
+							message: describeError(error),
 						} satisfies BranchDeletionFailure;
 					}
 				}),
@@ -129,9 +97,7 @@ export function useLocalBranches(project: Project, enabled: boolean) {
 			.map((entry) => entry.resolvedPath)
 			.filter((resolvedPath) => resolvedPath.length > 0);
 
-		await Promise.all(
-			paths.map((path) => invoke("prune_worktrees", { path }).catch(() => undefined)),
-		);
+		await Promise.all(paths.map((path) => commands.pruneWorktrees(path).catch(() => undefined)));
 		await load();
 	}, [repositoryBranches, load]);
 

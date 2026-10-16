@@ -11,6 +11,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
+use crate::git::commands::GitCommandError;
 use crate::git::domain::branch_name::BranchName;
 use crate::git::domain::error::GitError;
 use crate::git::domain::paths::{RepositoryPath, WorktreePath};
@@ -21,7 +22,7 @@ const WORKTREES_FOLDER: &str = ".worktrees";
 const DEFAULT_CONTEXT_FOLDER: &str = "default";
 
 /// One repository of a context, as sent by the frontend. Field names are the wire format.
-#[derive(Deserialize)]
+#[derive(Deserialize, specta::Type)]
 pub struct ContextRepositoryInput {
     pub rel_path: String,
     pub name: String,
@@ -33,7 +34,7 @@ pub struct ContextRepositoryInput {
     pub post_checkout_command: Option<String>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, specta::Type)]
 pub struct ContextRepositoryResult {
     pub rel_path: String,
     pub worktree_path: String,
@@ -45,14 +46,15 @@ impl ContextRepositoryInput {
         &self,
         repositories: &dyn GitRepositories,
         project_folder: &Path,
-    ) -> Result<Box<dyn GitRepository>, String> {
+    ) -> Result<Box<dyn GitRepository>, GitCommandError> {
         repositories
             .open(&RepositoryPath::new(project_folder.join(&self.rel_path)))
             .map_err(|error| self.failure(error))
     }
 
-    fn failure(&self, error: GitError) -> String {
-        format!("{error} (in '{}')", self.rel_path)
+    fn failure(&self, error: GitError) -> GitCommandError {
+        let message = format!("{error} (in '{}')", self.rel_path);
+        GitCommandError::from(error).with_message(message)
     }
 }
 
@@ -125,7 +127,7 @@ fn link_repository(
     context_folder: &ContextFolder,
     repository_input: &ContextRepositoryInput,
     base_context_name: Option<&str>,
-) -> Result<PathBuf, String> {
+) -> Result<PathBuf, GitCommandError> {
     let checkout = context_folder.repository_checkout(&repository_input.name);
     let target = match base_context_name {
         Some(base) if base != DEFAULT_CONTEXT_FOLDER => {
@@ -137,21 +139,22 @@ fn link_repository(
             .join(&repository_input.rel_path),
     };
     if let Some(parent) = checkout.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|error| format!("Failed to create parent directory: {error}"))?;
+        std::fs::create_dir_all(parent).map_err(|error| {
+            GitCommandError::io(format!("Failed to create parent directory: {error}"))
+        })?;
     }
     // Clear a leftover entry so re-creating a context is idempotent.
     remove_existing_path(&checkout).map_err(|error| {
-        format!(
+        GitCommandError::io(format!(
             "Failed to clear existing path for '{}': {error}",
             repository_input.name
-        )
+        ))
     })?;
     create_symlink(&target, &checkout).map_err(|error| {
-        format!(
+        GitCommandError::io(format!(
             "Failed to create symlink for '{}': {error}",
             repository_input.name
-        )
+        ))
     })?;
     Ok(checkout)
 }
@@ -162,7 +165,7 @@ fn check_out_repository(
     repositories: &dyn GitRepositories,
     context_folder: &ContextFolder,
     repository_input: &ContextRepositoryInput,
-) -> Result<PathBuf, String> {
+) -> Result<PathBuf, GitCommandError> {
     let repository = repository_input.open(repositories, &context_folder.project_folder)?;
     let failure = |error| repository_input.failure(error);
     let branch = BranchName::parse(&repository_input.branch).map_err(failure)?;
@@ -197,7 +200,7 @@ fn run_post_checkout(command: Option<&str>, checkout: &Path) {
 fn link_configured_paths(
     context_folder: &ContextFolder,
     symlinks: &[String],
-) -> Result<(), String> {
+) -> Result<(), GitCommandError> {
     for relative in symlinks {
         let link = context_folder.configured_link(relative);
         if link.exists() || link.is_symlink() {
@@ -205,16 +208,20 @@ fn link_configured_paths(
         }
         if let Some(parent) = link.parent() {
             std::fs::create_dir_all(parent).map_err(|error| {
-                format!("Failed to create directory for symlink '{relative}': {error}")
+                GitCommandError::io(format!(
+                    "Failed to create directory for symlink '{relative}': {error}"
+                ))
             })?;
         }
-        create_symlink(&context_folder.project_folder.join(relative), &link)
-            .map_err(|error| format!("Failed to symlink '{relative}': {error}"))?;
+        create_symlink(&context_folder.project_folder.join(relative), &link).map_err(|error| {
+            GitCommandError::io(format!("Failed to symlink '{relative}': {error}"))
+        })?;
     }
     Ok(())
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn create_context(
     git: State<'_, Git>,
     project_path: String,
@@ -222,7 +229,7 @@ pub async fn create_context(
     repos: Vec<ContextRepositoryInput>,
     symlinks: Vec<String>,
     base_context_name: Option<String>,
-) -> Result<Vec<ContextRepositoryResult>, String> {
+) -> Result<Vec<ContextRepositoryResult>, GitCommandError> {
     let repositories = git.repositories();
     run_blocking(move || {
         let context_folder = ContextFolder::new(Path::new(&project_path), &context_name);
@@ -264,13 +271,14 @@ pub async fn create_context(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn delete_context(
     git: State<'_, Git>,
     project_path: String,
     context_name: String,
     repos: Vec<ContextRepositoryInput>,
     symlinks: Vec<String>,
-) -> Result<(), String> {
+) -> Result<(), GitCommandError> {
     let repositories = git.repositories();
     run_blocking(move || {
         let context_folder = ContextFolder::new(Path::new(&project_path), &context_name);
@@ -279,7 +287,10 @@ pub async fn delete_context(
             let checkout = context_folder.repository_checkout(&repository_input.name);
             if checkout.is_symlink() {
                 std::fs::remove_file(&checkout).map_err(|error| {
-                    format!("Failed to remove symlink '{}': {error}", checkout.display())
+                    GitCommandError::io(format!(
+                        "Failed to remove symlink '{}': {error}",
+                        checkout.display()
+                    ))
                 })?;
             } else if checkout.exists() {
                 repository_input
