@@ -156,10 +156,13 @@ pub fn finds_nothing_for_an_unknown_tag(repository: &dyn ProjectRepository) {
 pub fn save_replaces_the_project_with_the_same_tag(repository: &dyn ProjectRepository) {
     let project = project_with_contexts();
     repository.save(&project).unwrap();
-    let renamed = project.clone().update_settings(ProjectSettings {
-        name: RENAMED_PROJECT.to_string(),
-        ..settings(project.repositories().to_vec())
-    });
+    let renamed = project
+        .clone()
+        .update_settings(ProjectSettings {
+            name: RENAMED_PROJECT.to_string(),
+            ..settings(project.repositories().to_vec())
+        })
+        .unwrap();
 
     repository.save(&renamed).unwrap();
 

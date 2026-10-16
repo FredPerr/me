@@ -5,10 +5,12 @@ use std::path::PathBuf;
 use super::*;
 use crate::git::infra::in_memory::{InMemoryGitRepositories, Operation};
 use crate::workspace::application::error::CheckoutHolder;
+use crate::workspace::domain::agent_work::AgentTool;
 use crate::workspace::domain::branch_naming::BranchNamingPolicy;
 use crate::workspace::domain::context_branch::ContextCheckout;
 use crate::workspace::domain::error::WorkspaceError;
 use crate::workspace::domain::project::ProjectSettings;
+use crate::workspace::domain::remote_project_link::RemoteProjectLink;
 use crate::workspace::domain::test_support::{branch_name, repository, repository_id};
 use crate::workspace::infra::in_memory_project_repository::InMemoryProjectRepository;
 use crate::workspace::infra::recording_fakes::{
@@ -771,6 +773,555 @@ mod default_context_repair {
         assert_eq!(
             fixture.service.load_project(&tag()),
             Err(WorkspaceServiceError::ProjectNotFound { tag: tag() })
+        );
+    }
+}
+
+mod context_changes {
+    use super::*;
+
+    const CONVERSATION_ID: &str = "kiro-conversation-1";
+    const DRAFT_TITLE: &str = "Add the login page";
+    const DRAFT_DESCRIPTION: &str = "Adds the login form";
+
+    fn draft() -> PullRequestDraft {
+        PullRequestDraft {
+            title: DRAFT_TITLE.to_string(),
+            description: DRAFT_DESCRIPTION.to_string(),
+        }
+    }
+
+    fn create_signup(fixture: &Fixture) -> ContextId {
+        let command = create_command(OTHER_CONTEXT, vec![new_branch(API_ID, SIGNUP_BRANCH)]);
+        let project = fixture.service.create_context(command).unwrap();
+        context_id(&project, OTHER_CONTEXT)
+    }
+
+    #[test]
+    fn sets_the_status_saves_it_and_announces_it() {
+        let fixture = Fixture::new();
+        let id = fixture.create_login();
+
+        let project = fixture
+            .service
+            .set_context_status(&tag(), &id, ContextStatus::Review)
+            .unwrap();
+
+        assert_eq!(project, fixture.stored());
+        assert_eq!(
+            fixture.stored().find_context(&id).unwrap().status,
+            ContextStatus::Review
+        );
+        assert_eq!(fixture.change_count(), 2);
+    }
+
+    #[test]
+    fn refuses_a_status_change_on_a_static_context() {
+        let fixture = Fixture::new();
+        let id = fixture.create_login();
+        fixture
+            .service
+            .set_context_static(&tag(), &id, true)
+            .unwrap();
+
+        let result = fixture
+            .service
+            .set_context_status(&tag(), &id, ContextStatus::Done);
+
+        assert_eq!(
+            result,
+            Err(WorkspaceServiceError::Rejected(
+                WorkspaceError::StaticContextStatusLocked { id: id.clone() }
+            ))
+        );
+        assert_eq!(
+            fixture.stored().find_context(&id).unwrap().status,
+            ContextStatus::Ready
+        );
+        assert_eq!(fixture.change_count(), 2);
+    }
+
+    #[test]
+    fn marks_a_context_static_and_announces_it() {
+        let fixture = Fixture::new();
+        let id = fixture.create_login();
+
+        fixture
+            .service
+            .set_context_static(&tag(), &id, true)
+            .unwrap();
+
+        assert!(fixture.stored().find_context(&id).unwrap().is_static);
+        assert_eq!(fixture.change_count(), 2);
+    }
+
+    #[test]
+    fn saves_a_pull_request_draft_on_the_context_branch() {
+        let fixture = Fixture::new();
+        let id = fixture.create_login();
+
+        fixture
+            .service
+            .save_pull_request_draft(&tag(), &id, &repository_id(API_ID), draft())
+            .unwrap();
+
+        let stored = fixture.stored();
+        let branch = stored
+            .find_context(&id)
+            .unwrap()
+            .branch_for(&repository_id(API_ID))
+            .unwrap();
+        assert_eq!(branch.pull_request.as_ref().unwrap().draft, draft());
+        assert_eq!(fixture.change_count(), 2);
+    }
+
+    #[test]
+    fn sets_then_clears_the_agent_prompt() {
+        let fixture = Fixture::new();
+        let id = fixture.create_login();
+
+        fixture
+            .service
+            .set_agent_prompt(&tag(), &id, Some(PROMPT.to_string()))
+            .unwrap();
+        let prompt_after_setting = fixture.stored_context(LOGIN_CONTEXT).unwrap().agent;
+        fixture.service.set_agent_prompt(&tag(), &id, None).unwrap();
+
+        assert_eq!(
+            prompt_after_setting.unwrap().prompt.as_deref(),
+            Some(PROMPT)
+        );
+        let cleared = fixture
+            .stored_context(LOGIN_CONTEXT)
+            .unwrap()
+            .agent
+            .unwrap();
+        assert_eq!(cleared.prompt, None);
+        assert_eq!(fixture.change_count(), 3);
+    }
+
+    #[test]
+    fn records_the_kiro_conversation() {
+        let fixture = Fixture::new();
+        let id = fixture.create_login();
+
+        fixture
+            .service
+            .record_agent_conversation(&tag(), &id, CONVERSATION_ID.to_string())
+            .unwrap();
+
+        let agent = fixture
+            .stored_context(LOGIN_CONTEXT)
+            .unwrap()
+            .agent
+            .unwrap();
+        assert_eq!(
+            agent.tool,
+            AgentTool::Kiro {
+                conversation_id: Some(CONVERSATION_ID.to_string())
+            }
+        );
+        assert_eq!(fixture.change_count(), 2);
+    }
+
+    #[test]
+    fn reports_an_unknown_project_and_announces_nothing() {
+        let fixture = Fixture::without_project();
+        let id = ContextId::generate();
+
+        let result = fixture
+            .service
+            .set_context_status(&tag(), &id, ContextStatus::Review);
+
+        assert_eq!(
+            result,
+            Err(WorkspaceServiceError::ProjectNotFound { tag: tag() })
+        );
+        assert_eq!(fixture.change_count(), 0);
+    }
+
+    #[test]
+    fn keeps_both_of_two_concurrent_status_changes() {
+        let fixture = Fixture::new();
+        let login_id = fixture.create_login();
+        let signup_id = create_signup(&fixture);
+
+        std::thread::scope(|scope| {
+            for id in [&login_id, &signup_id] {
+                let service = &fixture.service;
+                scope.spawn(move || {
+                    service
+                        .set_context_status(&tag(), id, ContextStatus::InProgress)
+                        .unwrap()
+                });
+            }
+        });
+
+        let stored = fixture.stored();
+        for id in [&login_id, &signup_id] {
+            assert_eq!(
+                stored.find_context(id).unwrap().status,
+                ContextStatus::InProgress
+            );
+        }
+    }
+}
+
+mod project_settings {
+    use super::*;
+
+    const RENAMED_PROJECT: &str = "Acme Platform";
+    const ICON: &str = "rocket";
+    const REQUIRED_PREFIX: &str = "ops";
+    const NODE_MODULES_SYMLINK: &str = "node_modules";
+
+    fn link() -> RemoteProjectLink {
+        RemoteProjectLink {
+            provider_kind: "teamwork".to_string(),
+            connection_id: "teamwork:acme.teamwork.com".to_string(),
+            remote_project_id: "42".to_string(),
+            remote_project_name: "Website".to_string(),
+            remote_project_url: None,
+            linked_at: "2024-01-15T10:00:00.000Z".to_string(),
+        }
+    }
+
+    fn changed_settings() -> ProjectSettings {
+        ProjectSettings {
+            name: RENAMED_PROJECT.to_string(),
+            icon: Some(ICON.to_string()),
+            symlinks: vec![NODE_MODULES_SYMLINK.to_string()],
+            remote_project_links: vec![link()],
+            branch_naming: BranchNamingPolicy::parse(&[REQUIRED_PREFIX], false).unwrap(),
+            ..project_settings(vec![api()])
+        }
+    }
+
+    #[test]
+    fn saves_every_setting_in_one_change_and_announces_it() {
+        let fixture = Fixture::new();
+
+        let project = fixture
+            .service
+            .update_project_settings(&tag(), changed_settings())
+            .unwrap();
+
+        let stored = fixture.stored();
+        assert_eq!(project, stored);
+        assert_eq!(stored.name(), RENAMED_PROJECT);
+        assert_eq!(stored.icon(), Some(ICON));
+        assert_eq!(stored.repositories(), [api()]);
+        assert_eq!(stored.symlinks(), [NODE_MODULES_SYMLINK]);
+        assert_eq!(stored.remote_project_links(), [link()]);
+        assert_eq!(
+            stored.branch_naming().default_prefix().unwrap().as_str(),
+            REQUIRED_PREFIX
+        );
+        assert_eq!(fixture.events.changed_projects(), [tag()]);
+    }
+
+    #[test]
+    fn keeps_the_tag_and_the_contexts() {
+        let fixture = Fixture::new();
+        fixture.create_login();
+        let contexts_before = fixture.stored().contexts().to_vec();
+
+        fixture
+            .service
+            .update_project_settings(&tag(), changed_settings())
+            .unwrap();
+
+        let stored = fixture.stored();
+        assert_eq!(stored.tag(), &tag());
+        assert_eq!(stored.contexts(), contexts_before);
+    }
+
+    #[test]
+    fn refuses_settings_the_project_rejects_and_saves_nothing() {
+        let fixture = Fixture::new();
+        let stored_before = fixture.stored();
+        let twin = repository(API_ID, WEB_NAME, "./twin");
+
+        let result = fixture
+            .service
+            .update_project_settings(&tag(), project_settings(vec![api(), twin]));
+
+        assert_eq!(
+            result,
+            Err(WorkspaceServiceError::Rejected(
+                WorkspaceError::DuplicateRepository {
+                    id: repository_id(API_ID)
+                }
+            ))
+        );
+        assert_eq!(fixture.stored(), stored_before);
+        assert_eq!(fixture.change_count(), 0);
+    }
+
+    #[test]
+    fn an_invalid_prefix_never_becomes_settings() {
+        assert!(matches!(
+            BranchNamingPolicy::parse(&["my prefix"], true),
+            Err(WorkspaceError::InvalidPrefix { .. })
+        ));
+    }
+}
+
+mod add_project {
+    use super::*;
+
+    const DEVELOP: &str = "develop";
+    const MASTER: &str = "master";
+    const TRUNK: &str = "trunk";
+    const RELEASE: &str = "release";
+    const LEGACY_ID: &str = "legacy-id";
+    const LEGACY_NAME: &str = "legacy";
+    const TOOLS_ID: &str = "tools-id";
+    const TOOLS_NAME: &str = "tools";
+    const DOCS_NAME: &str = "docs";
+
+    fn add_repository(fixture: &Fixture, name: &str, default_branch: &str, others: &[&str]) {
+        fixture
+            .git
+            .add_repository(&path_of(name), &branch_name(default_branch));
+        for other in others {
+            fixture
+                .open(name)
+                .create_branch(&branch_name(other), &branch_name(default_branch))
+                .unwrap();
+        }
+    }
+
+    fn default_branches(project: &Project) -> Vec<(String, String)> {
+        branches_of(project.default_context().unwrap())
+    }
+
+    #[test]
+    fn saves_the_project_and_announces_it() {
+        let fixture = Fixture::without_project();
+
+        let project = fixture
+            .service
+            .add_project(tag(), project_settings(vec![api(), web()]))
+            .unwrap();
+
+        assert_eq!(project, fixture.stored());
+        assert_eq!(fixture.events.changed_projects(), [tag()]);
+    }
+
+    #[test]
+    fn puts_the_default_context_on_main_before_master_or_the_first_branch() {
+        let fixture = Fixture::without_project();
+        fixture
+            .open(API_NAME)
+            .create_branch(&branch_name(DEVELOP), &branch_name(MAIN))
+            .unwrap();
+        fixture
+            .open(API_NAME)
+            .create_branch(&branch_name(MASTER), &branch_name(MAIN))
+            .unwrap();
+        add_repository(&fixture, LEGACY_NAME, MASTER, &[DEVELOP]);
+        add_repository(&fixture, TOOLS_NAME, TRUNK, &[RELEASE]);
+        let repositories = vec![
+            api(),
+            repository(LEGACY_ID, LEGACY_NAME, "./legacy"),
+            repository(TOOLS_ID, TOOLS_NAME, "./tools"),
+        ];
+
+        let project = fixture
+            .service
+            .add_project(tag(), project_settings(repositories))
+            .unwrap();
+
+        assert_eq!(
+            default_branches(&project),
+            [
+                (API_ID.to_string(), MAIN.to_string()),
+                (LEGACY_ID.to_string(), MASTER.to_string()),
+                (TOOLS_ID.to_string(), RELEASE.to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn skips_repositories_that_cant_be_opened() {
+        let fixture = Fixture::without_project();
+        let docs = repository(DOCS_ID, DOCS_NAME, "./docs");
+
+        let project = fixture
+            .service
+            .add_project(tag(), project_settings(vec![api(), docs]))
+            .unwrap();
+
+        assert_eq!(
+            default_branches(&project),
+            [(API_ID.to_string(), MAIN.to_string())]
+        );
+    }
+
+    #[test]
+    fn refuses_a_tag_already_in_use_and_saves_nothing() {
+        let fixture = Fixture::new();
+        let stored_before = fixture.stored();
+
+        let result = fixture
+            .service
+            .add_project(tag(), project_settings(vec![api()]));
+
+        assert_eq!(
+            result,
+            Err(WorkspaceServiceError::ProjectAlreadyExists { tag: tag() })
+        );
+        assert_eq!(fixture.stored(), stored_before);
+        assert_eq!(fixture.change_count(), 0);
+    }
+
+    #[test]
+    fn refuses_settings_the_project_rejects() {
+        let fixture = Fixture::without_project();
+        let nameless = ProjectSettings {
+            name: String::new(),
+            ..project_settings(vec![api()])
+        };
+
+        let result = fixture.service.add_project(tag(), nameless);
+
+        assert_eq!(
+            result,
+            Err(WorkspaceServiceError::Rejected(
+                WorkspaceError::EmptyProjectName
+            ))
+        );
+        assert_eq!(fixture.projects.find(&tag()).unwrap(), None);
+    }
+}
+
+mod delete_project {
+    use super::*;
+
+    #[test]
+    fn forgets_the_project_and_announces_it() {
+        let fixture = Fixture::new();
+
+        fixture.service.delete_project(&tag()).unwrap();
+
+        assert_eq!(fixture.projects.find(&tag()).unwrap(), None);
+        assert_eq!(fixture.events.changed_projects(), [tag()]);
+    }
+
+    #[test]
+    fn leaves_the_branches_and_worktrees_on_disk() {
+        let fixture = Fixture::new();
+        fixture.create_login();
+
+        fixture.service.delete_project(&tag()).unwrap();
+
+        assert_eq!(
+            fixture.checkout_of(API_NAME, LOGIN_BRANCH).as_deref(),
+            Some(LOGIN_API_WORKTREE)
+        );
+    }
+
+    #[test]
+    fn succeeds_for_a_project_that_is_already_gone() {
+        let fixture = Fixture::new();
+        fixture.service.delete_project(&tag()).unwrap();
+
+        let result = fixture.service.delete_project(&tag());
+
+        assert_eq!(result, Ok(()));
+    }
+}
+
+mod suggest_branch_name {
+    use super::*;
+
+    const TITLE: &str = "Login page";
+    const SLUG: &str = "login-page";
+    const FEATURE_PREFIX: &str = "feature";
+    const REQUIRED_PREFIX: &str = "fix";
+    const UNKNOWN_PREFIX: &str = "hotfix";
+    const TITLE_WITHOUT_LETTERS: &str = "!!!";
+
+    fn suggest(
+        fixture: &Fixture,
+        title: &str,
+        prefix: Option<&str>,
+    ) -> Result<String, WorkspaceServiceError> {
+        fixture
+            .service
+            .suggest_branch_name(&tag(), title, prefix)
+            .map(|branch| branch.to_string())
+    }
+
+    fn requiring_a_prefix() -> Fixture {
+        let fixture = Fixture::new();
+        let settings = ProjectSettings {
+            branch_naming: BranchNamingPolicy::parse(&[REQUIRED_PREFIX], false).unwrap(),
+            ..project_settings(vec![api(), web()])
+        };
+        fixture
+            .projects
+            .save(&fixture.stored().update_settings(settings).unwrap())
+            .unwrap();
+        fixture
+    }
+
+    fn rejected(error: WorkspaceError) -> Result<String, WorkspaceServiceError> {
+        Err(WorkspaceServiceError::Rejected(error))
+    }
+
+    #[test]
+    fn puts_the_chosen_prefix_before_the_slug() {
+        let fixture = Fixture::new();
+
+        let suggestion = suggest(&fixture, TITLE, Some(FEATURE_PREFIX));
+
+        assert_eq!(suggestion, Ok(format!("{FEATURE_PREFIX}/{SLUG}")));
+    }
+
+    #[test]
+    fn gives_the_slug_alone_when_no_prefix_is_allowed() {
+        let fixture = Fixture::new();
+
+        assert_eq!(suggest(&fixture, TITLE, None), Ok(SLUG.to_string()));
+    }
+
+    #[test]
+    fn refuses_no_prefix_when_the_project_requires_one() {
+        let fixture = requiring_a_prefix();
+
+        assert_eq!(
+            suggest(&fixture, TITLE, None),
+            rejected(WorkspaceError::PrefixRequired)
+        );
+        assert_eq!(
+            suggest(&fixture, TITLE, Some(REQUIRED_PREFIX)),
+            Ok(format!("{REQUIRED_PREFIX}/{SLUG}"))
+        );
+    }
+
+    #[test]
+    fn refuses_a_prefix_the_project_doesnt_offer() {
+        let fixture = Fixture::new();
+
+        assert_eq!(
+            suggest(&fixture, TITLE, Some(UNKNOWN_PREFIX)),
+            rejected(WorkspaceError::UnknownPrefix {
+                prefix: UNKNOWN_PREFIX.to_string()
+            })
+        );
+    }
+
+    #[test]
+    fn refuses_a_title_that_gives_an_empty_slug() {
+        let fixture = Fixture::new();
+
+        assert_eq!(
+            suggest(&fixture, TITLE_WITHOUT_LETTERS, Some(FEATURE_PREFIX)),
+            rejected(WorkspaceError::EmptyBranchName {
+                source: TITLE_WITHOUT_LETTERS.to_string()
+            })
         );
     }
 }

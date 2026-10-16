@@ -47,6 +47,48 @@ pub struct ProjectSettings {
     pub branch_naming: BranchNamingPolicy,
 }
 
+impl ProjectSettings {
+    /// Refuses a blank name or folder and two repositories with one id; drops
+    /// blank symlinks and turns a blank icon or post-checkout command into none.
+    fn checked(self) -> Result<Self, WorkspaceError> {
+        if self.name.trim().is_empty() {
+            return Err(WorkspaceError::EmptyProjectName);
+        }
+        if self.path.trim().is_empty() {
+            return Err(WorkspaceError::EmptyProjectPath);
+        }
+        for (index, repository) in self.repositories.iter().enumerate() {
+            if self.repositories[..index]
+                .iter()
+                .any(|earlier| earlier.id == repository.id)
+            {
+                return Err(WorkspaceError::DuplicateRepository {
+                    id: repository.id.clone(),
+                });
+            }
+        }
+        Ok(Self {
+            icon: self.icon.filter(|icon| !icon.trim().is_empty()),
+            repositories: self
+                .repositories
+                .into_iter()
+                .map(|repository| Repository {
+                    post_checkout_command: repository
+                        .post_checkout_command
+                        .filter(|command| !command.trim().is_empty()),
+                    ..repository
+                })
+                .collect(),
+            symlinks: self
+                .symlinks
+                .into_iter()
+                .filter(|symlink| !symlink.trim().is_empty())
+                .collect(),
+            ..self
+        })
+    }
+}
+
 impl Project {
     /// A project without contexts; `repair_default_context` gives it its default context.
     pub fn new(tag: ProjectTag, settings: ProjectSettings) -> Self {
@@ -100,12 +142,17 @@ impl Project {
         &self.branch_naming
     }
 
-    /// Replaces the settings, keeping the tag and the contexts.
-    pub fn update_settings(self, settings: ProjectSettings) -> Self {
-        Self {
+    /// A new project with checked settings, still without contexts.
+    pub fn create(tag: ProjectTag, settings: ProjectSettings) -> Result<Self, WorkspaceError> {
+        Ok(Self::new(tag, settings.checked()?))
+    }
+
+    /// Replaces the settings after checking them, keeping the tag and the contexts.
+    pub fn update_settings(self, settings: ProjectSettings) -> Result<Self, WorkspaceError> {
+        Ok(Self {
             contexts: self.contexts,
-            ..Self::new(self.tag, settings)
-        }
+            ..Self::new(self.tag, settings.checked()?)
+        })
     }
 
     /// The configured repositories or, when there are none, the single
@@ -300,6 +347,9 @@ impl Project {
         id: &ContextId,
         conversation_id: String,
     ) -> Result<Self, WorkspaceError> {
+        if conversation_id.trim().is_empty() {
+            return Err(WorkspaceError::EmptyIdentifier);
+        }
         self.update_context(id, |context| {
             let agent = context.agent.take().unwrap_or_default();
             context.agent = Some(agent.with_conversation(conversation_id));
@@ -880,6 +930,15 @@ mod tests {
         }
 
         #[test]
+        fn refuses_a_blank_conversation() {
+            let (project, id) = project_with_feature();
+            assert_eq!(
+                project.record_agent_conversation(&id, " ".to_string()),
+                Err(WorkspaceError::EmptyIdentifier)
+            );
+        }
+
+        #[test]
         fn refuses_an_unknown_context() {
             let (project, _) = project_with_feature();
             let unknown = ContextId::parse("missing").unwrap();
@@ -959,6 +1018,8 @@ mod tests {
     mod settings {
         use super::*;
 
+        const BLANK: &str = "  ";
+
         fn link() -> RemoteProjectLink {
             RemoteProjectLink {
                 provider_kind: "teamwork".to_string(),
@@ -995,11 +1056,69 @@ mod tests {
         fn updating_replaces_the_settings_and_keeps_the_contexts() {
             let project = linked_project();
             let contexts = project.contexts().to_vec();
-            let updated = project.update_settings(settings(vec![api()]));
+            let updated = project.update_settings(settings(vec![api()])).unwrap();
             assert!(updated.remote_project_links().is_empty());
             assert_eq!(updated.icon(), None);
             assert_eq!(updated.contexts(), contexts);
             assert_eq!(updated.tag().as_str(), PROJECT_TAG);
+        }
+
+        #[test]
+        fn refuses_a_blank_name_or_folder() {
+            let cases = [
+                (
+                    ProjectSettings {
+                        name: BLANK.to_string(),
+                        ..settings(vec![])
+                    },
+                    WorkspaceError::EmptyProjectName,
+                ),
+                (
+                    ProjectSettings {
+                        path: BLANK.to_string(),
+                        ..settings(vec![])
+                    },
+                    WorkspaceError::EmptyProjectPath,
+                ),
+            ];
+            for (blank_settings, error) in cases {
+                assert_eq!(
+                    project_with(vec![]).update_settings(blank_settings),
+                    Err(error)
+                );
+            }
+        }
+
+        #[test]
+        fn refuses_two_repositories_with_one_id() {
+            let twin = repository(API_ID, "api copy", "./api-copy");
+            assert_eq!(
+                Project::create(
+                    ProjectTag::parse(PROJECT_TAG).unwrap(),
+                    settings(vec![api(), twin])
+                ),
+                Err(WorkspaceError::DuplicateRepository {
+                    id: repository_id(API_ID)
+                })
+            );
+        }
+
+        #[test]
+        fn drops_blank_symlinks_icon_and_post_checkout_command() {
+            let blank_command = Repository {
+                post_checkout_command: Some(BLANK.to_string()),
+                ..api()
+            };
+            let updated = project_with(vec![])
+                .update_settings(ProjectSettings {
+                    icon: Some(BLANK.to_string()),
+                    symlinks: vec![BLANK.to_string(), ".env".to_string()],
+                    ..settings(vec![blank_command])
+                })
+                .unwrap();
+            assert_eq!(updated.icon(), None);
+            assert_eq!(updated.symlinks(), [".env"]);
+            assert_eq!(updated.repositories()[0].post_checkout_command, None);
         }
 
         #[test]

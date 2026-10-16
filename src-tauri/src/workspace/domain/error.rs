@@ -13,6 +13,8 @@ pub enum PrefixRejection {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WorkspaceError {
     EmptyProjectTag,
+    EmptyProjectName,
+    EmptyProjectPath,
     EmptyIdentifier,
     EmptyContextName,
     /// The name has no letter or digit, so it gives no folder under `.worktrees/`.
@@ -36,6 +38,9 @@ pub enum WorkspaceError {
     },
     DuplicateContextBranch {
         repository: RepositoryId,
+    },
+    DuplicateRepository {
+        id: RepositoryId,
     },
     UnknownContextBranch {
         context: ContextId,
@@ -70,6 +75,8 @@ impl fmt::Display for WorkspaceError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::EmptyProjectTag => formatter.write_str("The project tag is empty"),
+            Self::EmptyProjectName => formatter.write_str("The project name is empty"),
+            Self::EmptyProjectPath => formatter.write_str("The project folder is empty"),
             Self::EmptyIdentifier => formatter.write_str("The identifier is empty"),
             Self::EmptyContextName => formatter.write_str("The context name is empty"),
             Self::EmptyContextFolder { name } => write!(
@@ -90,6 +97,10 @@ impl fmt::Display for WorkspaceError {
             Self::DuplicateContextBranch { repository } => write!(
                 formatter,
                 "The context has more than one branch for repository '{repository}'"
+            ),
+            Self::DuplicateRepository { id } => write!(
+                formatter,
+                "The project has more than one repository with the id '{id}'"
             ),
             Self::UnknownContextBranch {
                 context,

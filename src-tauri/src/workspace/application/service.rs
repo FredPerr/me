@@ -10,15 +10,15 @@ use crate::git::domain::paths::{RepositoryPath, WorktreePath};
 use crate::git::domain::ports::{GitRepositories, GitRepository};
 use crate::workspace::domain::agent_work::AgentWork;
 use crate::workspace::domain::context::Context;
-use crate::workspace::domain::context_branch::ContextBranch;
+use crate::workspace::domain::context_branch::{ContextBranch, PullRequestDraft};
 use crate::workspace::domain::context_name::ContextName;
 use crate::workspace::domain::context_origin::ContextOrigin;
 use crate::workspace::domain::context_status::ContextStatus;
 use crate::workspace::domain::identifiers::{ContextId, RepositoryId};
 use crate::workspace::domain::ports::{
-    CheckoutFiles, ProjectEvents, ProjectListing, ProjectRepository,
+    CheckoutFiles, ProjectChange, ProjectEvents, ProjectListing, ProjectRepository,
 };
-use crate::workspace::domain::project::Project;
+use crate::workspace::domain::project::{Project, ProjectSettings};
 use crate::workspace::domain::project_tag::ProjectTag;
 use crate::workspace::domain::repository::Repository;
 
@@ -225,6 +225,138 @@ impl WorkspaceService {
         Ok(saved)
     }
 
+    pub fn set_context_status(
+        &self,
+        tag: &ProjectTag,
+        id: &ContextId,
+        status: ContextStatus,
+    ) -> Result<Project, WorkspaceServiceError> {
+        let id = id.clone();
+        self.change(
+            tag,
+            Box::new(move |project| project.set_status(&id, status)),
+        )
+    }
+
+    pub fn set_context_static(
+        &self,
+        tag: &ProjectTag,
+        id: &ContextId,
+        is_static: bool,
+    ) -> Result<Project, WorkspaceServiceError> {
+        let id = id.clone();
+        self.change(
+            tag,
+            Box::new(move |project| project.set_static(&id, is_static)),
+        )
+    }
+
+    pub fn save_pull_request_draft(
+        &self,
+        tag: &ProjectTag,
+        id: &ContextId,
+        repository: &RepositoryId,
+        draft: PullRequestDraft,
+    ) -> Result<Project, WorkspaceServiceError> {
+        let (id, repository) = (id.clone(), repository.clone());
+        self.change(
+            tag,
+            Box::new(move |project| project.save_pull_request_draft(&id, &repository, draft)),
+        )
+    }
+
+    /// `None` or a blank prompt clears it.
+    pub fn set_agent_prompt(
+        &self,
+        tag: &ProjectTag,
+        id: &ContextId,
+        prompt: Option<String>,
+    ) -> Result<Project, WorkspaceServiceError> {
+        let id = id.clone();
+        self.change(
+            tag,
+            Box::new(move |project| project.set_agent_prompt(&id, prompt)),
+        )
+    }
+
+    pub fn record_agent_conversation(
+        &self,
+        tag: &ProjectTag,
+        id: &ContextId,
+        conversation_id: String,
+    ) -> Result<Project, WorkspaceServiceError> {
+        let id = id.clone();
+        self.change(
+            tag,
+            Box::new(move |project| project.record_agent_conversation(&id, conversation_id)),
+        )
+    }
+
+    /// Replaces the settings in one change, keeping the tag and the contexts.
+    pub fn update_project_settings(
+        &self,
+        tag: &ProjectTag,
+        settings: ProjectSettings,
+    ) -> Result<Project, WorkspaceServiceError> {
+        self.change(
+            tag,
+            Box::new(move |project| project.update_settings(settings)),
+        )
+    }
+
+    /// Saves a new project with its default context, on each repository's
+    /// default branch; repositories that can't be read are left for a later load.
+    pub fn add_project(
+        &self,
+        tag: ProjectTag,
+        settings: ProjectSettings,
+    ) -> Result<Project, WorkspaceServiceError> {
+        let project = Project::create(tag, settings)?;
+        if self.projects.find(project.tag())?.is_some() {
+            return Err(WorkspaceServiceError::ProjectAlreadyExists {
+                tag: project.tag().clone(),
+            });
+        }
+        let available_branches =
+            self.available_branches(&project, &project.effective_repositories());
+        let project = project.repair_default_context(&available_branches)?;
+        self.projects.save(&project)?;
+        self.events.project_changed(project.tag());
+        Ok(project)
+    }
+
+    /// Forgets the project, leaving its folders, worktrees and branches on
+    /// disk. Deleting a project that isn't there succeeds.
+    pub fn delete_project(&self, tag: &ProjectTag) -> Result<(), WorkspaceServiceError> {
+        self.projects.delete(tag)?;
+        self.events.project_changed(tag);
+        Ok(())
+    }
+
+    /// The branch name for a task title or context name under the project's
+    /// naming policy; `None` asks for a name without prefix.
+    pub fn suggest_branch_name(
+        &self,
+        tag: &ProjectTag,
+        title: &str,
+        prefix: Option<&str>,
+    ) -> Result<BranchName, WorkspaceServiceError> {
+        let project = self.find_project(tag)?;
+        Ok(project.branch_naming().compose_branch_name(title, prefix)?)
+    }
+
+    /// Applies `change` to the stored project in one transaction, then tells
+    /// every view.
+    fn change(
+        &self,
+        tag: &ProjectTag,
+        change: ProjectChange<'_>,
+    ) -> Result<Project, WorkspaceServiceError> {
+        let saved = self.projects.update(tag, change)?;
+        self.events.project_changed(saved.tag());
+        Ok(saved)
+    }
+
     fn find_project(&self, tag: &ProjectTag) -> Result<Project, WorkspaceServiceError> {
         self.projects
             .find(tag)?
@@ -260,13 +392,7 @@ impl WorkspaceService {
         if default_context.is_some() && unbranched.is_empty() {
             return Ok(project);
         }
-        let available_branches: HashMap<RepositoryId, Vec<BranchName>> = unbranched
-            .iter()
-            .filter_map(|repository| {
-                let branches = self.open(&project, repository).ok()?.branch_names().ok()?;
-                Some((repository.id.clone(), branches))
-            })
-            .collect();
+        let available_branches = self.available_branches(&project, &unbranched);
         if project
             .clone()
             .repair_default_context(&available_branches)?
@@ -280,6 +406,21 @@ impl WorkspaceService {
         )?;
         self.events.project_changed(saved.tag());
         Ok(saved)
+    }
+
+    /// The local branches of each repository that can be opened and read.
+    fn available_branches(
+        &self,
+        project: &Project,
+        repositories: &[Repository],
+    ) -> HashMap<RepositoryId, Vec<BranchName>> {
+        repositories
+            .iter()
+            .filter_map(|repository| {
+                let branches = self.open(project, repository).ok()?.branch_names().ok()?;
+                Some((repository.id.clone(), branches))
+            })
+            .collect()
     }
 
     /// Opens every repository and refuses new branch names already taken,

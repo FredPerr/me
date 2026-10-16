@@ -13,6 +13,9 @@ pub enum WorkspaceServiceError {
     ProjectNotFound {
         tag: ProjectTag,
     },
+    ProjectAlreadyExists {
+        tag: ProjectTag,
+    },
     /// The Project refused the change.
     Rejected(WorkspaceError),
     Storage(StorageError),
@@ -82,6 +85,9 @@ impl fmt::Display for WorkspaceServiceError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::ProjectNotFound { tag } => write!(formatter, "Project '{tag}' not found"),
+            Self::ProjectAlreadyExists { tag } => {
+                write!(formatter, "A project tagged '{tag}' already exists")
+            }
             Self::Rejected(error) => error.fmt(formatter),
             Self::Storage(error) => error.fmt(formatter),
             Self::NewBranchAlreadyExists { repository, branch } => write!(

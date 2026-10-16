@@ -61,6 +61,11 @@ mod error_kinds {
                 prefix: "hotfix".into(),
             },
             WorkspaceError::PrefixRequired,
+            WorkspaceError::EmptyProjectName,
+            WorkspaceError::EmptyProjectPath,
+            WorkspaceError::DuplicateRepository {
+                id: repository_id(REPOSITORY_NAME),
+            },
         ];
         for error in input_errors {
             assert_eq!(kind_of(error), WorkspaceErrorKind::InvalidInput);
@@ -138,6 +143,12 @@ mod error_kinds {
                     tag: ProjectTag::parse(PROJECT_TAG).unwrap(),
                 },
                 WorkspaceErrorKind::ProjectNotFound,
+            ),
+            (
+                WorkspaceServiceError::ProjectAlreadyExists {
+                    tag: ProjectTag::parse(PROJECT_TAG).unwrap(),
+                },
+                WorkspaceErrorKind::ProjectAlreadyExists,
             ),
             (
                 WorkspaceServiceError::Storage(storage),
@@ -320,6 +331,76 @@ mod create_context_input {
 
         assert_eq!(
             result.map_err(kind_of),
+            Err(WorkspaceErrorKind::InvalidInput)
+        );
+    }
+}
+
+mod project_settings_input {
+    use super::*;
+
+    const PROJECT_NAME: &str = "Acme";
+    const PREFIX: &str = "feature";
+    const INVALID_PREFIX: &str = "my prefix";
+    const INSTALL_COMMAND: &str = "pnpm install";
+    const LINKED_AT: &str = "2024-01-15T10:00:00.000Z";
+
+    fn wire_settings(prefixes: &[&str]) -> serde_json::Value {
+        serde_json::json!({
+            "name": PROJECT_NAME,
+            "path": PROJECT_PATH,
+            "icon": null,
+            "repositories": [{
+                "id": REPOSITORY_NAME,
+                "name": REPOSITORY_NAME,
+                "relativePath": "./api",
+                "postCheckoutCommand": INSTALL_COMMAND,
+            }],
+            "symlinks": [".env"],
+            "branchNaming": { "prefixes": prefixes, "allowNoPrefix": false },
+            "remoteProjectLinks": [{
+                "providerKind": "teamwork",
+                "connectionId": CONNECTION_ID,
+                "remoteProjectId": TASK_ID,
+                "remoteProjectName": PROJECT_NAME,
+                "remoteProjectUrl": null,
+                "linkedAt": LINKED_AT,
+            }],
+        })
+    }
+
+    fn convert(prefixes: &[&str]) -> Result<ProjectSettings, WorkspaceError> {
+        let input: ProjectSettingsInput = serde_json::from_value(wire_settings(prefixes)).unwrap();
+        ProjectSettings::try_from(input)
+    }
+
+    #[test]
+    fn becomes_the_project_settings() {
+        let settings = convert(&[PREFIX]).unwrap();
+
+        assert_eq!(
+            settings.repositories[0].post_checkout_command.as_deref(),
+            Some(INSTALL_COMMAND)
+        );
+        assert_eq!(settings.remote_project_links[0].linked_at, LINKED_AT);
+        assert_eq!(
+            settings.branch_naming.default_prefix().unwrap().as_str(),
+            PREFIX
+        );
+    }
+
+    #[test]
+    fn refuses_an_invalid_prefix_as_invalid_input() {
+        assert_eq!(
+            convert(&[PREFIX, INVALID_PREFIX]).map_err(kind_of),
+            Err(WorkspaceErrorKind::InvalidInput)
+        );
+    }
+
+    #[test]
+    fn refuses_a_required_prefix_without_any_prefix_as_invalid_input() {
+        assert_eq!(
+            convert(&[]).map_err(kind_of),
             Err(WorkspaceErrorKind::InvalidInput)
         );
     }

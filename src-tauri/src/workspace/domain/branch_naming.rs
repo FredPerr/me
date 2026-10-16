@@ -95,6 +95,36 @@ impl BranchNamingPolicy {
         }
     }
 
+    /// The policy the settings form asks for: blank prefixes are dropped and
+    /// duplicates merged, but an invalid prefix is refused, and so is
+    /// requiring a prefix without offering one.
+    pub fn parse<S: AsRef<str>>(
+        raw_prefixes: &[S],
+        allow_no_prefix: bool,
+    ) -> Result<Self, WorkspaceError> {
+        let mut prefixes: Vec<BranchPrefix> = Vec::new();
+        for raw_prefix in raw_prefixes {
+            let prefix = match BranchPrefix::parse(raw_prefix.as_ref()) {
+                Ok(prefix) => prefix,
+                Err(WorkspaceError::InvalidPrefix {
+                    reason: PrefixRejection::Empty,
+                    ..
+                }) => continue,
+                Err(error) => return Err(error),
+            };
+            if !prefixes.contains(&prefix) {
+                prefixes.push(prefix);
+            }
+        }
+        if !allow_no_prefix && prefixes.is_empty() {
+            return Err(WorkspaceError::PrefixRequired);
+        }
+        Ok(Self {
+            prefixes,
+            allow_no_prefix,
+        })
+    }
+
     pub fn prefixes(&self) -> &[BranchPrefix] {
         &self.prefixes
     }
@@ -343,6 +373,35 @@ mod tests {
             true,
         );
         assert_eq!(prefix_names(&policy), ["fix", "feature", "chore"]);
+    }
+
+    mod parse_policy {
+        use super::*;
+
+        #[test]
+        fn drops_blank_prefixes_and_merges_duplicates_keeping_order() {
+            let policy = BranchNamingPolicy::parse(&["fix/", " ", "feature", "fix"], true).unwrap();
+            assert_eq!(prefix_names(&policy), ["fix", "feature"]);
+        }
+
+        #[test]
+        fn refuses_an_invalid_prefix() {
+            assert_eq!(
+                BranchNamingPolicy::parse(&["feature", "my prefix"], true),
+                Err(WorkspaceError::InvalidPrefix {
+                    prefix: "my prefix".to_string(),
+                    reason: PrefixRejection::Invalid,
+                })
+            );
+        }
+
+        #[test]
+        fn refuses_requiring_a_prefix_without_offering_one() {
+            assert_eq!(
+                BranchNamingPolicy::parse(&[""], false),
+                Err(WorkspaceError::PrefixRequired)
+            );
+        }
     }
 
     mod default_prefix {

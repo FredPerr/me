@@ -26,6 +26,24 @@ export const commands = {
 	workspaceGetProject: (tag: string) => __TAURI_INVOKE<ProjectView>("workspace_get_project", { tag }),
 	workspaceCreateContext: (input: CreateContextInput) => __TAURI_INVOKE<ProjectView>("workspace_create_context", { input }),
 	workspaceDeleteContext: (projectTag: string, contextId: string) => __TAURI_INVOKE<ProjectView>("workspace_delete_context", { projectTag, contextId }),
+	/**  Static contexts keep their status. */
+	workspaceSetContextStatus: (projectTag: string, contextId: string, status: ContextStatusView) => __TAURI_INVOKE<ProjectView>("workspace_set_context_status", { projectTag, contextId, status }),
+	workspaceSetContextStatic: (projectTag: string, contextId: string, isStatic: boolean) => __TAURI_INVOKE<ProjectView>("workspace_set_context_static", { projectTag, contextId, isStatic }),
+	workspaceSavePullRequestDraft: (projectTag: string, contextId: string, repositoryId: string, title: string, description: string) => __TAURI_INVOKE<ProjectView>("workspace_save_pull_request_draft", { projectTag, contextId, repositoryId, title, description }),
+	/**  `null` or a blank prompt clears it. */
+	workspaceSetAgentPrompt: (projectTag: string, contextId: string, prompt: string | null) => __TAURI_INVOKE<ProjectView>("workspace_set_agent_prompt", { projectTag, contextId, prompt }),
+	/**  Remembers the Kiro conversation so follow-up runs resume it. */
+	workspaceRecordAgentConversation: (projectTag: string, contextId: string, conversationId: string) => __TAURI_INVOKE<ProjectView>("workspace_record_agent_conversation", { projectTag, contextId, conversationId }),
+	workspaceUpdateProjectSettings: (projectTag: string, settings: ProjectSettingsInput) => __TAURI_INVOKE<ProjectView>("workspace_update_project_settings", { projectTag, settings }),
+	/**
+	 *  Refuses a tag already in use. The new project gets its default context on
+	 *  each repository's default branch.
+	 */
+	workspaceAddProject: (projectTag: string, settings: ProjectSettingsInput) => __TAURI_INVOKE<ProjectView>("workspace_add_project", { projectTag, settings }),
+	/**  Forgets the project; its folders, worktrees and branches stay on disk. */
+	workspaceDeleteProject: (projectTag: string) => __TAURI_INVOKE<null>("workspace_delete_project", { projectTag }),
+	/**  `prefix: null` asks for a name without prefix. */
+	workspaceSuggestBranchName: (projectTag: string, title: string, prefix: string | null) => __TAURI_INVOKE<string>("workspace_suggest_branch_name", { projectTag, title, prefix }),
 };
 
 /** Events */
@@ -43,6 +61,11 @@ export type AgentWorkView = {
 
 /**  How the new context gets its branch in one repository. */
 export type BranchChoiceInput = { kind: "newBranch"; name: string; baseBranch: string } | { kind: "existingBranch"; name: string };
+
+export type BranchNamingInput = {
+	prefixes: string[],
+	allowNoPrefix: boolean,
+};
 
 export type BranchNamingView = {
 	prefixes: string[],
@@ -149,6 +172,21 @@ export type ProjectListView = {
 	unreadableFiles: UnreadableFileView[],
 };
 
+/**
+ *  Everything the project settings form saves. The tag is not part of it: it
+ *  never changes.
+ */
+export type ProjectSettingsInput = {
+	name: string,
+	path: string,
+	icon: string | null,
+	/**  Empty for a single-repository project. */
+	repositories: RepositoryInput[],
+	symlinks: string[],
+	branchNaming: BranchNamingInput,
+	remoteProjectLinks: RemoteProjectLinkView[],
+};
+
 export type ProjectView = {
 	tag: string,
 	name: string,
@@ -186,6 +224,7 @@ export type PushResult = {
 	message: string | null,
 };
 
+/**  Also the input shape: links are saved as the frontend sends them. */
 export type RemoteProjectLinkView = {
 	providerKind: string,
 	connectionId: string,
@@ -198,6 +237,13 @@ export type RemoteProjectLinkView = {
 export type RepositoryBranchInput = {
 	repositoryId: string,
 	branch: BranchChoiceInput,
+};
+
+export type RepositoryInput = {
+	id: string,
+	name: string,
+	relativePath: string,
+	postCheckoutCommand: string | null,
 };
 
 export type RepositoryView = {
@@ -233,7 +279,7 @@ export type WorkspaceCommandError = {
  *  is a blank or malformed name, id, branch name or prefix; `internal` is a
  *  command's background task failing unexpectedly.
  */
-export type WorkspaceErrorKind = "projectNotFound" | "invalidInput" | "duplicateContextName" | "duplicateContextFolder" | "unknownContext" | "unknownRepository" | "defaultContextIsFixed" | "staticContextStatusLocked" | "linkedRepositoryIsReadOnly" | "branchAlreadyExists" | "branchCheckedOut" | "git" | "files" | "storage" | "internal";
+export type WorkspaceErrorKind = "projectNotFound" | "projectAlreadyExists" | "invalidInput" | "duplicateContextName" | "duplicateContextFolder" | "unknownContext" | "unknownRepository" | "defaultContextIsFixed" | "staticContextStatusLocked" | "linkedRepositoryIsReadOnly" | "branchAlreadyExists" | "branchCheckedOut" | "git" | "files" | "storage" | "internal";
 
 export type WorktreeStatusView = {
 	filesAdded: number,

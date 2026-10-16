@@ -424,10 +424,12 @@ mod tests {
 
         #[test]
         fn link_each_project_path_into_the_context_folder_under_its_file_name() {
-            let project = project_with(vec![]).update_settings(ProjectSettings {
-                symlinks: vec![NESTED_SYMLINK.to_string()],
-                ..settings(vec![])
-            });
+            let project = project_with(vec![])
+                .update_settings(ProjectSettings {
+                    symlinks: vec![NESTED_SYMLINK.to_string()],
+                    ..settings(vec![])
+                })
+                .unwrap();
 
             assert_eq!(
                 project.configured_links(&context_named(CONTEXT_NAME)),

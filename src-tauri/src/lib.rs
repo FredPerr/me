@@ -53,6 +53,15 @@ const TYPED_COMMANDS: &[&str] = &[
     "workspace_get_project",
     "workspace_create_context",
     "workspace_delete_context",
+    "workspace_set_context_status",
+    "workspace_set_context_static",
+    "workspace_save_pull_request_draft",
+    "workspace_set_agent_prompt",
+    "workspace_record_agent_conversation",
+    "workspace_update_project_settings",
+    "workspace_add_project",
+    "workspace_delete_project",
+    "workspace_suggest_branch_name",
 ];
 
 /// The typed commands, exported with their types to `src/bindings.ts`.
@@ -80,6 +89,15 @@ fn typed_commands() -> tauri_specta::Builder<tauri::Wry> {
             workspace::commands::workspace_get_project,
             workspace::commands::workspace_create_context,
             workspace::commands::workspace_delete_context,
+            workspace::commands::workspace_set_context_status,
+            workspace::commands::workspace_set_context_static,
+            workspace::commands::workspace_save_pull_request_draft,
+            workspace::commands::workspace_set_agent_prompt,
+            workspace::commands::workspace_record_agent_conversation,
+            workspace::commands::workspace_update_project_settings,
+            workspace::commands::workspace_add_project,
+            workspace::commands::workspace_delete_project,
+            workspace::commands::workspace_suggest_branch_name,
         ])
         .events(tauri_specta::collect_events![
             workspace::infra::tauri_project_events::ProjectChanged

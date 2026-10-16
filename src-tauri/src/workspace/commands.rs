@@ -12,6 +12,7 @@ use super::application::service::{
 use super::domain::agent_work::{AgentTool, AgentWork};
 use super::domain::branch_naming::{parse_branch_name, BranchNamingPolicy};
 use super::domain::context::Context;
+use super::domain::context_branch::PullRequestDraft;
 use super::domain::context_branch::{ContextBranch, ContextCheckout};
 use super::domain::context_name::ContextName;
 use super::domain::context_origin::{ContextOrigin, TaskRef};
@@ -19,7 +20,7 @@ use super::domain::context_status::ContextStatus;
 use super::domain::error::WorkspaceError;
 use super::domain::identifiers::{ContextId, RepositoryId};
 use super::domain::ports::ProjectListing;
-use super::domain::project::Project;
+use super::domain::project::{Project, ProjectSettings};
 use super::domain::project_tag::ProjectTag;
 use super::domain::remote_project_link::RemoteProjectLink;
 use super::domain::repository::Repository;
@@ -34,6 +35,7 @@ use crate::git::domain::error::GitError;
 #[serde(rename_all = "camelCase")]
 pub enum WorkspaceErrorKind {
     ProjectNotFound,
+    ProjectAlreadyExists,
     InvalidInput,
     DuplicateContextName,
     DuplicateContextFolder,
@@ -71,6 +73,9 @@ impl WorkspaceCommandError {
 fn workspace_error_kind(error: &WorkspaceError) -> WorkspaceErrorKind {
     match error {
         WorkspaceError::EmptyProjectTag
+        | WorkspaceError::EmptyProjectName
+        | WorkspaceError::EmptyProjectPath
+        | WorkspaceError::DuplicateRepository { .. }
         | WorkspaceError::EmptyIdentifier
         | WorkspaceError::EmptyContextName
         | WorkspaceError::EmptyContextFolder { .. }
@@ -111,6 +116,9 @@ impl From<WorkspaceServiceError> for WorkspaceCommandError {
     fn from(error: WorkspaceServiceError) -> Self {
         let kind = match &error {
             WorkspaceServiceError::ProjectNotFound { .. } => WorkspaceErrorKind::ProjectNotFound,
+            WorkspaceServiceError::ProjectAlreadyExists { .. } => {
+                WorkspaceErrorKind::ProjectAlreadyExists
+            }
             WorkspaceServiceError::Rejected(rejection) => workspace_error_kind(rejection),
             WorkspaceServiceError::Storage(_) => WorkspaceErrorKind::Storage,
             WorkspaceServiceError::NewBranchAlreadyExists { .. }
@@ -235,7 +243,8 @@ pub struct BranchNamingView {
     pub default_prefix: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
+/// Also the input shape: links are saved as the frontend sends them.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct RemoteProjectLinkView {
     pub provider_kind: String,
@@ -582,6 +591,92 @@ impl TryFrom<CreateContextInput> for CreateContextCommand {
     }
 }
 
+impl From<RemoteProjectLinkView> for RemoteProjectLink {
+    fn from(link: RemoteProjectLinkView) -> Self {
+        Self {
+            provider_kind: link.provider_kind,
+            connection_id: link.connection_id,
+            remote_project_id: link.remote_project_id,
+            remote_project_name: link.remote_project_name,
+            remote_project_url: link.remote_project_url,
+            linked_at: link.linked_at,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryInput {
+    pub id: String,
+    pub name: String,
+    pub relative_path: String,
+    pub post_checkout_command: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct BranchNamingInput {
+    pub prefixes: Vec<String>,
+    pub allow_no_prefix: bool,
+}
+
+/// Everything the project settings form saves. The tag is not part of it: it
+/// never changes.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectSettingsInput {
+    pub name: String,
+    pub path: String,
+    pub icon: Option<String>,
+    /// Empty for a single-repository project.
+    pub repositories: Vec<RepositoryInput>,
+    pub symlinks: Vec<String>,
+    pub branch_naming: BranchNamingInput,
+    pub remote_project_links: Vec<RemoteProjectLinkView>,
+}
+
+impl TryFrom<RepositoryInput> for Repository {
+    type Error = WorkspaceError;
+
+    fn try_from(input: RepositoryInput) -> Result<Self, Self::Error> {
+        Ok(Self {
+            post_checkout_command: input.post_checkout_command,
+            ..Self::new(
+                RepositoryId::parse(&input.id)?,
+                input.name,
+                input.relative_path,
+            )
+        })
+    }
+}
+
+impl TryFrom<ProjectSettingsInput> for ProjectSettings {
+    type Error = WorkspaceError;
+
+    fn try_from(input: ProjectSettingsInput) -> Result<Self, Self::Error> {
+        Ok(Self {
+            name: input.name,
+            path: input.path,
+            icon: input.icon,
+            repositories: input
+                .repositories
+                .into_iter()
+                .map(Repository::try_from)
+                .collect::<Result<_, _>>()?,
+            symlinks: input.symlinks,
+            remote_project_links: input
+                .remote_project_links
+                .into_iter()
+                .map(RemoteProjectLink::from)
+                .collect(),
+            branch_naming: BranchNamingPolicy::parse(
+                &input.branch_naming.prefixes,
+                input.branch_naming.allow_no_prefix,
+            )?,
+        })
+    }
+}
+
 /// Runs blocking git and storage work off the async runtime.
 async fn run_blocking<T, F>(work: F) -> Result<T, WorkspaceCommandError>
 where
@@ -651,6 +746,171 @@ pub async fn workspace_delete_context(
         let tag = ProjectTag::parse(&project_tag)?;
         let id = ContextId::parse(&context_id)?;
         Ok(ProjectView::from(&service.delete_context(&tag, &id)?))
+    })
+    .await
+}
+
+/// Static contexts keep their status.
+#[tauri::command]
+#[specta::specta]
+pub async fn workspace_set_context_status(
+    workspace: State<'_, Workspace>,
+    project_tag: String,
+    context_id: String,
+    status: ContextStatusView,
+) -> Result<ProjectView, WorkspaceCommandError> {
+    let service = service(&workspace);
+    run_blocking(move || {
+        let tag = ProjectTag::parse(&project_tag)?;
+        let id = ContextId::parse(&context_id)?;
+        let project = service.set_context_status(&tag, &id, status.into())?;
+        Ok(ProjectView::from(&project))
+    })
+    .await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn workspace_set_context_static(
+    workspace: State<'_, Workspace>,
+    project_tag: String,
+    context_id: String,
+    is_static: bool,
+) -> Result<ProjectView, WorkspaceCommandError> {
+    let service = service(&workspace);
+    run_blocking(move || {
+        let tag = ProjectTag::parse(&project_tag)?;
+        let id = ContextId::parse(&context_id)?;
+        let project = service.set_context_static(&tag, &id, is_static)?;
+        Ok(ProjectView::from(&project))
+    })
+    .await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn workspace_save_pull_request_draft(
+    workspace: State<'_, Workspace>,
+    project_tag: String,
+    context_id: String,
+    repository_id: String,
+    title: String,
+    description: String,
+) -> Result<ProjectView, WorkspaceCommandError> {
+    let service = service(&workspace);
+    run_blocking(move || {
+        let tag = ProjectTag::parse(&project_tag)?;
+        let id = ContextId::parse(&context_id)?;
+        let repository = RepositoryId::parse(&repository_id)?;
+        let draft = PullRequestDraft { title, description };
+        let project = service.save_pull_request_draft(&tag, &id, &repository, draft)?;
+        Ok(ProjectView::from(&project))
+    })
+    .await
+}
+
+/// `null` or a blank prompt clears it.
+#[tauri::command]
+#[specta::specta]
+pub async fn workspace_set_agent_prompt(
+    workspace: State<'_, Workspace>,
+    project_tag: String,
+    context_id: String,
+    prompt: Option<String>,
+) -> Result<ProjectView, WorkspaceCommandError> {
+    let service = service(&workspace);
+    run_blocking(move || {
+        let tag = ProjectTag::parse(&project_tag)?;
+        let id = ContextId::parse(&context_id)?;
+        let project = service.set_agent_prompt(&tag, &id, prompt)?;
+        Ok(ProjectView::from(&project))
+    })
+    .await
+}
+
+/// Remembers the Kiro conversation so follow-up runs resume it.
+#[tauri::command]
+#[specta::specta]
+pub async fn workspace_record_agent_conversation(
+    workspace: State<'_, Workspace>,
+    project_tag: String,
+    context_id: String,
+    conversation_id: String,
+) -> Result<ProjectView, WorkspaceCommandError> {
+    let service = service(&workspace);
+    run_blocking(move || {
+        let tag = ProjectTag::parse(&project_tag)?;
+        let id = ContextId::parse(&context_id)?;
+        let project = service.record_agent_conversation(&tag, &id, conversation_id)?;
+        Ok(ProjectView::from(&project))
+    })
+    .await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn workspace_update_project_settings(
+    workspace: State<'_, Workspace>,
+    project_tag: String,
+    settings: ProjectSettingsInput,
+) -> Result<ProjectView, WorkspaceCommandError> {
+    let service = service(&workspace);
+    run_blocking(move || {
+        let tag = ProjectTag::parse(&project_tag)?;
+        let settings = ProjectSettings::try_from(settings)?;
+        let project = service.update_project_settings(&tag, settings)?;
+        Ok(ProjectView::from(&project))
+    })
+    .await
+}
+
+/// Refuses a tag already in use. The new project gets its default context on
+/// each repository's default branch.
+#[tauri::command]
+#[specta::specta]
+pub async fn workspace_add_project(
+    workspace: State<'_, Workspace>,
+    project_tag: String,
+    settings: ProjectSettingsInput,
+) -> Result<ProjectView, WorkspaceCommandError> {
+    let service = service(&workspace);
+    run_blocking(move || {
+        let tag = ProjectTag::parse(&project_tag)?;
+        let settings = ProjectSettings::try_from(settings)?;
+        Ok(ProjectView::from(&service.add_project(tag, settings)?))
+    })
+    .await
+}
+
+/// Forgets the project; its folders, worktrees and branches stay on disk.
+#[tauri::command]
+#[specta::specta]
+pub async fn workspace_delete_project(
+    workspace: State<'_, Workspace>,
+    project_tag: String,
+) -> Result<(), WorkspaceCommandError> {
+    let service = service(&workspace);
+    run_blocking(move || {
+        let tag = ProjectTag::parse(&project_tag)?;
+        Ok(service.delete_project(&tag)?)
+    })
+    .await
+}
+
+/// `prefix: null` asks for a name without prefix.
+#[tauri::command]
+#[specta::specta]
+pub async fn workspace_suggest_branch_name(
+    workspace: State<'_, Workspace>,
+    project_tag: String,
+    title: String,
+    prefix: Option<String>,
+) -> Result<String, WorkspaceCommandError> {
+    let service = service(&workspace);
+    run_blocking(move || {
+        let tag = ProjectTag::parse(&project_tag)?;
+        let branch = service.suggest_branch_name(&tag, &title, prefix.as_deref())?;
+        Ok(branch.to_string())
     })
     .await
 }
