@@ -4,6 +4,7 @@ use tauri::Manager;
 
 mod ai_session;
 mod binary_resolver;
+mod composition;
 mod git;
 mod git_hosting;
 mod git_provider;
@@ -68,6 +69,7 @@ const TYPED_COMMANDS: &[&str] = &[
     "git_hosting_poll_sign_in",
     "git_hosting_sign_in_with_token",
     "git_hosting_sign_out",
+    "git_hosting_project_pull_requests",
 ];
 
 /// The typed commands, exported with their types to `src/bindings.ts`.
@@ -107,6 +109,7 @@ fn typed_commands() -> tauri_specta::Builder<tauri::Wry> {
             git_hosting::commands::git_hosting_poll_sign_in,
             git_hosting::commands::git_hosting_sign_in_with_token,
             git_hosting::commands::git_hosting_sign_out,
+            git_hosting::commands::git_hosting_project_pull_requests,
         ])
         .events(tauri_specta::collect_events![
             workspace::infra::tauri_project_events::ProjectChanged,
@@ -186,8 +189,18 @@ pub fn run() {
             app.manage(ai_session::registry::SessionRegistry::new());
             let database = storage::open(&app.path().app_data_dir()?)?;
             let git = git::build(git_hosting::remote_credentials());
-            let git_hosting = git_hosting::build(app.handle().clone(), Arc::clone(&database))?;
-            let workspace = workspace::build(app.handle().clone(), database, git.repositories())?;
+            let workspace = workspace::build(
+                app.handle().clone(),
+                Arc::clone(&database),
+                git.repositories(),
+            )?;
+            let project_remotes =
+                composition::workspace_project_remotes::WorkspaceProjectRemotes::new(
+                    Arc::clone(&workspace.service),
+                    git.repositories(),
+                );
+            let git_hosting =
+                git_hosting::build(app.handle().clone(), database, Arc::new(project_remotes))?;
             app.manage(git);
             app.manage(git_hosting);
             app.manage(workspace);

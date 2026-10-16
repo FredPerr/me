@@ -47,6 +47,8 @@ export const commands = {
 	gitHostingPollSignIn: (host: HostKindView, deviceCode: string) => __TAURI_INVOKE<SignInProgressView>("git_hosting_poll_sign_in", { host, deviceCode }),
 	gitHostingSignInWithToken: (host: HostKindView, username: string, token: string) => __TAURI_INVOKE<HostedAccountView>("git_hosting_sign_in_with_token", { host, username, token }),
 	gitHostingSignOut: (host: HostKindView) => __TAURI_INVOKE<null>("git_hosting_sign_out", { host }),
+	/**  The open pull requests of each repository of the Project, in its order. */
+	gitHostingProjectPullRequests: (projectTag: string) => __TAURI_INVOKE<RepositoryPullRequestsView[]>("git_hosting_project_pull_requests", { projectTag }),
 };
 
 /** Events */
@@ -173,6 +175,18 @@ export type HostedAccountView = {
 	avatarUrl: string | null,
 };
 
+export type HostedPullRequestView = {
+	number: number,
+	title: string,
+	url: string,
+	author: string | null,
+	headBranch: string,
+	baseBranch: string,
+	draft: boolean,
+	state: PullRequestStateView,
+	updatedAt: string,
+};
+
 export type LocalBranchView = {
 	name: string,
 	isCurrent: boolean,
@@ -236,6 +250,14 @@ export type PullRequestDraftView = {
 	description: string,
 };
 
+export type PullRequestStateView = "open" | "merged" | "closed";
+
+/**
+ *  What became of loading one repository's open pull requests. `truncated`
+ *  says the list was cut short after the page limit.
+ */
+export type PullRequestsStatusView = { kind: "noRemote" } | { kind: "unsupportedHost" } | { kind: "notConnected" } | { kind: "failed"; error: GitHostingCommandError } | { kind: "ok"; pullRequests: HostedPullRequestView[]; truncated: boolean };
+
 export type PullResult = {
 	path: string,
 	pulled: boolean,
@@ -268,6 +290,13 @@ export type RepositoryInput = {
 	name: string,
 	relativePath: string,
 	postCheckoutCommand: string | null,
+};
+
+export type RepositoryPullRequestsView = {
+	repositoryId: string,
+	repositoryName: string,
+	host: HostKindView | null,
+	status: PullRequestsStatusView,
 };
 
 export type RepositoryView = {

@@ -1,9 +1,13 @@
 use async_trait::async_trait;
 
+use super::capped::Capped;
 use super::error::GitHostingError;
 use super::host_kind::HostKind;
 use super::host_secret::HostSecret;
 use super::hosted_account::HostedAccount;
+use super::hosted_pull_request::HostedPullRequest;
+use super::hosted_repository::HostedRepository;
+use super::project_pull_requests::ProjectRepositoryRemote;
 use super::sign_in::{BrowserSignInStep, SignInPoll};
 
 /// The secret store could not be used. Platform details are dropped so they
@@ -23,6 +27,22 @@ pub trait HostTokens: Send + Sync {
 #[async_trait]
 pub trait GitHost: Send + Sync {
     async fn current_account(&self) -> Result<HostedAccount, GitHostingError>;
+    /// Most recently updated first, at most [`PAGE_LIMIT`](super::capped::PAGE_LIMIT) pages.
+    async fn list_open_pull_requests(
+        &self,
+        repository: &HostedRepository,
+    ) -> Result<Capped<HostedPullRequest>, GitHostingError>;
+}
+
+/// The repositories of a Project and their remotes, read from the Workspace
+/// and git contexts by the composition root.
+#[async_trait]
+pub trait ProjectRemotes: Send + Sync {
+    /// `NotFound` when no Project has this tag.
+    async fn repositories(
+        &self,
+        project_tag: &str,
+    ) -> Result<Vec<ProjectRepositoryRemote>, GitHostingError>;
 }
 
 /// Signing in by entering a code in the browser.

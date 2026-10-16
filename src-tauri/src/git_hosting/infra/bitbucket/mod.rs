@@ -3,6 +3,7 @@
 mod adapter;
 mod client;
 mod mapping;
+mod pull_request_mapping;
 mod wire;
 
 use crate::git_hosting::domain::error::GitHostingError;

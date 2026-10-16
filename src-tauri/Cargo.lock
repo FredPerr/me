@@ -2297,6 +2297,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "dirs",
+ "futures-util",
  "git2",
  "keyring",
  "libc",

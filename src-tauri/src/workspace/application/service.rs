@@ -357,7 +357,8 @@ impl WorkspaceService {
         Ok(saved)
     }
 
-    fn find_project(&self, tag: &ProjectTag) -> Result<Project, WorkspaceServiceError> {
+    /// The Project as stored, without repairing its default context.
+    pub fn find_project(&self, tag: &ProjectTag) -> Result<Project, WorkspaceServiceError> {
         self.projects
             .find(tag)?
             .ok_or_else(|| WorkspaceServiceError::ProjectNotFound { tag: tag.clone() })

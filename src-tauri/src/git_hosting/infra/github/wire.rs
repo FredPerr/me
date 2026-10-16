@@ -27,3 +27,31 @@ pub struct UserResponse {
     pub name: Option<String>,
     pub avatar_url: Option<String>,
 }
+
+/// One item of `GET https://api.github.com/repos/{owner}/{name}/pulls`
+#[derive(Debug, Deserialize)]
+pub struct PullRequestResponse {
+    pub number: u32,
+    pub title: String,
+    pub html_url: String,
+    pub user: Option<PullRequestUser>,
+    pub head: BranchReference,
+    pub base: BranchReference,
+    #[serde(default)]
+    pub draft: bool,
+    /// `open` or `closed`; a merged pull request is `closed` with `merged_at`.
+    pub state: String,
+    pub merged_at: Option<String>,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PullRequestUser {
+    pub login: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct BranchReference {
+    #[serde(rename = "ref")]
+    pub name: String,
+}

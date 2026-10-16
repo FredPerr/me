@@ -199,8 +199,7 @@ export const en = {
 			selectPullRequest: "Select an open pull request",
 			noOpenPullRequests: "No open pull requests",
 			pullRequestBaseBranch: "Base: {{base}}",
-			pullRequestsNotConnected: "Connect a GitHub account in Settings to load pull requests.",
-			pullRequestsLoadError: "Could not load pull requests from GitHub.",
+			pullRequestsLoadError: "Could not load pull requests.",
 			bulk: {
 				button: "Bulk create",
 				title: "Bulk create contexts",
@@ -336,8 +335,7 @@ export const en = {
 			title: "Share pull requests for review",
 			description:
 				"Select the pull requests to share, order them, and mark dependencies. The message orders dependencies before the PRs that depend on them.",
-			notConnected: "Connect a GitHub account in Settings to load pull requests.",
-			loadError: "Could not load pull requests from GitHub.",
+			loadError: "Could not load pull requests.",
 			noPullRequests: "No open pull requests for this project.",
 			dependsOn: "Depends on",
 			dependsOnPlaceholder: "Pick prerequisite PRs",
@@ -380,12 +378,19 @@ export const en = {
 			notConnectedDescription:
 				"Connect a git provider like GitHub or Bitbucket to view your active pull requests here.",
 			goToSettings: "Connect an account in Settings",
-			loadError: "Could not load pull requests from GitHub.",
+			loadError: "Could not load pull requests.",
 			noOpen: "No open pull requests across your projects.",
-			noOpenForRepo: "No open pull requests.",
 			draftBadge: "Draft",
 			unknownAuthor: "unknown",
 			prMeta: "#{{number}} by {{author}} · {{branch}}",
+			notices: {
+				notConnected:
+					"Sign in to {{host}} in Settings to see the pull requests of {{repositories}}.",
+				failedTitle: "Some pull requests could not be loaded",
+				failed: "{{repository}}: {{message}}",
+				truncated:
+					"List cut short for {{repositories}}: only the most recently updated pull requests are shown.",
+			},
 		},
 		workspace: {
 			changeFailed: "Could not save the change",

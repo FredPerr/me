@@ -3,7 +3,9 @@
 //!
 //! This module is the composition root: the only place that names the GitHub
 //! and Bitbucket adapters, the keychain, the redb account store, the Tauri
-//! event adapter and the credentials handed to the `git` module.
+//! event adapter and the credentials handed to the `git` module. The
+//! repositories of a Project come in as a `ProjectRemotes` built by the
+//! application setup, so this context never names `workspace`.
 
 pub mod application;
 pub mod commands;
@@ -15,6 +17,7 @@ use std::sync::Arc;
 use application::registry::GitHostRegistry;
 use application::service::GitHostingService;
 use domain::host_kind::HostKind;
+use domain::ports::ProjectRemotes;
 use infra::host_token_credentials::HostTokenCredentials;
 use infra::keychain_host_tokens::KeychainHostTokens;
 use infra::redb_hosted_accounts::RedbHostedAccounts;
@@ -30,6 +33,7 @@ pub struct GitHosting {
 pub fn build(
     app: tauri::AppHandle,
     database: Arc<redb::Database>,
+    project_remotes: Arc<dyn ProjectRemotes>,
 ) -> Result<GitHosting, Box<dyn std::error::Error>> {
     let accounts = RedbHostedAccounts::new(database)
         .map_err(|_| "the Git hosting account table could not be opened")?;
@@ -44,6 +48,7 @@ pub fn build(
         Arc::new(KeychainHostTokens),
         Arc::new(accounts),
         Arc::new(TauriGitHostingEvents::new(app)),
+        project_remotes,
     );
     Ok(GitHosting {
         service: Arc::new(service),

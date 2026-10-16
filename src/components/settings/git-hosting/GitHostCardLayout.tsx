@@ -3,7 +3,7 @@ import { GitBranchIcon, GithubLogoIcon } from "@phosphor-icons/react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { HostKindView, SignedInHostView } from "@/bindings";
-import { GIT_HOSTS } from "./gitHosts";
+import { GIT_HOSTS } from "@/models/git-hosting/gitHosts";
 
 const CARD_ICON_SIZE = 28;
 

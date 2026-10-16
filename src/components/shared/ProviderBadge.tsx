@@ -1,22 +1,23 @@
 import { Badge } from "@mantine/core";
-import type { GitProviderId } from "@/models/git-provider/GitProvider";
-import { getGitProvider } from "@/models/git-provider/GitProviderRegistry";
+import { useTranslation } from "react-i18next";
+import type { HostKindView } from "@/bindings";
+import { GIT_HOSTS } from "@/models/git-hosting/gitHosts";
 
-/** Mantine color used for each provider's tag. */
-const PROVIDER_COLOR: Record<GitProviderId, string> = {
+const HOST_COLOR: Record<HostKindView, string> = {
 	github: "gray",
 	bitbucket: "blue",
 };
 
 type ProviderBadgeProps = {
-	providerId: GitProviderId;
+	host: HostKindView;
 };
 
-/** A small tag identifying which git provider a pull request belongs to. */
-export function ProviderBadge({ providerId }: ProviderBadgeProps) {
+/** A small tag naming the Git host a pull request belongs to. */
+export function ProviderBadge({ host }: ProviderBadgeProps) {
+	const { t } = useTranslation();
 	return (
-		<Badge variant="light" size="sm" color={PROVIDER_COLOR[providerId]}>
-			{getGitProvider(providerId).displayName}
+		<Badge variant="light" size="sm" color={HOST_COLOR[host]}>
+			{t(GIT_HOSTS[host].displayNameKey)}
 		</Badge>
 	);
 }
