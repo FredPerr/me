@@ -1,30 +1,31 @@
-import { InvalidInputReason } from "@/domain/work-tracking/InvalidInputReason";
-import type { WorkTrackingError } from "@/domain/work-tracking/WorkTrackingError";
-import { WorkTrackingErrorKind } from "@/domain/work-tracking/WorkTrackingErrorKind";
+import type {
+	WorkTrackingCommandError,
+	WorkTrackingErrorKind,
+	WorkTrackingInvalidReason,
+} from "@/bindings";
 
 export const ERROR_KEYS: Record<WorkTrackingErrorKind, string> = {
-	[WorkTrackingErrorKind.NotConfigured]: "workTracking.errors.notConfigured",
-	[WorkTrackingErrorKind.InvalidInput]: "workTracking.errors.invalidInput.generic",
-	[WorkTrackingErrorKind.Unauthorized]: "workTracking.errors.unauthorized",
-	[WorkTrackingErrorKind.Forbidden]: "workTracking.errors.forbidden",
-	[WorkTrackingErrorKind.NotFound]: "workTracking.errors.notFound",
-	[WorkTrackingErrorKind.RateLimited]: "workTracking.errors.rateLimited",
-	[WorkTrackingErrorKind.Timeout]: "workTracking.errors.timeout",
-	[WorkTrackingErrorKind.Network]: "workTracking.errors.network",
-	[WorkTrackingErrorKind.ProviderError]: "workTracking.errors.providerError",
-	[WorkTrackingErrorKind.InvalidResponse]: "workTracking.errors.invalidResponse",
-	[WorkTrackingErrorKind.StorageError]: "workTracking.errors.storageError",
+	notConfigured: "workTracking.errors.notConfigured",
+	invalidInput: "workTracking.errors.invalidInput.generic",
+	unauthorized: "workTracking.errors.unauthorized",
+	forbidden: "workTracking.errors.forbidden",
+	notFound: "workTracking.errors.notFound",
+	rateLimited: "workTracking.errors.rateLimited",
+	timeout: "workTracking.errors.timeout",
+	network: "workTracking.errors.network",
+	providerError: "workTracking.errors.providerError",
+	invalidResponse: "workTracking.errors.invalidResponse",
+	storageError: "workTracking.errors.storageError",
 };
 
-export const REASON_KEYS: Record<InvalidInputReason, string> = {
-	[InvalidInputReason.Required]: "workTracking.errors.invalidInput.required",
-	[InvalidInputReason.TooLong]: "workTracking.errors.invalidInput.tooLong",
-	[InvalidInputReason.InvalidFormat]: "workTracking.errors.invalidInput.invalidFormat",
-	[InvalidInputReason.HttpsRequired]: "workTracking.errors.invalidInput.httpsRequired",
-	[InvalidInputReason.UnsupportedComponent]:
-		"workTracking.errors.invalidInput.unsupportedComponent",
-	[InvalidInputReason.OutOfRange]: "workTracking.errors.invalidInput.outOfRange",
-	[InvalidInputReason.Unsupported]: "workTracking.errors.invalidInput.unsupported",
+export const REASON_KEYS: Record<WorkTrackingInvalidReason, string> = {
+	required: "workTracking.errors.invalidInput.required",
+	tooLong: "workTracking.errors.invalidInput.tooLong",
+	invalidFormat: "workTracking.errors.invalidInput.invalidFormat",
+	httpsRequired: "workTracking.errors.invalidInput.httpsRequired",
+	unsupportedComponent: "workTracking.errors.invalidInput.unsupportedComponent",
+	outOfRange: "workTracking.errors.invalidInput.outOfRange",
+	unsupported: "workTracking.errors.invalidInput.unsupported",
 };
 
 export const RATE_LIMITED_RETRY_AFTER_KEY = "workTracking.errors.rateLimitedRetryAfter";
@@ -34,22 +35,16 @@ type ErrorMessage = {
 	values?: Record<string, unknown>;
 };
 
-const KNOWN_REASONS: ReadonlySet<string> = new Set(Object.values(InvalidInputReason));
-
-function isInvalidInputReason(reason: string | undefined): reason is InvalidInputReason {
-	return reason !== undefined && KNOWN_REASONS.has(reason);
-}
-
-export function errorMessageKey(error: WorkTrackingError): ErrorMessage {
+export function errorMessageKey(error: WorkTrackingCommandError): ErrorMessage {
 	switch (error.kind) {
-		case WorkTrackingErrorKind.InvalidInput:
-			return isInvalidInputReason(error.reason)
+		case "invalidInput":
+			return error.reason !== null
 				? { key: REASON_KEYS[error.reason] }
-				: { key: ERROR_KEYS[WorkTrackingErrorKind.InvalidInput] };
-		case WorkTrackingErrorKind.RateLimited:
-			return error.retryAfterSeconds !== undefined
+				: { key: ERROR_KEYS.invalidInput };
+		case "rateLimited":
+			return error.retryAfterSeconds !== null
 				? { key: RATE_LIMITED_RETRY_AFTER_KEY, values: { seconds: error.retryAfterSeconds } }
-				: { key: ERROR_KEYS[WorkTrackingErrorKind.RateLimited] };
+				: { key: ERROR_KEYS.rateLimited };
 		default:
 			return { key: ERROR_KEYS[error.kind] };
 	}

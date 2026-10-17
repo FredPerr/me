@@ -2,12 +2,11 @@ use serde::Serialize;
 
 use super::identifiers::PersonId;
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct Person {
     id: PersonId,
     display_name: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
     avatar_url: Option<String>,
 }
 

@@ -3,18 +3,16 @@ import { ArrowSquareOutIcon, LinkBreakIcon } from "@phosphor-icons/react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
+import { type ConnectionView, commands, type RemoteProject } from "@/bindings";
 import { LoadMoreButton } from "@/components/work-tracking/LoadMoreButton";
 import { translateError } from "@/components/work-tracking/translateError";
-import type { ProviderConnection } from "@/domain/work-tracking/ProviderConnection";
-import { DEFAULT_PROVIDER_KIND } from "@/domain/work-tracking/ProviderKind";
-import { isOpenableProviderUrl } from "@/domain/work-tracking/providerUrl";
+import { DEFAULT_PROVIDER_KIND, toProviderKind } from "@/domain/work-tracking/ProviderKind";
 import { RemoteProjectLink } from "@/domain/work-tracking/RemoteProjectLink";
 import type { RemoteProjectLinks } from "@/domain/work-tracking/RemoteProjectLinks";
-import type { WorkProject } from "@/domain/work-tracking/WorkProject";
 import { PagedListStatus } from "@/hooks/work-tracking/pagedListState";
+import { isOpenableProviderUrl } from "@/hooks/work-tracking/providerUrl";
 import { usePagedRemoteList } from "@/hooks/work-tracking/usePagedRemoteList";
 import { useWorkTrackingConnections } from "@/hooks/work-tracking/useWorkTrackingConnections";
-import { workTrackingGateway } from "@/infra/work-tracking/workTracking";
 
 type RemoteProjectLinksFieldProps = {
 	value: RemoteProjectLinks;
@@ -67,7 +65,7 @@ export function RemoteProjectLinksField({ value, onChange }: RemoteProjectLinksF
 }
 
 type RemoteProjectPickerProps = {
-	connection: ProviderConnection;
+	connection: ConnectionView;
 	revision: number;
 	links: RemoteProjectLinks;
 	onLink: (link: RemoteProjectLink) => void;
@@ -75,15 +73,16 @@ type RemoteProjectPickerProps = {
 
 function RemoteProjectPicker({ connection, revision, links, onLink }: RemoteProjectPickerProps) {
 	const { t } = useTranslation();
-	const projectList = usePagedRemoteList<WorkProject>(
-		(cursor) => workTrackingGateway.listProjects(connection.id, cursor),
+	const projectList = usePagedRemoteList<RemoteProject>(
+		(cursor) => commands.workTrackingListProjects(connection.id, cursor ?? null),
 		`${revision}|${connection.id}`,
 	);
 
 	const unlinkedProjects = useMemo(
 		() =>
 			projectList.items.filter(
-				(remoteProject) => !links.has(connection.kind, connection.id, remoteProject.id),
+				(remoteProject) =>
+					!links.has(toProviderKind(connection.kind), connection.id, remoteProject.id),
 			),
 		[projectList.items, links, connection],
 	);
@@ -94,7 +93,7 @@ function RemoteProjectPicker({ connection, revision, links, onLink }: RemoteProj
 		onLink(
 			RemoteProjectLink.create(
 				{
-					providerKind: connection.kind,
+					providerKind: toProviderKind(connection.kind),
 					connectionId: connection.id,
 					remoteProjectId: remoteProject.id,
 					remoteProjectName: remoteProject.name,
@@ -131,7 +130,7 @@ function RemoteProjectPicker({ connection, revision, links, onLink }: RemoteProj
 
 type LinkedRemoteProjectRowProps = {
 	link: RemoteProjectLink;
-	linkConnection: ProviderConnection | undefined;
+	linkConnection: ConnectionView | undefined;
 	onUnlink: () => void;
 };
 

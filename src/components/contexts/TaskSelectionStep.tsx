@@ -12,18 +12,18 @@ import {
 import { InfoIcon, MagnifyingGlassIcon } from "@phosphor-icons/react";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { LinkedTask } from "@/application/work-tracking/listLinkedProjectTasks";
+import type { ConnectionId, ConnectionView, WorkTrackingCommandError } from "@/bindings";
 import { translateError } from "@/components/work-tracking/translateError";
 import { WorkItemRow } from "@/components/work-tracking/WorkItemRow";
-import type { ProviderConnection } from "@/domain/work-tracking/ProviderConnection";
-import type { WorkTrackingError } from "@/domain/work-tracking/WorkTrackingError";
 import { useWorkTrackingConnections } from "@/hooks/work-tracking/useWorkTrackingConnections";
 import { taskKeyOf } from "@/models/bulk/taskContextDrafts";
+import type { LinkedTask } from "@/models/work-tracking/pendingTask";
 
 type TaskSelectionStepProps = {
 	tasks: readonly LinkedTask[];
 	loading: boolean;
-	error: WorkTrackingError | null;
+	error: WorkTrackingCommandError | null;
+	unavailableConnections: readonly ConnectionId[];
 	hasLinkedProjects: boolean;
 	selectedKeys: ReadonlySet<string>;
 	onSelectedKeysChange: (keys: ReadonlySet<string>) => void;
@@ -35,6 +35,7 @@ export function TaskSelectionStep({
 	tasks,
 	loading,
 	error,
+	unavailableConnections,
 	hasLinkedProjects,
 	selectedKeys,
 	onSelectedKeysChange,
@@ -46,14 +47,14 @@ export function TaskSelectionStep({
 	const [query, setQuery] = useState("");
 
 	const connectionById = useMemo(
-		() => new Map<ProviderConnection["id"], ProviderConnection>(connections.map((c) => [c.id, c])),
+		() => new Map<ConnectionView["id"], ConnectionView>(connections.map((c) => [c.id, c])),
 		[connections],
 	);
 
 	const visibleTasks = useMemo(() => {
 		const normalizedQuery = query.toLowerCase().trim();
 		if (!normalizedQuery) return tasks;
-		return tasks.filter((task) => task.item.title.toLowerCase().includes(normalizedQuery));
+		return tasks.filter((task) => task.task.title.toLowerCase().includes(normalizedQuery));
 	}, [tasks, query]);
 
 	const visibleSelectedCount = visibleTasks.filter((task) =>
@@ -110,6 +111,13 @@ export function TaskSelectionStep({
 		}
 		return (
 			<Stack gap="xs">
+				{unavailableConnections.length > 0 && (
+					<Alert icon={<InfoIcon size={16} />} color="yellow" variant="light">
+						{t("contexts.fromTasks.connectionsUnavailable", {
+							count: unavailableConnections.length,
+						})}
+					</Alert>
+				)}
 				<TextInput
 					placeholder={t("contexts.fromTasks.searchPlaceholder")}
 					leftSection={<MagnifyingGlassIcon size={14} />}
@@ -133,7 +141,7 @@ export function TaskSelectionStep({
 								return (
 									<Checkbox
 										key={key}
-										label={task.item.title}
+										label={task.task.title}
 										checked={selectedKeys.has(key)}
 										onChange={() => toggleTask(task)}
 										py={6}
@@ -143,7 +151,7 @@ export function TaskSelectionStep({
 							return (
 								<WorkItemRow
 									key={key}
-									item={task.item}
+									task={task.task}
 									connection={connection}
 									isOrphanSubtask={false}
 									selectable

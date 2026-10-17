@@ -60,6 +60,32 @@ export const commands = {
 	 *  pull request on the Git host of the repository's remote.
 	 */
 	gitHostingCreatePullRequest: (projectTag: string, repositoryId: string, input: NewPullRequestInput) => __TAURI_INVOKE<CreatedPullRequestView>("git_hosting_create_pull_request", { projectTag, repositoryId, input }),
+	/**
+	 *  The current settings, falling back to the defaults when none are stored or
+	 *  the store cannot be read.
+	 */
+	settingsGet: () => __TAURI_INVOKE<AppSettingsView>("settings_get"),
+	/**
+	 *  Sets whether "Assign me to these tasks" is checked by default and returns
+	 *  the updated settings.
+	 */
+	settingsSetAssignMeToTasks: (value: boolean) => __TAURI_INVOKE<AppSettingsView>("settings_set_assign_me_to_tasks", { value }),
+	workTrackingListConnections: () => __TAURI_INVOKE<ConnectionView[]>("work_tracking_list_connections"),
+	workTrackingSaveConnection: (input: SaveConnectionInput) => __TAURI_INVOKE<ConnectionView>("work_tracking_save_connection", { input }),
+	workTrackingRemoveConnection: (connectionId: string) => __TAURI_INVOKE<null>("work_tracking_remove_connection", { connectionId }),
+	workTrackingListProjects: (connectionId: string, cursor: string | null) => __TAURI_INVOKE<Page<RemoteProject>>("work_tracking_list_projects", { connectionId, cursor }),
+	workTrackingListGroups: (connectionId: string, projectId: string, cursor: string | null) => __TAURI_INVOKE<Page<TaskGroup>>("work_tracking_list_groups", { connectionId, projectId, cursor }),
+	workTrackingListItems: (connectionId: string, projectId: string, groupId: string, cursor: string | null) => __TAURI_INVOKE<Page<Task>>("work_tracking_list_items", { connectionId, projectId, groupId, cursor }),
+	workTrackingListProjectItems: (connectionId: string, projectId: string, cursor: string | null) => __TAURI_INVOKE<Page<Task>>("work_tracking_list_project_items", { connectionId, projectId, cursor }),
+	workTrackingAssignMeToTask: (connectionId: string, itemId: string) => __TAURI_INVOKE<null>("work_tracking_assign_me_to_task", { connectionId, itemId }),
+	/**
+	 *  Best-effort assignment of the current user to each task, run by the
+	 *  create-contexts-from-tasks flow after the contexts exist. Never fails as a
+	 *  whole: the result lists the tasks the user could not be assigned to.
+	 *  An invalid id in the input drops only that task into the failed list.
+	 */
+	workTrackingAssignMeToTasks: (tasks: TaskToAssignInput[]) => __TAURI_INVOKE<AssignMeResultView>("work_tracking_assign_me_to_tasks", { tasks }),
+	workTrackingPendingTasks: (projectTag: string) => __TAURI_INVOKE<PendingTasksView>("work_tracking_pending_tasks", { projectTag }),
 };
 
 /** Events */
@@ -74,6 +100,19 @@ export type AgentToolView = { tool: "kiro"; conversationId: string | null };
 export type AgentWorkView = {
 	prompt: string | null,
 	tool: AgentToolView,
+};
+
+/**  The app-wide settings on the wire. */
+export type AppSettingsView = {
+	assignMeToTasks: boolean,
+};
+
+/**
+ *  The outcome of a best-effort assign-me batch on the wire: the tasks that
+ *  could not be assigned. An empty list means every task was assigned.
+ */
+export type AssignMeResultView = {
+	failed: FailedAssignmentView[],
 };
 
 /**  How the new context gets its branch in one repository. */
@@ -109,6 +148,17 @@ export type BrowserSignInStepView = {
 	deviceCode: string,
 	intervalSeconds: number,
 	expiresInSeconds: number,
+};
+
+export type ConnectionId = string;
+
+/**  Connection as exposed to the frontend. Never contains the key. */
+export type ConnectionView = {
+	id: ConnectionId,
+	kind: ProviderKind,
+	baseUrl: string,
+	displayName: string,
+	credentialConfigured: boolean,
 };
 
 export type ContextBranchView = {
@@ -160,6 +210,20 @@ export type CreateContextInput = {
 export type CreatedPullRequestView = {
 	number: number,
 	url: string,
+};
+
+/**  Opaque pagination token; its meaning belongs to the provider adapter. */
+export type Cursor = string;
+
+/**
+ *  A task the current user could not be assigned to, on the wire, so the
+ *  frontend can list it and the user can assign themselves by hand. The ids
+ *  are bare strings: they echo the input, which may include an id that did not
+ *  parse.
+ */
+export type FailedAssignmentView = {
+	connectionId: string,
+	taskId: string,
 };
 
 /**
@@ -216,6 +280,11 @@ export type HostedPullRequestView = {
 	updatedAt: string,
 };
 
+export type Label = {
+	name: string,
+	color: string | null,
+};
+
 export type LocalBranchView = {
 	name: string,
 	isCurrent: boolean,
@@ -233,6 +302,39 @@ export type NewPullRequestInput = {
 	base: string,
 	draft: boolean,
 };
+
+export type Page<T> = {
+	items: T[],
+	nextCursor: Cursor | null,
+};
+
+/**
+ *  A task still waiting for a context: a dashed card in the board's Idle
+ *  column. Carries its connection and remote project so the frontend can show
+ *  it and create a context from it.
+ */
+export type PendingTaskView = {
+	connectionId: ConnectionId,
+	remoteProjectId: RemoteProjectId,
+	task: Task,
+};
+
+/**
+ *  The board's pending task cards for one Project, plus the connections whose
+ *  links were skipped because they are missing, uncredentialed or unreachable.
+ */
+export type PendingTasksView = {
+	tasks: PendingTaskView[],
+	unavailableConnections: ConnectionId[],
+};
+
+export type Person = {
+	id: PersonId,
+	displayName: string,
+	avatarUrl: string | null,
+};
+
+export type PersonId = string;
 
 /**
  *  Emitted as `project-changed` whenever a Project is saved, so every open
@@ -283,6 +385,8 @@ export type ProjectView = {
 	rootIdePath: string,
 };
 
+export type ProviderKind = "teamwork";
+
 export type PullRequestDraftView = {
 	title: string,
 	description: string,
@@ -308,6 +412,21 @@ export type PushResult = {
 	message: string | null,
 };
 
+/**
+ *  Read model of a remote project; never persisted locally. Options are always
+ *  emitted (null when absent) so the wire shape stays stable for specta.
+ */
+export type RemoteProject = {
+	id: RemoteProjectId,
+	connectionId: ConnectionId,
+	name: string,
+	description: string | null,
+	status: RemoteProjectStatus,
+	url: string,
+};
+
+export type RemoteProjectId = string;
+
 /**  Also the input shape: links are saved as the frontend sends them. */
 export type RemoteProjectLinkView = {
 	providerKind: string,
@@ -317,6 +436,8 @@ export type RemoteProjectLinkView = {
 	remoteProjectUrl: string | null,
 	linkedAt: string,
 };
+
+export type RemoteProjectStatus = "active" | "archived" | "other";
 
 export type RepositoryBranchInput = {
 	repositoryId: string,
@@ -346,6 +467,24 @@ export type RepositoryView = {
 	path: string,
 };
 
+export type SaveConnectionInput = {
+	kind: string,
+	baseUrl: string,
+	displayName?: string | null,
+	apiKey: string,
+};
+
+/**
+ *  A failed Settings command on the wire. `message` is a fixed English sentence
+ *  per kind.
+ */
+export type SettingsCommandError = {
+	kind: SettingsErrorKind,
+	message: string,
+};
+
+export type SettingsErrorKind = "storage";
+
 export type SignInProgressView = { status: "authorized" } | { status: "pending" } | { status: "slowDown"; intervalSeconds: number } | { status: "expired" } | { status: "denied" };
 
 /**
@@ -357,10 +496,94 @@ export type SignedInHostView = {
 	account: HostedAccountView | null,
 };
 
+/**
+ *  Read model of a remote task, issue or subtask. Options are always emitted
+ *  (null when absent) so the wire shape stays stable for specta.
+ */
+export type Task = {
+	id: TaskId,
+	projectId: RemoteProjectId,
+	groupId: TaskGroupId | null,
+	parentId: TaskId | null,
+	title: string,
+	description: string | null,
+	status: TaskStatus,
+	rawStatus: string,
+	priority: TaskPriority,
+	rawPriority: string | null,
+	assignees: Person[],
+	labels: Label[],
+	/**  Always `YYYY-MM-DD`. */
+	dueDate: string | null,
+	url: string,
+	/**  RFC 3339 as received from the provider. */
+	updatedAt: string | null,
+};
+
+/**
+ *  Read model of a remote grouping of tasks (for example a task list). Options
+ *  are always emitted (null when absent) so the wire shape stays stable.
+ */
+export type TaskGroup = {
+	id: TaskGroupId,
+	projectId: RemoteProjectId,
+	name: string,
+	description: string | null,
+	kind: TaskGroupKind,
+	position: number | null,
+	url: string | null,
+};
+
+export type TaskGroupId = string;
+
+/**
+ *  Kinds of task group. `Epic`, `Sprint` and `Milestone` are added only
+ *  together with the adapters that produce them.
+ */
+export type TaskGroupKind = "taskList";
+
+export type TaskId = string;
+
+export type TaskPriority = "none" | "low" | "medium" | "high" | "urgent" | "unknown";
+
+export type TaskStatus = "todo" | "inProgress" | "done" | "cancelled" | "unknown";
+
+/**
+ *  A task to assign the current user to, on the wire. The connection and task
+ *  ids identify a pending task card the frontend created a context from.
+ */
+export type TaskToAssignInput = {
+	connectionId: string,
+	taskId: string,
+};
+
 export type UnreadableProjectView = {
 	tag: string,
 	reason: string,
 };
+
+/**
+ *  A failed Work Tracking command on the wire. `message` is a fixed English
+ *  sentence per kind and never holds provider or credential data. Every field
+ *  is emitted (null when absent) so the frontend reads one stable shape.
+ */
+export type WorkTrackingCommandError = {
+	kind: WorkTrackingErrorKind,
+	message: string,
+	field: WorkTrackingField | null,
+	reason: WorkTrackingInvalidReason | null,
+	retryAfterSeconds: number | null,
+	status: number | null,
+};
+
+/**  The kind of a failed Work Tracking command, on the wire. */
+export type WorkTrackingErrorKind = "notConfigured" | "invalidInput" | "unauthorized" | "forbidden" | "notFound" | "rateLimited" | "timeout" | "network" | "providerError" | "invalidResponse" | "storageError";
+
+/**  The input that failed validation, on the wire. Mirrors [`InputField`]. */
+export type WorkTrackingField = "providerKind" | "baseUrl" | "apiKey" | "displayName" | "connectionId" | "projectId" | "groupId" | "itemId" | "cursor" | "pageSize";
+
+/**  Why an input failed validation, on the wire. Mirrors [`InvalidInputReason`]. */
+export type WorkTrackingInvalidReason = "required" | "tooLong" | "invalidFormat" | "httpsRequired" | "unsupportedComponent" | "outOfRange" | "unsupported";
 
 /**
  *  A failed workspace command on the wire. `message` is readable and may name

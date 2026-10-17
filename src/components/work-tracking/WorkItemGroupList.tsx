@@ -1,15 +1,14 @@
 import { NavLink, Stack, Title } from "@mantine/core";
 import { useTranslation } from "react-i18next";
-import type { WorkItemGroupId } from "@/domain/work-tracking/identifiers";
-import type { WorkItemGroup } from "@/domain/work-tracking/WorkItemGroup";
+import type { TaskGroup, TaskGroupId } from "@/bindings";
 import type { PagedRemoteList } from "@/hooks/work-tracking/usePagedRemoteList";
 import { LoadMoreButton } from "./LoadMoreButton";
 import { RemoteListState } from "./RemoteListState";
 
 type WorkItemGroupListProps = {
-	list: PagedRemoteList<WorkItemGroup>;
-	selectedGroupId: WorkItemGroupId | null;
-	onSelect: (groupId: WorkItemGroupId) => void;
+	list: PagedRemoteList<TaskGroup>;
+	selectedGroupId: TaskGroupId | null;
+	onSelect: (groupId: TaskGroupId) => void;
 	onReplaceKey: () => void;
 };
 

@@ -1,6 +1,6 @@
 //! In-memory fakes for the application-layer tests. Each test owns its own
 //! instances (no statics), so tests run in parallel.
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -11,15 +11,16 @@ use crate::work_tracking::domain::api_key::ApiKey;
 use crate::work_tracking::domain::base_url::BaseUrl;
 use crate::work_tracking::domain::error::WorkTrackingError;
 use crate::work_tracking::domain::identifiers::{
-    ConnectionId, PersonId, WorkItemGroupId, WorkItemId, WorkProjectId,
+    ConnectionId, PersonId, RemoteProjectId, TaskGroupId, TaskId,
 };
-use crate::work_tracking::domain::page::{Page, PageRequest};
+use crate::work_tracking::domain::page::{Cursor, Page, PageRequest};
+use crate::work_tracking::domain::pending_tasks::{ProjectLinks, ProjectTaskLinks};
 use crate::work_tracking::domain::ports::{ConnectionRepository, CredentialStore, WorkTracker};
 use crate::work_tracking::domain::provider_connection::{DisplayName, ProviderConnection};
 use crate::work_tracking::domain::provider_kind::ProviderKind;
-use crate::work_tracking::domain::work_item::WorkItem;
-use crate::work_tracking::domain::work_item_group::WorkItemGroup;
-use crate::work_tracking::domain::work_project::WorkProject;
+use crate::work_tracking::domain::remote_project::RemoteProject;
+use crate::work_tracking::domain::task::Task;
+use crate::work_tracking::domain::task_group::TaskGroup;
 
 pub fn sample_connection() -> ProviderConnection {
     let base_url = BaseUrl::parse("https://acme.teamwork.com").unwrap();
@@ -27,7 +28,7 @@ pub fn sample_connection() -> ProviderConnection {
     ProviderConnection::new(ProviderKind::Teamwork, base_url, display_name)
 }
 
-fn empty_page<T>() -> Page<T> {
+fn empty_page<T: specta::Type>() -> Page<T> {
     Page {
         items: Vec::new(),
         next_cursor: None,
@@ -37,11 +38,18 @@ fn empty_page<T>() -> Page<T> {
 /// Scripted adapter results plus a log of factory and adapter calls.
 pub struct Script {
     pub verify_result: Result<(), WorkTrackingError>,
-    pub projects_result: Result<Page<WorkProject>, WorkTrackingError>,
-    pub groups_result: Result<Page<WorkItemGroup>, WorkTrackingError>,
-    pub items_result: Result<Page<WorkItem>, WorkTrackingError>,
+    pub projects_result: Result<Page<RemoteProject>, WorkTrackingError>,
+    pub groups_result: Result<Page<TaskGroup>, WorkTrackingError>,
+    pub items_result: Result<Page<Task>, WorkTrackingError>,
+    /// Successive `list_project_items` pages per remote project id. When a
+    /// project has an entry, each call pops its next page; otherwise
+    /// `items_result` answers. A project's queue may end with an error page.
+    pub project_item_pages: HashMap<String, Vec<Result<Page<Task>, WorkTrackingError>>>,
     pub current_user_result: Result<PersonId, WorkTrackingError>,
     pub assign_result: Result<(), WorkTrackingError>,
+    /// Task ids whose assignment fails, overriding `assign_result` for them.
+    /// Lets a batch test fail specific tasks while the rest succeed.
+    pub failing_assign_tasks: HashSet<String>,
     pub created_with_keys: Vec<String>,
     pub calls: Vec<String>,
 }
@@ -53,8 +61,10 @@ impl Script {
             projects_result: Ok(empty_page()),
             groups_result: Ok(empty_page()),
             items_result: Ok(empty_page()),
+            project_item_pages: HashMap::new(),
             current_user_result: Ok(PersonId::from_numeric(7)),
             assign_result: Ok(()),
+            failing_assign_tasks: HashSet::new(),
             created_with_keys: Vec::new(),
             calls: Vec::new(),
         }))
@@ -103,7 +113,7 @@ impl WorkTracker for FakeWorkTracker {
 
     async fn assign_user_to_task(
         &self,
-        item_id: &WorkItemId,
+        item_id: &TaskId,
         user_id: &PersonId,
     ) -> Result<(), WorkTrackingError> {
         let mut script = self.script.lock().unwrap();
@@ -112,13 +122,16 @@ impl WorkTracker for FakeWorkTracker {
             item_id.as_str(),
             user_id.as_str()
         ));
+        if script.failing_assign_tasks.contains(item_id.as_str()) {
+            return Err(WorkTrackingError::ProviderError { status: None });
+        }
         script.assign_result.clone()
     }
 
     async fn list_projects(
         &self,
         page: PageRequest,
-    ) -> Result<Page<WorkProject>, WorkTrackingError> {
+    ) -> Result<Page<RemoteProject>, WorkTrackingError> {
         let mut script = self.script.lock().unwrap();
         script
             .calls
@@ -128,9 +141,9 @@ impl WorkTracker for FakeWorkTracker {
 
     async fn list_groups(
         &self,
-        project_id: &WorkProjectId,
+        project_id: &RemoteProjectId,
         page: PageRequest,
-    ) -> Result<Page<WorkItemGroup>, WorkTrackingError> {
+    ) -> Result<Page<TaskGroup>, WorkTrackingError> {
         let mut script = self.script.lock().unwrap();
         script.calls.push(format!(
             "list_groups project={} {}",
@@ -142,10 +155,10 @@ impl WorkTracker for FakeWorkTracker {
 
     async fn list_items(
         &self,
-        project_id: &WorkProjectId,
-        group_id: &WorkItemGroupId,
+        project_id: &RemoteProjectId,
+        group_id: &TaskGroupId,
         page: PageRequest,
-    ) -> Result<Page<WorkItem>, WorkTrackingError> {
+    ) -> Result<Page<Task>, WorkTrackingError> {
         let mut script = self.script.lock().unwrap();
         script.calls.push(format!(
             "list_items project={} group={} {}",
@@ -158,16 +171,54 @@ impl WorkTracker for FakeWorkTracker {
 
     async fn list_project_items(
         &self,
-        project_id: &WorkProjectId,
+        project_id: &RemoteProjectId,
         page: PageRequest,
-    ) -> Result<Page<WorkItem>, WorkTrackingError> {
+    ) -> Result<Page<Task>, WorkTrackingError> {
         let mut script = self.script.lock().unwrap();
         script.calls.push(format!(
             "list_project_items project={} {}",
             project_id.as_str(),
             describe(&page)
         ));
-        script.items_result.clone()
+        match script.project_item_pages.get_mut(project_id.as_str()) {
+            Some(pages) if !pages.is_empty() => pages.remove(0),
+            _ => script.items_result.clone(),
+        }
+    }
+}
+
+/// A page of tasks ending the sequence, or continuing with a next cursor.
+pub fn task_page(items: Vec<Task>, next_cursor: Option<u64>) -> Page<Task> {
+    Page {
+        items,
+        next_cursor: next_cursor.map(Cursor::from_numeric),
+    }
+}
+
+/// In-memory `ProjectTaskLinks` returning fixed links and created-from set.
+#[derive(Default)]
+pub struct FakeProjectTaskLinks {
+    results: Mutex<HashMap<String, Result<ProjectLinks, WorkTrackingError>>>,
+}
+
+impl FakeProjectTaskLinks {
+    pub fn set(&self, project_tag: &str, result: Result<ProjectLinks, WorkTrackingError>) {
+        self.results
+            .lock()
+            .unwrap()
+            .insert(project_tag.to_string(), result);
+    }
+}
+
+#[async_trait]
+impl ProjectTaskLinks for FakeProjectTaskLinks {
+    async fn links_for(&self, project_tag: &str) -> Result<ProjectLinks, WorkTrackingError> {
+        self.results
+            .lock()
+            .unwrap()
+            .get(project_tag)
+            .cloned()
+            .unwrap_or(Err(WorkTrackingError::NotFound))
     }
 }
 

@@ -1,39 +1,41 @@
 //! Provider-agnostic model of the Work Tracking context. Depends only on
 //! `std`, `serde` and `async_trait`.
 pub mod api_key;
+pub mod assign_me;
 pub mod base_url;
 pub mod error;
 pub mod identifiers;
 pub mod label;
 pub mod page;
+pub mod pending_tasks;
 pub mod person;
 pub mod ports;
 pub mod provider_connection;
 pub mod provider_kind;
-pub mod work_item;
-pub mod work_item_group;
-pub mod work_project;
+pub mod remote_project;
+pub mod task;
+pub mod task_group;
 
 #[cfg(test)]
 mod serialization_tests {
     use super::identifiers::PersonId;
-    use super::identifiers::{WorkItemId, WorkProjectId};
+    use super::identifiers::{RemoteProjectId, TaskId};
     use super::label::Label;
     use super::page::{Cursor, Page};
     use super::person::Person;
-    use super::work_item::{WorkItem, WorkItemPriority, WorkItemStatus};
+    use super::task::{Task, TaskPriority, TaskStatus};
 
-    fn minimal_item() -> WorkItem {
-        WorkItem {
-            id: WorkItemId::from_numeric(1),
-            project_id: WorkProjectId::from_numeric(2),
+    fn minimal_task() -> Task {
+        Task {
+            id: TaskId::from_numeric(1),
+            project_id: RemoteProjectId::from_numeric(2),
             group_id: None,
             parent_id: None,
             title: "Task".into(),
             description: None,
-            status: WorkItemStatus::InProgress,
+            status: TaskStatus::InProgress,
             raw_status: "new".into(),
-            priority: WorkItemPriority::None,
+            priority: TaskPriority::None,
             raw_priority: None,
             assignees: vec![Person::new(PersonId::from_numeric(3), "Ada".into(), None)],
             labels: vec![Label::new("bug".into(), None)],
@@ -44,9 +46,10 @@ mod serialization_tests {
     }
 
     #[test]
-    fn work_item_omits_absent_optionals() {
-        let json = serde_json::to_string(&minimal_item()).unwrap();
-        assert!(!json.contains("null"), "{json}");
+    fn task_emits_absent_optionals_as_null() {
+        // Wire types keep a stable shape for specta: every optional is present,
+        // null when absent, rather than omitted.
+        let json = serde_json::to_string(&minimal_task()).unwrap();
         for key in [
             "groupId",
             "parentId",
@@ -55,10 +58,13 @@ mod serialization_tests {
             "dueDate",
             "updatedAt",
         ] {
-            assert!(!json.contains(&format!("\"{key}\"")), "{key} in {json}");
+            assert!(
+                json.contains(&format!("\"{key}\":null")),
+                "{key} not null in {json}"
+            );
         }
-        assert!(!json.contains("avatarUrl"));
-        assert!(!json.contains("color"));
+        assert!(json.contains("\"avatarUrl\":null"));
+        assert!(json.contains("\"color\":null"));
         assert!(json.contains("\"status\":\"inProgress\""));
         assert!(json.contains("\"priority\":\"none\""));
         assert!(json.contains("\"projectId\":\"2\""));
@@ -67,20 +73,20 @@ mod serialization_tests {
     #[test]
     fn typed_id_serializes_as_bare_string() {
         assert_eq!(
-            serde_json::to_string(&WorkItemId::from_numeric(42)).unwrap(),
+            serde_json::to_string(&TaskId::from_numeric(42)).unwrap(),
             "\"42\""
         );
     }
 
     #[test]
-    fn page_cursor_is_bare_string_or_absent() {
+    fn page_cursor_is_bare_string_or_null() {
         let without_cursor: Page<u8> = Page {
             items: vec![],
             next_cursor: None,
         };
         assert_eq!(
             serde_json::to_string(&without_cursor).unwrap(),
-            r#"{"items":[]}"#
+            r#"{"items":[],"nextCursor":null}"#
         );
         let with_cursor: Page<u8> = Page {
             items: vec![1],
@@ -97,9 +103,9 @@ mod serialization_tests {
             "A".into(),
             Some("http://x".into()),
         );
-        assert!(!serde_json::to_string(&insecure)
+        assert!(serde_json::to_string(&insecure)
             .unwrap()
-            .contains("avatarUrl"));
+            .contains("\"avatarUrl\":null"));
         let secure = Person::new(
             PersonId::from_numeric(1),
             "A".into(),

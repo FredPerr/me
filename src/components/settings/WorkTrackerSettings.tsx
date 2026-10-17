@@ -1,9 +1,9 @@
 import { Stack, Text, Title } from "@mantine/core";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import type { ConnectionView } from "@/bindings";
 import { ConnectionPanel } from "@/components/work-tracking/ConnectionPanel";
 import { ReplaceKeyModal } from "@/components/work-tracking/ReplaceKeyModal";
-import type { ProviderConnection } from "@/domain/work-tracking/ProviderConnection";
 import { DEFAULT_PROVIDER_KIND } from "@/domain/work-tracking/ProviderKind";
 import { useWorkTrackingConnections } from "@/hooks/work-tracking/useWorkTrackingConnections";
 
@@ -14,7 +14,7 @@ export function WorkTrackerSettings() {
 	const connection =
 		connections.find((candidate) => candidate.kind === DEFAULT_PROVIDER_KIND) ?? null;
 
-	async function handleRemove(removedConnection: ProviderConnection) {
+	async function handleRemove(removedConnection: ConnectionView) {
 		await remove(removedConnection.id);
 		setReplaceKeyOpened(false);
 	}

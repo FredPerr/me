@@ -303,6 +303,8 @@ export const en = {
 				noLinkedProjects: "Link work tracker projects in this project's settings to pick tasks.",
 				loadError: "Could not load tasks: {{message}}",
 				noPendingTasks: "Every open task already has a context.",
+				connectionsUnavailable:
+					"{{count}} linked connection is unavailable. Reconnect it to see its tasks.",
 				next: "Next ({{count}})",
 				createButton: "Create {{count}} contexts",
 				createdTitle: "Contexts created",
@@ -311,7 +313,7 @@ export const en = {
 				assignMeHint: "Adds you as an assignee on the work tracker, keeping existing assignees.",
 				assignMeFailedTitle: "Could not assign you to every task",
 				assignMeFailedMessage:
-					"Assigning you failed for {{count}} task(s). The contexts were still created.",
+					"The contexts were created, but you could not be assigned to {{count}} task(s): {{tasks}}. Assign yourself on the work tracker.",
 				issues: {
 					nameRequired: "A context name is required.",
 					duplicateName: "Another context already uses this name.",

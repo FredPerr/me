@@ -1,15 +1,15 @@
 import { Alert, Button, Group, Modal, Stack, Text } from "@mantine/core";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { ProviderConnection } from "@/domain/work-tracking/ProviderConnection";
-import { WorkTrackingError } from "@/domain/work-tracking/WorkTrackingError";
+import type { ConnectionView, WorkTrackingCommandError } from "@/bindings";
+import { toWorkTrackingCommandError } from "@/infra/commandError";
 import { translateError } from "./translateError";
 
 type RemoveConnectionModalProps = {
 	opened: boolean;
 	onClose: () => void;
-	connection: ProviderConnection;
-	onRemove: (connection: ProviderConnection) => Promise<void>;
+	connection: ConnectionView;
+	onRemove: (connection: ConnectionView) => Promise<void>;
 };
 
 export function RemoveConnectionModal({
@@ -20,7 +20,7 @@ export function RemoveConnectionModal({
 }: RemoveConnectionModalProps) {
 	const { t } = useTranslation();
 	const [removing, setRemoving] = useState(false);
-	const [error, setError] = useState<WorkTrackingError | null>(null);
+	const [error, setError] = useState<WorkTrackingCommandError | null>(null);
 
 	function handleClose() {
 		setError(null);
@@ -34,7 +34,7 @@ export function RemoveConnectionModal({
 			await onRemove(connection);
 			onClose();
 		} catch (removeError) {
-			setError(WorkTrackingError.fromUnknown(removeError));
+			setError(toWorkTrackingCommandError(removeError));
 		} finally {
 			setRemoving(false);
 		}

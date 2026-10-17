@@ -12,8 +12,7 @@ import {
 import { KeyIcon, TrashIcon } from "@phosphor-icons/react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { ProviderConnection } from "@/domain/work-tracking/ProviderConnection";
-import type { WorkTrackingError } from "@/domain/work-tracking/WorkTrackingError";
+import type { ConnectionView, WorkTrackingCommandError } from "@/bindings";
 import {
 	ConnectionsStatus,
 	type WorkTrackingConnections,
@@ -23,11 +22,11 @@ import { RemoveConnectionModal } from "./RemoveConnectionModal";
 import { translateError } from "./translateError";
 
 type ConnectionPanelProps = {
-	connection: ProviderConnection | null;
+	connection: ConnectionView | null;
 	status: ConnectionsStatus;
-	error: WorkTrackingError | null;
+	error: WorkTrackingCommandError | null;
 	save: WorkTrackingConnections["save"];
-	remove: (connection: ProviderConnection) => Promise<void>;
+	remove: (connection: ConnectionView) => Promise<void>;
 	onReplaceKey: () => void;
 	onRetry: () => void;
 };
@@ -74,8 +73,8 @@ export function ConnectionPanel({
 }
 
 type ConnectedSummaryProps = {
-	connection: ProviderConnection;
-	remove: (connection: ProviderConnection) => Promise<void>;
+	connection: ConnectionView;
+	remove: (connection: ConnectionView) => Promise<void>;
 	onReplaceKey: () => void;
 };
 

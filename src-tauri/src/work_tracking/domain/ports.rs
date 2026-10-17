@@ -2,12 +2,12 @@ use async_trait::async_trait;
 
 use super::api_key::ApiKey;
 use super::error::WorkTrackingError;
-use super::identifiers::{ConnectionId, PersonId, WorkItemGroupId, WorkItemId, WorkProjectId};
+use super::identifiers::{ConnectionId, PersonId, RemoteProjectId, TaskGroupId, TaskId};
 use super::page::{Page, PageRequest};
 use super::provider_connection::ProviderConnection;
-use super::work_item::WorkItem;
-use super::work_item_group::WorkItemGroup;
-use super::work_project::WorkProject;
+use super::remote_project::RemoteProject;
+use super::task::Task;
+use super::task_group::TaskGroup;
 
 /// Access to a remote work tracker, implemented once per provider. Mostly
 /// read-only; the single mutation is adding an assignee to a task.
@@ -21,30 +21,30 @@ pub trait WorkTracker: Send + Sync {
     /// Adds `user_id` to a task's assignees without removing existing ones.
     async fn assign_user_to_task(
         &self,
-        item_id: &WorkItemId,
+        item_id: &TaskId,
         user_id: &PersonId,
     ) -> Result<(), WorkTrackingError>;
     async fn list_projects(
         &self,
         page: PageRequest,
-    ) -> Result<Page<WorkProject>, WorkTrackingError>;
+    ) -> Result<Page<RemoteProject>, WorkTrackingError>;
     async fn list_groups(
         &self,
-        project_id: &WorkProjectId,
+        project_id: &RemoteProjectId,
         page: PageRequest,
-    ) -> Result<Page<WorkItemGroup>, WorkTrackingError>;
+    ) -> Result<Page<TaskGroup>, WorkTrackingError>;
     async fn list_items(
         &self,
-        project_id: &WorkProjectId,
-        group_id: &WorkItemGroupId,
+        project_id: &RemoteProjectId,
+        group_id: &TaskGroupId,
         page: PageRequest,
-    ) -> Result<Page<WorkItem>, WorkTrackingError>;
-    /// Open items of a project across all of its groups.
+    ) -> Result<Page<Task>, WorkTrackingError>;
+    /// Open tasks of a project across all of its groups.
     async fn list_project_items(
         &self,
-        project_id: &WorkProjectId,
+        project_id: &RemoteProjectId,
         page: PageRequest,
-    ) -> Result<Page<WorkItem>, WorkTrackingError>;
+    ) -> Result<Page<Task>, WorkTrackingError>;
 }
 
 /// Synchronous because both backends (plugin store, keyring) are synchronous.

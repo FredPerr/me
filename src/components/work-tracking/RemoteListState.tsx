@@ -2,14 +2,13 @@ import { Alert, Button, Group, Loader, Stack, Text, VisuallyHidden } from "@mant
 import { ArrowClockwiseIcon, KeyIcon } from "@phosphor-icons/react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import type { WorkTrackingError } from "@/domain/work-tracking/WorkTrackingError";
-import { WorkTrackingErrorKind } from "@/domain/work-tracking/WorkTrackingErrorKind";
+import type { WorkTrackingCommandError } from "@/bindings";
 import { PagedListStatus } from "@/hooks/work-tracking/pagedListState";
 import { translateError } from "./translateError";
 
 type RemoteListStateProps = {
 	status: PagedListStatus;
-	error: WorkTrackingError | null;
+	error: WorkTrackingCommandError | null;
 	itemCount: number;
 	emptyText: string;
 	onRetry: () => void;
@@ -72,7 +71,7 @@ export function RemoteListState({
 							>
 								{t("workTracking.retry")}
 							</Button>
-							{error?.kind === WorkTrackingErrorKind.Unauthorized && (
+							{error?.kind === "unauthorized" && (
 								<Button
 									size="xs"
 									variant="light"

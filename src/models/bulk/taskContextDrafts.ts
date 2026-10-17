@@ -1,6 +1,5 @@
-import type { LinkedTask } from "@/application/work-tracking/listLinkedProjectTasks";
-import { taskRefOf } from "@/application/work-tracking/selectPendingTasks";
 import type { ContextView } from "@/bindings";
+import { type LinkedTask, taskRefOf } from "@/models/work-tracking/pendingTask";
 import type { BulkContextSpec } from "./BulkContextSpec";
 import { buildTaskPreprompt, DEFAULT_TASKS_PREAMBLE } from "./tasksToContextSpecs";
 
@@ -18,7 +17,7 @@ export type ValidatedTaskContextDraft = {
 };
 
 export function taskKeyOf(task: LinkedTask): string {
-	return `${task.connectionId}|${task.item.id}`;
+	return `${task.connectionId}|${task.task.id}`;
 }
 
 export function draftTaskContext(
@@ -27,8 +26,8 @@ export function draftTaskContext(
 ): TaskContextDraft {
 	return {
 		task,
-		contextName: task.item.title.trim(),
-		prompt: buildTaskPreprompt(preamble, task.item),
+		contextName: task.task.title.trim(),
+		prompt: buildTaskPreprompt(preamble, task.task),
 	};
 }
 

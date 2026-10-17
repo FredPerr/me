@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { WorkTrackingError } from "@/domain/work-tracking/WorkTrackingError";
-import { WorkTrackingErrorKind } from "@/domain/work-tracking/WorkTrackingErrorKind";
+import type { Page, WorkTrackingCommandError } from "@/bindings";
 import {
 	createInitialPagedListState,
 	hasMorePages,
@@ -10,18 +9,29 @@ import {
 	pagedListReducer,
 } from "./pagedListState";
 
-function loadedState(items: string[], nextCursor?: string): PagedListState<string> {
+function page(items: string[], nextCursor: string | null = null): Page<string> {
+	return { items, nextCursor };
+}
+
+function loadedState(items: string[], nextCursor: string | null = null): PagedListState<string> {
 	const loading = pagedListReducer(createInitialPagedListState<string>(), {
 		type: PagedListActionType.LoadStarted,
 	});
 	return pagedListReducer(loading, {
 		type: PagedListActionType.PageLoaded,
-		page: { items, ...(nextCursor !== undefined && { nextCursor }) },
+		page: page(items, nextCursor),
 		append: false,
 	});
 }
 
-const NETWORK_ERROR = new WorkTrackingError(WorkTrackingErrorKind.Network, "offline");
+const NETWORK_ERROR: WorkTrackingCommandError = {
+	kind: "network",
+	message: "offline",
+	field: null,
+	reason: null,
+	retryAfterSeconds: null,
+	status: null,
+};
 
 describe("pagedListReducer", () => {
 	it("starts idle and empty", () => {
@@ -41,7 +51,7 @@ describe("pagedListReducer", () => {
 
 		const reloaded = pagedListReducer(
 			pagedListReducer(first, { type: PagedListActionType.LoadStarted }),
-			{ type: PagedListActionType.PageLoaded, page: { items: ["c"] }, append: false },
+			{ type: PagedListActionType.PageLoaded, page: page(["c"]), append: false },
 		);
 
 		expect(reloaded.items).toEqual(["c"]);
@@ -68,7 +78,7 @@ describe("pagedListReducer", () => {
 
 		const appended = pagedListReducer(loadingMore, {
 			type: PagedListActionType.PageLoaded,
-			page: { items: ["c"], nextCursor: "3" },
+			page: page(["c"], "3"),
 			append: true,
 		});
 

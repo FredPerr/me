@@ -10,6 +10,7 @@ mod git_hosting;
 mod ide_launcher;
 mod pull_request_template;
 mod secret_store;
+mod settings;
 mod shortcuts;
 mod storage;
 mod work_tracking;
@@ -71,6 +72,18 @@ const TYPED_COMMANDS: &[&str] = &[
     "git_hosting_project_pull_requests",
     "git_hosting_context_pull_requests",
     "git_hosting_create_pull_request",
+    "settings_get",
+    "settings_set_assign_me_to_tasks",
+    "work_tracking_list_connections",
+    "work_tracking_save_connection",
+    "work_tracking_remove_connection",
+    "work_tracking_list_projects",
+    "work_tracking_list_groups",
+    "work_tracking_list_items",
+    "work_tracking_list_project_items",
+    "work_tracking_assign_me_to_task",
+    "work_tracking_assign_me_to_tasks",
+    "work_tracking_pending_tasks",
 ];
 
 /// The typed commands, exported with their types to `src/bindings.ts`.
@@ -113,6 +126,18 @@ fn typed_commands() -> tauri_specta::Builder<tauri::Wry> {
             git_hosting::commands::git_hosting_project_pull_requests,
             git_hosting::commands::git_hosting_context_pull_requests,
             git_hosting::commands::git_hosting_create_pull_request,
+            settings::commands::settings_get,
+            settings::commands::settings_set_assign_me_to_tasks,
+            work_tracking::commands::work_tracking_list_connections,
+            work_tracking::commands::work_tracking_save_connection,
+            work_tracking::commands::work_tracking_remove_connection,
+            work_tracking::commands::work_tracking_list_projects,
+            work_tracking::commands::work_tracking_list_groups,
+            work_tracking::commands::work_tracking_list_items,
+            work_tracking::commands::work_tracking_list_project_items,
+            work_tracking::commands::work_tracking_assign_me_to_task,
+            work_tracking::commands::work_tracking_assign_me_to_tasks,
+            work_tracking::commands::work_tracking_pending_tasks,
         ])
         .events(tauri_specta::collect_events![
             workspace::infra::tauri_project_events::ProjectChanged,
@@ -129,14 +154,6 @@ pub fn run() {
         greet,
         open_in_ide,
         check_path_exists,
-        work_tracking::commands::work_tracking_list_connections,
-        work_tracking::commands::work_tracking_save_connection,
-        work_tracking::commands::work_tracking_remove_connection,
-        work_tracking::commands::work_tracking_list_projects,
-        work_tracking::commands::work_tracking_list_groups,
-        work_tracking::commands::work_tracking_list_items,
-        work_tracking::commands::work_tracking_list_project_items,
-        work_tracking::commands::work_tracking_assign_me_to_task,
         workspace_detector::get_active_workspaces,
         ai_session::spawn_ai_session,
         ai_session::kill_ai_session,
@@ -173,15 +190,29 @@ pub fn run() {
         })
         .setup(move |app| {
             typed_builder.mount_events(app);
-            tauri::Manager::manage(app, work_tracking::build_service(app.handle().clone()));
             app.manage(ai_session::registry::SessionRegistry::new());
-            let database = storage::open(&app.path().app_data_dir()?)?;
+            let app_data_dir = app.path().app_data_dir()?;
+            let database = storage::open(&app_data_dir)?;
+            let settings = settings::build(Arc::clone(&database))?;
             let git = git::build(git_hosting::remote_credentials());
+            // Workspace is built before work_tracking: the pending-tasks use
+            // case reads a Project's remote project links through a composition
+            // adapter over WorkspaceService.
             let workspace = workspace::build(
                 app.handle().clone(),
                 Arc::clone(&database),
                 git.repositories(),
             )?;
+            let project_task_links =
+                composition::workspace_project_task_links::WorkspaceProjectTaskLinks::new(
+                    Arc::clone(&workspace.service),
+                );
+            let work_tracking = work_tracking::build_service(
+                Arc::clone(&database),
+                &app_data_dir,
+                Arc::new(project_task_links),
+            )?;
+            app.manage(work_tracking);
             let project_remotes =
                 composition::workspace_project_remotes::WorkspaceProjectRemotes::new(
                     Arc::clone(&workspace.service),
@@ -204,6 +235,7 @@ pub fn run() {
             app.manage(push_listener);
             app.manage(git_hosting);
             app.manage(workspace);
+            app.manage(settings);
             shortcuts::register(app.handle())?;
             Ok(())
         })

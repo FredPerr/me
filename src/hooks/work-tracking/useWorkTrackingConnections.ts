@@ -1,9 +1,14 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import type { ConnectionId } from "@/domain/work-tracking/identifiers";
-import type { ProviderConnection } from "@/domain/work-tracking/ProviderConnection";
-import { WorkTrackingError } from "@/domain/work-tracking/WorkTrackingError";
-import type { SaveConnectionInput } from "@/domain/work-tracking/WorkTrackingGateway";
-import { workTrackingGateway } from "@/infra/work-tracking/workTracking";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback, useRef } from "react";
+import {
+	type ConnectionView,
+	commands,
+	type SaveConnectionInput,
+	type WorkTrackingCommandError,
+} from "@/bindings";
+import { isWorkTrackingCommandError } from "@/infra/commandError";
+import { SHOWS_ITS_OWN_ERROR } from "@/infra/queryClient";
+import { CONNECTIONS_QUERY_KEY } from "./workTrackingQueryKeys";
 
 export enum ConnectionsStatus {
 	Loading = "loading",
@@ -12,65 +17,79 @@ export enum ConnectionsStatus {
 }
 
 export type WorkTrackingConnections = {
-	connections: readonly ProviderConnection[];
+	connections: readonly ConnectionView[];
 	status: ConnectionsStatus;
-	error: WorkTrackingError | null;
+	error: WorkTrackingCommandError | null;
 	revision: number;
-	save: (input: SaveConnectionInput) => Promise<ProviderConnection>;
-	remove: (connectionId: ConnectionId) => Promise<void>;
+	save: (input: SaveConnectionInput) => Promise<ConnectionView>;
+	remove: (connectionId: string) => Promise<void>;
 	reload: () => Promise<void>;
 };
 
+const NO_CONNECTIONS: ConnectionView[] = [];
+
+function toStatus(isPending: boolean, isError: boolean): ConnectionsStatus {
+	if (isError) return ConnectionsStatus.Error;
+	if (isPending) return ConnectionsStatus.Loading;
+	return ConnectionsStatus.Ready;
+}
+
+function asWorkTrackingError(error: unknown): WorkTrackingCommandError | null {
+	return isWorkTrackingCommandError(error) ? error : null;
+}
+
+/**
+ * The configured work tracker connections, with helpers to add or remove one.
+ * `revision` changes after every successful mutation, so views keyed on it
+ * (the paged lists) reload against the new connection set.
+ */
 export function useWorkTrackingConnections(): WorkTrackingConnections {
-	const [connections, setConnections] = useState<readonly ProviderConnection[]>([]);
-	const [status, setStatus] = useState(ConnectionsStatus.Loading);
-	const [error, setError] = useState<WorkTrackingError | null>(null);
-	const [revision, setRevision] = useState(0);
-	const requestSequenceRef = useRef(0);
+	const queryClient = useQueryClient();
+	const revisionRef = useRef(0);
 
-	const fetchConnections = useCallback(async () => {
-		requestSequenceRef.current += 1;
-		const sequence = requestSequenceRef.current;
-		try {
-			const loaded = await workTrackingGateway.listConnections();
-			if (sequence !== requestSequenceRef.current) return;
-			setConnections(loaded);
-			setError(null);
-			setStatus(ConnectionsStatus.Ready);
-		} catch (loadError) {
-			if (sequence !== requestSequenceRef.current) return;
-			setError(WorkTrackingError.fromUnknown(loadError));
-			setStatus(ConnectionsStatus.Error);
-		}
-	}, []);
+	const query = useQuery({
+		queryKey: CONNECTIONS_QUERY_KEY,
+		queryFn: () => commands.workTrackingListConnections(),
+	});
 
-	const reload = useCallback(async () => {
-		setStatus(ConnectionsStatus.Loading);
-		await fetchConnections();
-	}, [fetchConnections]);
+	const invalidate = useCallback(() => {
+		revisionRef.current += 1;
+		return queryClient.invalidateQueries({ queryKey: CONNECTIONS_QUERY_KEY });
+	}, [queryClient]);
+
+	// The connection form and the modals show their own failures.
+	const saveMutation = useMutation({
+		mutationFn: (input: SaveConnectionInput) => commands.workTrackingSaveConnection(input),
+		onSuccess: invalidate,
+		meta: { [SHOWS_ITS_OWN_ERROR]: true },
+	});
+	const removeMutation = useMutation({
+		mutationFn: (connectionId: string) => commands.workTrackingRemoveConnection(connectionId),
+		onSuccess: invalidate,
+		meta: { [SHOWS_ITS_OWN_ERROR]: true },
+	});
 
 	const save = useCallback(
-		async (input: SaveConnectionInput) => {
-			const saved = await workTrackingGateway.saveConnection(input);
-			await fetchConnections();
-			setRevision((current) => current + 1);
-			return saved;
-		},
-		[fetchConnections],
+		(input: SaveConnectionInput) => saveMutation.mutateAsync(input),
+		[saveMutation],
 	);
-
 	const remove = useCallback(
-		async (connectionId: ConnectionId) => {
-			await workTrackingGateway.removeConnection(connectionId);
-			await fetchConnections();
-			setRevision((current) => current + 1);
+		async (connectionId: string) => {
+			await removeMutation.mutateAsync(connectionId);
 		},
-		[fetchConnections],
+		[removeMutation],
 	);
+	const reload = useCallback(async () => {
+		await query.refetch();
+	}, [query]);
 
-	useEffect(() => {
-		void fetchConnections();
-	}, [fetchConnections]);
-
-	return { connections, status, error, revision, save, remove, reload };
+	return {
+		connections: query.data ?? NO_CONNECTIONS,
+		status: toStatus(query.isPending, query.isError),
+		error: asWorkTrackingError(query.error),
+		revision: revisionRef.current,
+		save,
+		remove,
+		reload,
+	};
 }
