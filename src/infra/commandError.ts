@@ -1,17 +1,23 @@
 import type {
+	AiSessionCommandError,
 	GitCommandError,
 	GitHostingCommandError,
+	IdeLauncherCommandError,
 	SettingsCommandError,
 	WorkspaceCommandError,
+	WorkspaceDetectorCommandError,
 	WorkTrackingCommandError,
 } from "@/bindings";
 
 /** Any error a typed command throws. Grows as bounded contexts move to typed commands. */
 export type CommandError =
+	| AiSessionCommandError
 	| GitCommandError
 	| GitHostingCommandError
+	| IdeLauncherCommandError
 	| SettingsCommandError
 	| WorkspaceCommandError
+	| WorkspaceDetectorCommandError
 	| WorkTrackingCommandError;
 
 export function isCommandError(value: unknown): value is CommandError {
