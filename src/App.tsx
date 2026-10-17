@@ -7,11 +7,13 @@ import { useProjectPullRequestsInvalidation } from "@/hooks/gitHosting/useProjec
 import { useAppUpdater } from "@/hooks/useAppUpdater";
 import { useProjectPendingTasksInvalidation } from "@/hooks/work-tracking/useProjectPendingTasksInvalidation";
 import { useProjectChangedInvalidation } from "@/hooks/workspace/useProjectChangedInvalidation";
+import { useWorkbenchChangedInvalidation } from "@/hooks/workspace/useWorkbenchChangedInvalidation";
 import { router } from "@/router";
 
 function App() {
 	const { checkForUpdates } = useAppUpdater();
 	useProjectChangedInvalidation();
+	useWorkbenchChangedInvalidation();
 	useGitHostingChangedInvalidation();
 	useProjectPullRequestsInvalidation();
 	useProjectPendingTasksInvalidation();
