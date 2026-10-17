@@ -57,7 +57,7 @@ async function nameDraftBranches(
 
 /**
  * Drives a single headless Kiro run that expands one high-level instruction
- * into a list of context drafts. Unlike `useContextKiroSessions`, this run is
+ * into a list of context drafts. Unlike a context agent run, this run is
  * not tied to a context and nothing is persisted: it runs at the project root,
  * buffers stdout, and on terminal status parses the output into drafts whose
  * branch names the project then names (rows it can't name are dropped).

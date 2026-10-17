@@ -10,7 +10,7 @@ import {
 } from "@phosphor-icons/react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { ContextView, ProjectView } from "@/bindings";
+import type { ProjectView } from "@/bindings";
 import { BulkCreateContextsModal } from "@/components/contexts/BulkCreateContextsModal";
 import { CreateContextsFromTasksModal } from "@/components/contexts/CreateContextsFromTasksModal";
 import { CreateFromBranchesModal } from "@/components/contexts/CreateFromBranchesModal";
@@ -21,8 +21,8 @@ import { SearchContextInput } from "@/components/contexts/SearchContextInput";
 import { ShareForReviewModal } from "@/components/project-tabs/ShareForReviewModal";
 import { GitRemoteLink } from "@/components/shared/GitRemoteLink";
 import { PullContextsButton } from "@/components/shared/PullContextsButton";
+import { useContextAgentRunSessions } from "@/hooks/agent-runs/useContextAgentRunSessions";
 import { useAppSettings } from "@/hooks/useAppSettings";
-import { useContextKiroSessions } from "@/hooks/useContextKiroSessions";
 import { useOpenInIde } from "@/hooks/useOpenInIde";
 import { useProject } from "@/hooks/workspace/useProject";
 
@@ -40,12 +40,8 @@ function LoadedProjectTabPanel({ project }: { project: ProjectView }) {
 	const { t } = useTranslation();
 	const { settings } = useAppSettings();
 	const { open: openInIde, isAvailable } = useOpenInIde();
-	const { runKiro, killKiro, isRunning, getConversation } = useContextKiroSessions(project);
+	const { runAgent, stopAgentRun, isRunning, liveRunFor } = useContextAgentRunSessions(project);
 	const [searchFilter, setSearchFilter] = useState("");
-
-	async function handleRunKiro(context: ContextView, prompt: string) {
-		await runKiro({ context, prompt });
-	}
 	const [fromBranchesOpened, { open: openFromBranches, close: closeFromBranches }] =
 		useDisclosure(false);
 	const [fromPullRequestsOpened, { open: openFromPullRequests, close: closeFromPullRequests }] =
@@ -129,10 +125,10 @@ function LoadedProjectTabPanel({ project }: { project: ProjectView }) {
 				{settings?.useFlowBoard ? (
 					<FlowBoard
 						project={project}
-						onRunKiro={handleRunKiro}
-						onKillKiro={killKiro}
-						isKiroRunning={isRunning}
-						getKiroConversation={getConversation}
+						onRunAgent={runAgent}
+						onStopAgent={stopAgentRun}
+						isRunning={isRunning}
+						liveRunFor={liveRunFor}
 						searchFilter={searchFilter}
 						onCreateFromTasks={hasLinkedProjects ? openFromTasks : undefined}
 						onBulkCreate={openBulk}
@@ -143,10 +139,10 @@ function LoadedProjectTabPanel({ project }: { project: ProjectView }) {
 				) : (
 					<KanbanBoard
 						project={project}
-						onRunKiro={handleRunKiro}
-						onKillKiro={killKiro}
-						isKiroRunning={isRunning}
-						getKiroConversation={getConversation}
+						onRunAgent={runAgent}
+						onStopAgent={stopAgentRun}
+						isRunning={isRunning}
+						liveRunFor={liveRunFor}
 						searchFilter={searchFilter}
 						onCreateFromTasks={hasLinkedProjects ? openFromTasks : undefined}
 					/>
