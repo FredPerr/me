@@ -1,6 +1,7 @@
 //! The Project aggregate and its value types. Depends only on `std`, `serde`,
 //! `uuid`, `unicode-normalization` and the git module's `BranchName`.
 
+pub mod agent_runner;
 pub mod agent_work;
 pub mod branch_naming;
 pub mod context;

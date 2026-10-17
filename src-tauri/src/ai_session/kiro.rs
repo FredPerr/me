@@ -57,6 +57,24 @@ impl CliAdapter for KiroAdapter {
         // dangerous operations (deny wins over trust).
         vec!["-a".to_string()]
     }
+
+    /// Kiro's `stream-json` events each carry `data.sessionId`; the first one
+    /// seen is the conversation id to resume with `--resume-id`. A line that is
+    /// not a JSON object, or an object without a non-empty string `sessionId`,
+    /// carries no id.
+    fn conversation_id(&self, line: &str) -> Option<String> {
+        let trimmed = line.trim();
+        if !trimmed.starts_with('{') {
+            return None;
+        }
+        let parsed: serde_json::Value = serde_json::from_str(trimmed).ok()?;
+        let session_id = parsed.get("data")?.get("sessionId")?.as_str()?;
+        if session_id.is_empty() {
+            None
+        } else {
+            Some(session_id.to_string())
+        }
+    }
 }
 
 #[cfg(test)]
@@ -222,6 +240,37 @@ mod tests {
         let adapter = KiroAdapter;
 
         assert!(adapter.prompt_needs_options_terminator());
+    }
+
+    #[test]
+    fn conversation_id_reads_the_session_id_from_a_stream_json_event() {
+        let adapter = KiroAdapter;
+        let line = r#"{"type":"metadata","data":{"sessionId":"conv-123"}}"#;
+
+        assert_eq!(adapter.conversation_id(line), Some("conv-123".to_string()));
+    }
+
+    #[test]
+    fn conversation_id_ignores_a_non_json_line() {
+        let adapter = KiroAdapter;
+
+        assert_eq!(adapter.conversation_id("Thinking about the task..."), None);
+    }
+
+    #[test]
+    fn conversation_id_ignores_an_event_without_a_session_id() {
+        let adapter = KiroAdapter;
+        let line = r#"{"type":"sessionUpdate","data":{"text":"hello"}}"#;
+
+        assert_eq!(adapter.conversation_id(line), None);
+    }
+
+    #[test]
+    fn conversation_id_treats_an_empty_session_id_as_none() {
+        let adapter = KiroAdapter;
+        let line = r#"{"type":"metadata","data":{"sessionId":""}}"#;
+
+        assert_eq!(adapter.conversation_id(line), None);
     }
 
     #[test]
