@@ -10,6 +10,7 @@ use super::application::error::{AgentRunServiceError, WorkspaceServiceError};
 use super::application::service::{
     BranchChoice, CreateContextCommand, RepositoryBranchChoice, WorkspaceService,
 };
+use super::application::workbench_service::WorkbenchService;
 use super::domain::agent_run::{AgentRun, AgentRunState};
 use super::domain::agent_work::{AgentTool, AgentWork};
 use super::domain::branch_naming::{parse_branch_name, BranchNamingPolicy};
@@ -26,6 +27,7 @@ use super::domain::project::{Project, ProjectSettings};
 use super::domain::project_tag::ProjectTag;
 use super::domain::remote_project_link::RemoteProjectLink;
 use super::domain::repository::Repository;
+use super::domain::workbench::{Placement, Workbench};
 use super::Workspace;
 use crate::git::domain::error::GitError;
 
@@ -569,6 +571,70 @@ impl ProjectListView {
     }
 }
 
+/// Where a project sits on the tab bar, on the wire. Both an output (in a
+/// `WorkbenchView`) and an input (to `workbench_set_placement`/`_reorder`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub enum PlacementView {
+    Pinned,
+    Shown,
+    Hidden,
+}
+
+impl From<Placement> for PlacementView {
+    fn from(placement: Placement) -> Self {
+        match placement {
+            Placement::Pinned => Self::Pinned,
+            Placement::Shown => Self::Shown,
+            Placement::Hidden => Self::Hidden,
+        }
+    }
+}
+
+impl From<PlacementView> for Placement {
+    fn from(placement: PlacementView) -> Self {
+        match placement {
+            PlacementView::Pinned => Self::Pinned,
+            PlacementView::Shown => Self::Shown,
+            PlacementView::Hidden => Self::Hidden,
+        }
+    }
+}
+
+/// One project's place in the arrangement, on the wire.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkbenchEntryView {
+    pub project_tag: String,
+    pub placement: PlacementView,
+}
+
+/// The reconciled, ordered arrangement the Workbench commands return: tags and
+/// placements only, plus the last-open tag. The tab bar maps the tags onto the
+/// already-loaded `ProjectView`s.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkbenchView {
+    pub entries: Vec<WorkbenchEntryView>,
+    pub last_project_tag: Option<String>,
+}
+
+impl From<Workbench> for WorkbenchView {
+    fn from(workbench: Workbench) -> Self {
+        Self {
+            entries: workbench
+                .entries
+                .into_iter()
+                .map(|entry| WorkbenchEntryView {
+                    project_tag: entry.project_tag.to_string(),
+                    placement: entry.placement.into(),
+                })
+                .collect(),
+            last_project_tag: workbench.last_project_tag.map(|tag| tag.to_string()),
+        }
+    }
+}
+
 /// How the new context gets its branch in one repository.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, specta::Type)]
 #[serde(tag = "kind", rename_all = "camelCase")]
@@ -753,6 +819,10 @@ fn service(workspace: &State<'_, Workspace>) -> Arc<WorkspaceService> {
 
 fn agent_run_service(workspace: &State<'_, Workspace>) -> Arc<AgentRunService> {
     workspace.agent_run_service.clone()
+}
+
+fn workbench_service(workspace: &State<'_, Workspace>) -> Arc<WorkbenchService> {
+    workspace.workbench_service.clone()
 }
 
 #[tauri::command]
@@ -1020,6 +1090,80 @@ pub async fn workspace_list_agent_runs(
         let id = ContextId::parse(&context_id)?;
         let runs = service.list_agent_runs(&id)?;
         Ok(runs.into_iter().map(AgentRunView::from).collect())
+    })
+    .await
+}
+
+/// The reconciled, ordered arrangement for the tab bar.
+#[tauri::command]
+#[specta::specta]
+pub async fn workbench_get(
+    workspace: State<'_, Workspace>,
+) -> Result<WorkbenchView, WorkspaceCommandError> {
+    let service = workbench_service(&workspace);
+    run_blocking(move || {
+        let workbench = service.get().map_err(WorkspaceServiceError::from)?;
+        Ok(WorkbenchView::from(workbench))
+    })
+    .await
+}
+
+/// Pins, unpins (→ shown at the end), hides or shows (→ shown at the end) a
+/// project, returning the reconciled arrangement.
+#[tauri::command]
+#[specta::specta]
+pub async fn workbench_set_placement(
+    workspace: State<'_, Workspace>,
+    project_tag: String,
+    placement: PlacementView,
+) -> Result<WorkbenchView, WorkspaceCommandError> {
+    let service = workbench_service(&workspace);
+    run_blocking(move || {
+        let tag = ProjectTag::parse(&project_tag)?;
+        let workbench = service
+            .set_placement(&tag, placement.into())
+            .map_err(WorkspaceServiceError::from)?;
+        Ok(WorkbenchView::from(workbench))
+    })
+    .await
+}
+
+/// Reorders the entries of one placement group to match `ordered_project_tags`.
+#[tauri::command]
+#[specta::specta]
+pub async fn workbench_reorder(
+    workspace: State<'_, Workspace>,
+    placement: PlacementView,
+    ordered_project_tags: Vec<String>,
+) -> Result<WorkbenchView, WorkspaceCommandError> {
+    let service = workbench_service(&workspace);
+    run_blocking(move || {
+        let ordered_tags = ordered_project_tags
+            .iter()
+            .map(|tag| ProjectTag::parse(tag))
+            .collect::<Result<Vec<_>, _>>()?;
+        let workbench = service
+            .reorder_within(placement.into(), &ordered_tags)
+            .map_err(WorkspaceServiceError::from)?;
+        Ok(WorkbenchView::from(workbench))
+    })
+    .await
+}
+
+/// Sets the project the app reopens on; `null` clears it.
+#[tauri::command]
+#[specta::specta]
+pub async fn workbench_set_last_project(
+    workspace: State<'_, Workspace>,
+    project_tag: Option<String>,
+) -> Result<WorkbenchView, WorkspaceCommandError> {
+    let service = workbench_service(&workspace);
+    run_blocking(move || {
+        let tag = project_tag.as_deref().map(ProjectTag::parse).transpose()?;
+        let workbench = service
+            .set_last_project(tag)
+            .map_err(WorkspaceServiceError::from)?;
+        Ok(WorkbenchView::from(workbench))
     })
     .await
 }

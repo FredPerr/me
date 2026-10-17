@@ -3,6 +3,7 @@ import { ArrowSquareOutIcon } from "@phosphor-icons/react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useTranslation } from "react-i18next";
 import type { ConnectionView, Person, Task, TaskPriority, TaskStatus } from "@/bindings";
+import { initialsOf } from "@/components/shared/initials";
 import { isOpenableProviderUrl } from "@/hooks/work-tracking/providerUrl";
 import { formatDueDate } from "./formatDueDate";
 
@@ -34,15 +35,6 @@ const PRIORITY_LABEL_KEYS: Record<TaskPriority, string> = {
 // Same rule as the backend Label constructor; checked again because the value becomes CSS.
 const LABEL_COLOR_PATTERN = /^#[0-9a-fA-F]{3,8}$/;
 const MAX_VISIBLE_AVATARS = 3;
-
-function initialsOf(displayName: string): string {
-	return displayName
-		.split(/\s+/)
-		.filter((part) => part.length > 0)
-		.slice(0, 2)
-		.map((part) => part[0]?.toUpperCase())
-		.join("");
-}
 
 function httpsOrUndefined(url: string | null): string | undefined {
 	return url?.startsWith("https://") ? url : undefined;

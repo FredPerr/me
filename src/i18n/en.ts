@@ -413,6 +413,14 @@ export const en = {
 					"Their stored data was left untouched and they are hidden until it can be read.",
 			},
 		},
+		workbench: {
+			hiddenProjects: "Hidden projects",
+			showProject: "Show {{name}}",
+			pin: "Pin",
+			unpin: "Unpin",
+			hide: "Hide",
+			projectSettings: "Project settings",
+		},
 		project: {
 			openInIde: "Open root in IDE",
 			noProjects: "No projects configured. Add some in Settings.",

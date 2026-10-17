@@ -59,6 +59,17 @@ export const commands = {
 	workspaceDeleteProject: (projectTag: string) => __TAURI_INVOKE<null>("workspace_delete_project", { projectTag }),
 	/**  `prefix: null` asks for a name without prefix. */
 	workspaceSuggestBranchName: (projectTag: string, title: string, prefix: string | null) => __TAURI_INVOKE<string>("workspace_suggest_branch_name", { projectTag, title, prefix }),
+	/**  The reconciled, ordered arrangement for the tab bar. */
+	workbenchGet: () => __TAURI_INVOKE<WorkbenchView>("workbench_get"),
+	/**
+	 *  Pins, unpins (→ shown at the end), hides or shows (→ shown at the end) a
+	 *  project, returning the reconciled arrangement.
+	 */
+	workbenchSetPlacement: (projectTag: string, placement: PlacementView) => __TAURI_INVOKE<WorkbenchView>("workbench_set_placement", { projectTag, placement }),
+	/**  Reorders the entries of one placement group to match `ordered_project_tags`. */
+	workbenchReorder: (placement: PlacementView, orderedProjectTags: string[]) => __TAURI_INVOKE<WorkbenchView>("workbench_reorder", { placement, orderedProjectTags }),
+	/**  Sets the project the app reopens on; `null` clears it. */
+	workbenchSetLastProject: (projectTag: string | null) => __TAURI_INVOKE<WorkbenchView>("workbench_set_last_project", { projectTag }),
 	gitHostingListAccounts: () => __TAURI_INVOKE<SignedInHostView[]>("git_hosting_list_accounts"),
 	gitHostingStartSignIn: (host: HostKindView) => __TAURI_INVOKE<BrowserSignInStepView>("git_hosting_start_sign_in", { host }),
 	gitHostingPollSignIn: (host: HostKindView, deviceCode: string) => __TAURI_INVOKE<SignInProgressView>("git_hosting_poll_sign_in", { host, deviceCode }),
@@ -131,6 +142,7 @@ export const events = {
 	agentRunChanged: makeEvent<AgentRunChanged>("agent-run-changed"),
 	gitHostingChanged: makeEvent<GitHostingChanged>("git-hosting-changed"),
 	projectChanged: makeEvent<ProjectChanged>("project-changed"),
+	workbenchChanged: makeEvent<WorkbenchChanged>("workbench-changed"),
 };
 
 /* Types */
@@ -457,6 +469,12 @@ export type Person = {
 export type PersonId = string;
 
 /**
+ *  Where a project sits on the tab bar, on the wire. Both an output (in a
+ *  `WorkbenchView`) and an input (to `workbench_set_placement`/`_reorder`).
+ */
+export type PlacementView = "pinned" | "shown" | "hidden";
+
+/**
  *  Emitted as `project-changed` whenever a Project is saved, so every open
  *  view refetches it.
  */
@@ -716,6 +734,29 @@ export type WorkTrackingField = "providerKind" | "baseUrl" | "apiKey" | "display
 
 /**  Why an input failed validation, on the wire. Mirrors [`InvalidInputReason`]. */
 export type WorkTrackingInvalidReason = "required" | "tooLong" | "invalidFormat" | "httpsRequired" | "unsupportedComponent" | "outOfRange" | "unsupported";
+
+/**
+ *  Emitted as `workbench-changed` whenever the Workbench is saved, so every
+ *  open window refetches the arrangement. There is one Workbench per app, so
+ *  the event carries no payload.
+ */
+export type WorkbenchChanged = Record<string, never>;
+
+/**  One project's place in the arrangement, on the wire. */
+export type WorkbenchEntryView = {
+	projectTag: string,
+	placement: PlacementView,
+};
+
+/**
+ *  The reconciled, ordered arrangement the Workbench commands return: tags and
+ *  placements only, plus the last-open tag. The tab bar maps the tags onto the
+ *  already-loaded `ProjectView`s.
+ */
+export type WorkbenchView = {
+	entries: WorkbenchEntryView[],
+	lastProjectTag: string | null,
+};
 
 /**
  *  A failed workspace command on the wire. `message` is readable and may name

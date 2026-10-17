@@ -21,6 +21,7 @@ pub mod project_tag;
 pub mod remote_project_link;
 pub mod repository;
 pub mod slug;
+pub mod workbench;
 
 #[cfg(test)]
 pub mod test_support;

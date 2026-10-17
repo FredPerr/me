@@ -11,11 +11,17 @@ pub mod in_memory_agent_run_repository;
 #[cfg(test)]
 pub mod in_memory_project_repository;
 #[cfg(test)]
+pub mod in_memory_workbench_repository;
+#[cfg(test)]
 mod project_repository_contract;
 #[cfg(test)]
 pub mod recording_fakes;
 pub mod redb_agent_run_repository;
 pub mod redb_project_repository;
+pub mod redb_workbench_repository;
 pub mod system_clock;
 pub mod tauri_agent_run_events;
 pub mod tauri_project_events;
+pub mod tauri_workbench_events;
+#[cfg(test)]
+mod workbench_repository_contract;

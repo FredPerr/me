@@ -12,6 +12,7 @@ use crate::workspace::domain::agent_runner::{
 use crate::workspace::domain::agent_work::AgentTool;
 use crate::workspace::domain::ports::{
     CheckoutFiles, CheckoutFilesError, Clock, DefaultAgentTool, PermissionFloor, ProjectEvents,
+    WorkbenchEvents,
 };
 use crate::workspace::domain::project_tag::ProjectTag;
 
@@ -106,6 +107,26 @@ impl RecordingProjectEvents {
 impl ProjectEvents for RecordingProjectEvents {
     fn project_changed(&self, tag: &ProjectTag) {
         lock(&self.changed).push(tag.clone());
+    }
+}
+
+/// Counts the `WorkbenchChanged` signals the service emits, so a test can prove
+/// a save emitted the change. The signal carries no payload, so a count is
+/// enough.
+#[derive(Default)]
+pub struct RecordingWorkbenchEvents {
+    changes: Mutex<usize>,
+}
+
+impl RecordingWorkbenchEvents {
+    pub fn change_count(&self) -> usize {
+        *lock(&self.changes)
+    }
+}
+
+impl WorkbenchEvents for RecordingWorkbenchEvents {
+    fn workbench_changed(&self) {
+        *lock(&self.changes) += 1;
     }
 }
 

@@ -7,6 +7,7 @@ use super::error::WorkspaceError;
 use super::identifiers::{AgentRunId, ContextId};
 use super::project::Project;
 use super::project_tag::ProjectTag;
+use super::workbench::Workbench;
 
 /// A change applied to a stored Project by `ProjectRepository::update`.
 pub type ProjectChange<'a> = Box<dyn FnOnce(Project) -> Result<Project, WorkspaceError> + 'a>;
@@ -29,6 +30,19 @@ pub trait ProjectRepository: Send + Sync {
     /// write transaction, so concurrent updates never overwrite each other.
     /// Nothing is written when `change` refuses. Returns the saved Project.
     fn update(&self, tag: &ProjectTag, change: ProjectChange<'_>) -> Result<Project, UpdateError>;
+}
+
+/// Where the one Workbench is kept, a single record in its own table. An
+/// absent or unreadable record reads as `Workbench::default()`, so the bar
+/// never breaks; reconcile against the live project list then folds it back
+/// into shape. Synchronous because redb is synchronous.
+pub trait WorkbenchRepository: Send + Sync {
+    /// The stored Workbench, or `Workbench::default()` when there is no record
+    /// or the record can't be read.
+    fn load(&self) -> Result<Workbench, StorageError>;
+
+    /// Writes the one Workbench record, replacing any previous one.
+    fn save(&self, workbench: &Workbench) -> Result<(), StorageError>;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -141,6 +155,13 @@ impl std::error::Error for CheckoutFilesError {}
 /// Tells every open view that a Project changed.
 pub trait ProjectEvents: Send + Sync {
     fn project_changed(&self, tag: &ProjectTag);
+}
+
+/// Tells every open view that the Workbench changed, so each window refetches
+/// the arrangement. There is one Workbench per app, so the signal carries no
+/// payload.
+pub trait WorkbenchEvents: Send + Sync {
+    fn workbench_changed(&self);
 }
 
 /// The wall-clock time a run started, as an ISO 8601 string. A port so the
