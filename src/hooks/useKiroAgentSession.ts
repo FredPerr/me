@@ -14,9 +14,10 @@ type KiroAgentSessionParams = {
 };
 
 /**
- * Adapts the existing Kiro conversation state (fed in as props from
- * `useContextKiroSessions`) into the CLI-agnostic {@link AgentSession} the
- * reusable chat consumes. The session object is stable for the component's
+ * Adapts a context's agent-run conversation (built from the Rust-reported runs
+ * and the live `agent-run` event stream) into the CLI-agnostic
+ * {@link AgentSession} the reusable chat consumes. The session object is stable
+ * for the component's
  * lifetime; prop changes are mirrored into a ref and broadcast to subscribers,
  * so `AgentChat`'s `useSyncExternalStore` re-renders on every streamed update.
  *

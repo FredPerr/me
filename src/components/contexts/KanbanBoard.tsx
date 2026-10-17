@@ -11,10 +11,10 @@ import {
 import { Group, ScrollArea } from "@mantine/core";
 import { useMemo, useState } from "react";
 import type { ContextView, ProjectView } from "@/bindings";
+import type { ContextAgentRunSessions } from "@/hooks/agent-runs/useContextAgentRunSessions";
 import { useContextPullRequests } from "@/hooks/gitHosting/useContextPullRequests";
 import { useKiroPromptDrafts } from "@/hooks/useKiroPromptDrafts";
 import { useSetContextStatus } from "@/hooks/workspace/useContextMutations";
-import type { KiroConversation } from "@/models/ai-session/KiroConversation";
 import {
 	CONTEXT_STATUSES,
 	type ContextStatus,
@@ -28,22 +28,20 @@ import { DraggableContextCard } from "./DraggableContextCard";
 import { KanbanColumn } from "./KanbanColumn";
 import { KiroConversationModal } from "./KiroConversationModal";
 
-type KanbanBoardProps = {
+type KanbanBoardProps = Pick<ContextAgentRunSessions, "isRunning" | "liveRunFor"> & {
 	project: ProjectView;
-	onRunKiro: (context: ContextView, prompt: string) => Promise<void>;
-	onKillKiro: (contextId: string) => Promise<void>;
-	isKiroRunning: (contextId: string) => boolean;
-	getKiroConversation: (contextId: string) => KiroConversation | undefined;
+	onRunAgent: ContextAgentRunSessions["runAgent"];
+	onStopAgent: ContextAgentRunSessions["stopAgentRun"];
 	searchFilter?: string;
 	onCreateFromTasks?: () => void;
 };
 
 export function KanbanBoard({
 	project,
-	onRunKiro,
-	onKillKiro,
-	isKiroRunning,
-	getKiroConversation,
+	onRunAgent,
+	onStopAgent,
+	isRunning: isAgentRunning,
+	liveRunFor,
 	searchFilter,
 	onCreateFromTasks,
 }: KanbanBoardProps) {
@@ -134,8 +132,8 @@ export function KanbanBoard({
 										project={project}
 										pullRequestLookup={pullRequestLookup}
 										onOpenKiro={(target) => setOpenKiroContextId(target.id)}
-										isKiroRunning={isKiroRunning(context.id)}
-										hasKiroHistory={(getKiroConversation(context.id)?.turns.length ?? 0) > 0}
+										isKiroRunning={isAgentRunning(context.id)}
+										hasKiroHistory={context.agentWork !== null || isAgentRunning(context.id)}
 									/>
 								))}
 							</KanbanColumn>
@@ -163,12 +161,12 @@ export function KanbanBoard({
 					}}
 					contextId={openKiroContext.id}
 					contextName={openKiroContext.name}
-					conversation={getKiroConversation(openKiroContext.id)}
-					isRunning={isKiroRunning(openKiroContext.id)}
+					liveRun={liveRunFor(openKiroContext.id)}
+					isRunning={isAgentRunning(openKiroContext.id)}
 					prompt={promptFor(openKiroContext)}
 					onPromptChange={(prompt) => changePrompt(openKiroContext.id, prompt)}
-					onSend={(prompt) => onRunKiro(openKiroContext, prompt)}
-					onKill={() => onKillKiro(openKiroContext.id)}
+					onSend={(prompt) => onRunAgent({ contextId: openKiroContext.id, prompt })}
+					onKill={() => onStopAgent(openKiroContext.id)}
 					slashBasePath={openKiroContext.idePath}
 				/>
 			)}

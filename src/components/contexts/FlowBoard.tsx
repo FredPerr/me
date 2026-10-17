@@ -28,10 +28,10 @@ import {
 import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { ContextView, ProjectView } from "@/bindings";
+import type { ContextAgentRunSessions } from "@/hooks/agent-runs/useContextAgentRunSessions";
 import { useContextPullRequests } from "@/hooks/gitHosting/useContextPullRequests";
 import { useKiroPromptDrafts } from "@/hooks/useKiroPromptDrafts";
 import { useSetContextStatus } from "@/hooks/workspace/useContextMutations";
-import type { KiroConversation } from "@/models/ai-session/KiroConversation";
 import {
 	CONTEXT_STATUSES,
 	type ContextStatus,
@@ -45,12 +45,10 @@ import { type FlowBoardColumnData, FlowBoardColumnNode } from "./FlowBoardColumn
 import { type FlowBoardStaticData, FlowBoardStaticNode } from "./FlowBoardStaticNode";
 import { KiroConversationModal } from "./KiroConversationModal";
 
-type FlowBoardProps = {
+type FlowBoardProps = Pick<ContextAgentRunSessions, "isRunning" | "liveRunFor"> & {
 	project: ProjectView;
-	onRunKiro: (context: ContextView, prompt: string) => Promise<void>;
-	onKillKiro: (contextId: string) => Promise<void>;
-	isKiroRunning: (contextId: string) => boolean;
-	getKiroConversation: (contextId: string) => KiroConversation | undefined;
+	onRunAgent: ContextAgentRunSessions["runAgent"];
+	onStopAgent: ContextAgentRunSessions["stopAgentRun"];
 	searchFilter?: string;
 	onCreateFromTasks?: () => void;
 	onBulkCreate: () => void;
@@ -74,10 +72,10 @@ function noop() {}
 
 export function FlowBoard({
 	project,
-	onRunKiro,
-	onKillKiro,
-	isKiroRunning,
-	getKiroConversation,
+	onRunAgent,
+	onStopAgent,
+	isRunning: isAgentRunning,
+	liveRunFor,
 	searchFilter,
 	onCreateFromTasks,
 	onBulkCreate,
@@ -113,9 +111,12 @@ export function FlowBoard({
 
 	const staticContexts = useMemo(() => filtered.filter((context) => context.isStatic), [filtered]);
 
-	const getKiroHistoryCount = useCallback(
-		(contextId: string) => getKiroConversation(contextId)?.turns.length ?? 0,
-		[getKiroConversation],
+	const hasAgentHistory = useCallback(
+		(contextId: string) => {
+			const context = contexts.find((candidate) => candidate.id === contextId);
+			return (context?.agentWork ?? null) !== null || isAgentRunning(contextId);
+		},
+		[contexts, isAgentRunning],
 	);
 
 	const columnIndex = useMemo(
@@ -136,8 +137,8 @@ export function FlowBoard({
 				project,
 				pullRequestLookup,
 				onOpenKiro: (target: ContextView) => setOpenKiroContextId(target.id),
-				isKiroRunning,
-				getKiroHistoryCount,
+				isKiroRunning: isAgentRunning,
+				hasKiroHistory: hasAgentHistory,
 			} satisfies FlowBoardColumnData,
 		}));
 
@@ -211,8 +212,8 @@ export function FlowBoard({
 				project,
 				pullRequestLookup,
 				onOpenKiro: (target: ContextView) => setOpenKiroContextId(target.id),
-				isKiroRunning,
-				getKiroHistoryCount,
+				isKiroRunning: isAgentRunning,
+				hasKiroHistory: hasAgentHistory,
 			} satisfies FlowBoardStaticData,
 		};
 
@@ -222,8 +223,8 @@ export function FlowBoard({
 		contextsByStatus,
 		project,
 		pullRequestLookup,
-		isKiroRunning,
-		getKiroHistoryCount,
+		isAgentRunning,
+		hasAgentHistory,
 		onCreateFromTasks,
 		onBulkCreate,
 		onShareForReview,
@@ -318,12 +319,12 @@ export function FlowBoard({
 					}}
 					contextId={openKiroContext.id}
 					contextName={openKiroContext.name}
-					conversation={getKiroConversation(openKiroContext.id)}
-					isRunning={isKiroRunning(openKiroContext.id)}
+					liveRun={liveRunFor(openKiroContext.id)}
+					isRunning={isAgentRunning(openKiroContext.id)}
 					prompt={promptFor(openKiroContext)}
 					onPromptChange={(prompt) => changePrompt(openKiroContext.id, prompt)}
-					onSend={(prompt) => onRunKiro(openKiroContext, prompt)}
-					onKill={() => onKillKiro(openKiroContext.id)}
+					onSend={(prompt) => onRunAgent({ contextId: openKiroContext.id, prompt })}
+					onKill={() => onStopAgent(openKiroContext.id)}
 					slashBasePath={openKiroContext.idePath}
 				/>
 			)}

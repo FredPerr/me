@@ -10,7 +10,6 @@ type PullRequestDraftChange = {
 	description: string;
 };
 type AgentPromptChange = { contextId: string; prompt: string | null };
-type AgentConversationChange = { contextId: string; conversationId: string };
 
 export function useCreateContext() {
 	return useProjectMutation((input: CreateContextInput) => commands.workspaceCreateContext(input));
@@ -50,11 +49,5 @@ export function useSavePullRequestDraft(projectTag: string) {
 export function useSetAgentPrompt(projectTag: string) {
 	return useProjectMutation(({ contextId, prompt }: AgentPromptChange) =>
 		commands.workspaceSetAgentPrompt(projectTag, contextId, prompt),
-	);
-}
-
-export function useRecordAgentConversation(projectTag: string) {
-	return useProjectMutation(({ contextId, conversationId }: AgentConversationChange) =>
-		commands.workspaceRecordAgentConversation(projectTag, contextId, conversationId),
 	);
 }

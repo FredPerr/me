@@ -11,13 +11,12 @@ export type FlowBoardStaticData = {
 	pullRequestLookup?: PullRequestLookup;
 	onOpenKiro: (context: ContextView) => void;
 	isKiroRunning: (contextId: string) => boolean;
-	getKiroHistoryCount: (contextId: string) => number;
+	hasKiroHistory: (contextId: string) => boolean;
 };
 
 export function FlowBoardStaticNode({ data }: { data: FlowBoardStaticData }) {
 	const { t } = useTranslation();
-	const { contexts, project, pullRequestLookup, onOpenKiro, isKiroRunning, getKiroHistoryCount } =
-		data;
+	const { contexts, project, pullRequestLookup, onOpenKiro, isKiroRunning, hasKiroHistory } = data;
 
 	return (
 		<Stack gap="xs" style={{ width: 720 }}>
@@ -53,7 +52,7 @@ export function FlowBoardStaticNode({ data }: { data: FlowBoardStaticData }) {
 									pullRequestLookup={pullRequestLookup}
 									onOpenKiro={onOpenKiro}
 									isKiroRunning={isKiroRunning(context.id)}
-									hasKiroHistory={getKiroHistoryCount(context.id) > 0}
+									hasKiroHistory={hasKiroHistory(context.id)}
 								/>
 							</div>
 						))}
