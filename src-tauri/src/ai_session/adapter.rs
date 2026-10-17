@@ -49,10 +49,21 @@ pub struct SpawnRequest {
     /// Additional environment variables supplied by the caller (e.g. an API
     /// key for headless auth). Merged after the adapter's own defaults.
     pub environment: Vec<(String, String)>,
-    /// When true, ask the CLI to run tools without per-action confirmation.
-    /// Headless runs cannot answer interactive prompts, so this is normally on;
-    /// a workspace permission policy still provides the safety floor.
-    pub trust_all_tools: bool,
+    /// How much the run may trust the model's tool use. A headless run cannot
+    /// answer interactive prompts, so it is always one of these two: trust all
+    /// tools, or read-only.
+    pub tool_trust: ToolTrust,
+}
+
+/// How much a run trusts the model's tool use. A headless run picks one of
+/// these: a normal agent run trusts all tools (the workspace permission policy
+/// is the safety floor), while a read-only run (an AI assist) may only read.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ToolTrust {
+    /// Run tools without per-action confirmation.
+    TrustAll,
+    /// Grant only read access, so the run can look but change nothing.
+    ReadOnly,
 }
 
 /// How an adapter prefers to deliver the prompt to its CLI.
@@ -108,9 +119,16 @@ pub trait CliAdapter: Send + Sync {
     }
 
     /// Flags that grant the model permission to run tools without per-action
-    /// confirmation. Returned only when the caller requests trust; empty by
+    /// confirmation. Returned only for a [`ToolTrust::TrustAll`] run; empty by
     /// default so a CLI without such a flag simply ignores the request.
     fn trust_all_arguments(&self) -> Vec<String> {
+        Vec::new()
+    }
+
+    /// Flags that grant the model only read access, so a run can look but
+    /// change nothing. Returned only for a [`ToolTrust::ReadOnly`] run; empty by
+    /// default so a CLI without such a flag simply ignores the request.
+    fn read_only_arguments(&self) -> Vec<String> {
         Vec::new()
     }
 
@@ -157,8 +175,9 @@ pub trait CliAdapter: Send + Sync {
         {
             arguments.extend(self.resume_arguments(resume_id));
         }
-        if request.trust_all_tools {
-            arguments.extend(self.trust_all_arguments());
+        match request.tool_trust {
+            ToolTrust::TrustAll => arguments.extend(self.trust_all_arguments()),
+            ToolTrust::ReadOnly => arguments.extend(self.read_only_arguments()),
         }
 
         let stdin_payload = match self.prompt_delivery() {

@@ -13,7 +13,7 @@ pub mod kiro;
 pub mod process;
 pub mod registry;
 
-use adapter::SpawnRequest;
+use adapter::{SpawnRequest, ToolTrust};
 use registry::{SessionRegistry, SessionStatus};
 use serde::{Deserialize, Serialize};
 use tauri::State;
@@ -161,7 +161,14 @@ pub async fn spawn_ai_session(
             .into_iter()
             .map(|pair| (pair.key, pair.value))
             .collect(),
-        trust_all_tools: options.trust_all_tools,
+        // The frontend wire field stays a bool: `true` means trust all tools
+        // (the only caller today), anything else runs read-only. No frontend
+        // caller requests read-only yet.
+        tool_trust: if options.trust_all_tools {
+            ToolTrust::TrustAll
+        } else {
+            ToolTrust::ReadOnly
+        },
     };
 
     let spec = adapter

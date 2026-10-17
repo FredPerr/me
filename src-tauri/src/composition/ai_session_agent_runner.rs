@@ -13,7 +13,7 @@ use async_trait::async_trait;
 use tauri::{AppHandle, Manager};
 use tokio::sync::mpsc;
 
-use crate::ai_session::adapter::{CliAdapter, SpawnRequest};
+use crate::ai_session::adapter::{CliAdapter, SpawnRequest, ToolTrust};
 use crate::ai_session::process::{self, AiSessionEvent};
 use crate::ai_session::registry::{SessionRegistry, SessionStatus};
 use crate::ai_session::OutputStream;
@@ -85,8 +85,8 @@ impl AgentRunner for AiSessionAgentRunner {
 }
 
 /// Translates an `AgentRunSpec` into the process runner's `SpawnRequest` →
-/// `SpawnSpec`. Trusted-tools is always on: a headless run cannot answer
-/// interactive prompts, and the workspace permission floor is the safety net.
+/// `SpawnSpec`. Trust-all is always on: an agent run cannot answer interactive
+/// prompts, and the workspace permission floor is the safety net.
 fn build_spawn_spec(
     adapter: &dyn CliAdapter,
     spec: &AgentRunSpec,
@@ -98,7 +98,7 @@ fn build_spawn_spec(
         resume_id: spec.resume_id.clone(),
         shell: None,
         environment: Vec::new(),
-        trust_all_tools: true,
+        tool_trust: ToolTrust::TrustAll,
     };
     adapter
         .build_spec(&request, None)
