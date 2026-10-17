@@ -83,7 +83,7 @@ function buildConnection(): ConnectionView {
 }
 
 function buildSettings(assignMeToTasks: boolean): AppSettingsView {
-	return { assignMeToTasks };
+	return { assignMeToTasks, defaultAiTool: "kiro" };
 }
 
 const project: ProjectView = buildProject({
