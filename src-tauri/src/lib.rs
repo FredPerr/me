@@ -186,9 +186,11 @@ pub fn run() {
         })
         .setup(move |app| {
             typed_builder.mount_events(app);
-            tauri::Manager::manage(app, work_tracking::build_service(app.handle().clone()));
             app.manage(ai_session::registry::SessionRegistry::new());
-            let database = storage::open(&app.path().app_data_dir()?)?;
+            let app_data_dir = app.path().app_data_dir()?;
+            let database = storage::open(&app_data_dir)?;
+            let work_tracking = work_tracking::build_service(Arc::clone(&database), &app_data_dir)?;
+            app.manage(work_tracking);
             let settings = settings::build(Arc::clone(&database))?;
             let git = git::build(git_hosting::remote_credentials());
             let workspace = workspace::build(
