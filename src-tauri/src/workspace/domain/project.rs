@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::git::domain::branch_name::BranchName;
 
+use super::agent_work::{AgentTool, AgentWork};
 use super::branch_naming::BranchNamingPolicy;
 use super::context::Context;
 use super::context_branch::{ContextBranch, PullRequestDraft, PullRequestLink};
@@ -357,6 +358,22 @@ impl Project {
         self.update_context(id, |context| {
             let agent = context.agent.take().unwrap_or_default();
             context.agent = Some(agent.with_prompt(prompt));
+            Ok(())
+        })
+    }
+
+    /// Records the tool a context's first run starts on, so follow-up runs
+    /// resume the same tool. A no-op once the context has agent work: the tool
+    /// it started with is never changed by a later run.
+    pub fn start_agent_with_tool(
+        self,
+        id: &ContextId,
+        tool: AgentTool,
+    ) -> Result<Self, WorkspaceError> {
+        self.update_context(id, |context| {
+            if context.agent.is_none() {
+                context.agent = Some(AgentWork::on_tool(tool));
+            }
             Ok(())
         })
     }

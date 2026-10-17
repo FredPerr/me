@@ -184,11 +184,19 @@ pub fn run() {
                     app.handle().clone(),
                 ),
             );
+            // A fresh context's first run uses the Default AI tool (#90), read
+            // from settings through a composition adapter so workspace never
+            // names settings; the context then keeps the tool it recorded.
+            let default_agent_tool =
+                composition::settings_default_agent_tool::SettingsDefaultAgentTool::new(
+                    Arc::clone(&settings.service),
+                );
             let workspace = workspace::build(
                 app.handle().clone(),
                 Arc::clone(&database),
                 git.repositories(),
                 agent_runner,
+                Arc::new(default_agent_tool),
             )?;
             let project_task_links =
                 composition::workspace_project_task_links::WorkspaceProjectTaskLinks::new(

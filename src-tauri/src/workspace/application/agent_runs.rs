@@ -1,12 +1,17 @@
 //! The run-driving use case (#80). Running an agent is a workspace concern:
-//! it picks the folder, seeds the permission floor, records the run and its
-//! transcript, moves the context's status, captures the conversation id, and
-//! streams a typed event the UI renders.
+//! it picks the folder, seeds the permission floor, resolves the tool, records
+//! the run and its transcript, moves the context's status, captures the
+//! conversation id, and streams a typed event the UI renders.
+//!
+//! A fresh context's first run uses the Default AI tool read through the
+//! [`DefaultAgentTool`] port (#90); the context then keeps the tool its
+//! `AgentWork` records, so follow-up runs resolve to that same tool.
 //!
 //! The use case owns the orchestration; the pieces it drives are ports:
 //! - an [`AgentRunner`] starts/stops the run and delivers its events to a sink,
 //! - an [`AgentRunRepository`] persists the transcript (with the caps),
-//! - a [`ProjectRepository`] holds the context's status and conversation id,
+//! - a [`ProjectRepository`] holds the context's status, tool and conversation,
+//! - a [`DefaultAgentTool`] reads the Default AI tool for a fresh context,
 //! - [`AgentRunEvents`] emits the typed `agent-run` event,
 //! - [`ProjectEvents`] tells open views the project changed on a status move,
 //! - a [`Clock`] stamps the run's start, and a [`PermissionFloor`] seeds the
@@ -36,14 +41,10 @@ use crate::workspace::domain::context_status::ContextStatus;
 use crate::workspace::domain::error::WorkspaceError;
 use crate::workspace::domain::identifiers::{AgentRunId, ContextId};
 use crate::workspace::domain::ports::{
-    AgentRunRepository, Clock, PermissionFloor, ProjectEvents, ProjectRepository,
+    AgentRunRepository, Clock, DefaultAgentTool, PermissionFloor, ProjectEvents, ProjectRepository,
 };
 use crate::workspace::domain::project::Project;
 use crate::workspace::domain::project_tag::ProjectTag;
-
-/// The Kiro adapter id, the only agent tool for now (spec #77, out of scope:
-/// new tools). The adapter seam stays so adding one is later work.
-const KIRO_TOOL_ID: &str = "kiro";
 
 /// A run just started, returned so the command can report its id.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -76,6 +77,7 @@ pub struct AgentRunService {
     project_events: Arc<dyn ProjectEvents>,
     clock: Arc<dyn Clock>,
     permission_floor: Arc<dyn PermissionFloor>,
+    default_tool: Arc<dyn DefaultAgentTool>,
     active: Mutex<HashMap<String, ActiveRun>>,
 }
 
@@ -89,6 +91,7 @@ impl AgentRunService {
         project_events: Arc<dyn ProjectEvents>,
         clock: Arc<dyn Clock>,
         permission_floor: Arc<dyn PermissionFloor>,
+        default_tool: Arc<dyn DefaultAgentTool>,
     ) -> Self {
         Self {
             projects,
@@ -98,6 +101,7 @@ impl AgentRunService {
             project_events,
             clock,
             permission_floor,
+            default_tool,
             active: Mutex::new(HashMap::new()),
         }
     }
@@ -116,11 +120,15 @@ impl AgentRunService {
         let working_directory = project.ide_path(&context);
         self.permission_floor.seed(&working_directory);
 
+        // The context keeps the tool its AgentWork started with; a brand-new
+        // context with no AgentWork yet starts on the Default AI tool and
+        // records it, so follow-up runs resolve to that same recorded tool.
+        let tool = self.resolve_tool(project_tag, &context)?;
         let spec = AgentRunSpec {
-            tool_id: KIRO_TOOL_ID.to_string(),
+            tool_id: tool.adapter_id().to_string(),
             working_directory,
             prompt: prompt.clone(),
-            resume_id: resume_id_of(&context),
+            resume_id: resume_id_of(&tool),
         };
 
         let run = AgentRun::started(
@@ -370,6 +378,36 @@ impl AgentRunService {
         }
     }
 
+    /// The tool this run uses: the one the context's `AgentWork` already
+    /// records (so a context keeps the tool its first run started with), or —
+    /// for a brand-new context with no `AgentWork` yet — the Default AI tool
+    /// read from the port, recorded on the context so follow-up runs resolve to
+    /// that same tool. The port is consulted only for a fresh context.
+    fn resolve_tool(
+        &self,
+        project_tag: &ProjectTag,
+        context: &Context,
+    ) -> Result<AgentTool, AgentRunServiceError> {
+        if let Some(agent) = context.agent.as_ref() {
+            return Ok(agent.tool.clone());
+        }
+        let tool = self.default_tool.default_tool();
+        self.record_started_tool(project_tag, &context.id, tool.clone());
+        Ok(tool)
+    }
+
+    /// Records the tool a fresh context started on, so follow-up runs keep it.
+    /// A failure to persist never blocks the run: the run still uses `tool`,
+    /// and the next run resolves the default again.
+    fn record_started_tool(&self, project_tag: &ProjectTag, context_id: &ContextId, tool: AgentTool) {
+        let context_id = context_id.clone();
+        let change = move |project: Project| project.start_agent_with_tool(&context_id, tool);
+        match self.projects.update(project_tag, Box::new(change)) {
+            Ok(project) => self.project_events.project_changed(project.tag()),
+            Err(error) => eprintln!("[workspace] agent tool not recorded: {error}"),
+        }
+    }
+
     fn record_conversation(&self, project_tag: &ProjectTag, context_id: &ContextId, id: String) {
         let context_id = context_id.clone();
         let change = move |project: Project| project.record_agent_conversation(&context_id, id);
@@ -444,10 +482,9 @@ impl AgentRunService {
     }
 }
 
-/// The context's stored Kiro conversation id, to resume the same conversation.
-fn resume_id_of(context: &Context) -> Option<String> {
-    let agent = context.agent.as_ref()?;
-    match &agent.tool {
+/// The tool's stored Kiro conversation id, to resume the same conversation.
+fn resume_id_of(tool: &AgentTool) -> Option<String> {
+    match tool {
         AgentTool::Kiro { conversation_id } => conversation_id.clone(),
     }
 }

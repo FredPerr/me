@@ -2,6 +2,7 @@ use std::fmt;
 use std::path::Path;
 
 use super::agent_run::{AgentRun, AgentRunState};
+use super::agent_work::AgentTool;
 use super::error::WorkspaceError;
 use super::identifiers::{AgentRunId, ContextId};
 use super::project::Project;
@@ -160,6 +161,21 @@ pub trait PermissionFloor: Send + Sync {
     /// Ensures the policy exists in `working_directory`. Failures never block a
     /// run, so this returns nothing; the adapter logs what it could not write.
     fn seed(&self, working_directory: &str);
+}
+
+/// The AI tool a brand-new context's first run uses, read from the app's
+/// Default AI tool setting. A context with no prior [`AgentWork`] has no
+/// recorded tool yet, so the run-driving use case reads this to decide which
+/// tool to start (and records it on the context so follow-up runs keep it).
+///
+/// A port so `workspace` never imports `settings`: a composition adapter reads
+/// the setting and maps it to the parallel domain [`AgentTool`]. When the
+/// setting cannot be read the adapter falls back to the default tool, so a read
+/// failure never blocks a run.
+pub trait DefaultAgentTool: Send + Sync {
+    /// The default tool to start a fresh context's first run with, as a tool
+    /// with no conversation recorded yet.
+    fn default_tool(&self) -> AgentTool;
 }
 
 /// Where a context's agent-run transcripts are kept, one record per context
