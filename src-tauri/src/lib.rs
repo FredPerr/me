@@ -6,6 +6,8 @@ use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
 use workspace::application::agent_runs::AgentRunService;
 use workspace::application::quit_guard::{decide_close, CloseDecision};
 
+#[allow(dead_code)] // the runner is consumed by suggest_contexts/suggest_pull_request in #88/#89
+mod ai_assist;
 mod ai_session;
 mod binary_resolver;
 mod composition;
