@@ -40,6 +40,7 @@ macro_rules! typed_id {
 
 typed_id!(ContextId);
 typed_id!(RepositoryId);
+typed_id!(AgentRunId);
 
 #[cfg(test)]
 mod tests {
