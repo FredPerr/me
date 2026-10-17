@@ -22,14 +22,12 @@ use crate::workspace::domain::agent_runner::{
     RunHandle,
 };
 
-// Wired into the app by the `run_agent` use case in #80; until then nothing
-// constructs it, but the port + adapter + mapping are in place and tested.
-#[allow(dead_code)]
+/// The workspace `AgentRunner` backed by `ai_session`, wired into the app by
+/// `workspace::build` and driven by the `run_agent` use case (#80).
 pub struct AiSessionAgentRunner {
     app: AppHandle,
 }
 
-#[allow(dead_code)]
 impl AiSessionAgentRunner {
     pub fn new(app: AppHandle) -> Self {
         Self { app }

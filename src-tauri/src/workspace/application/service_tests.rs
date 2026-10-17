@@ -12,6 +12,7 @@ use crate::workspace::domain::error::WorkspaceError;
 use crate::workspace::domain::project::ProjectSettings;
 use crate::workspace::domain::remote_project_link::RemoteProjectLink;
 use crate::workspace::domain::test_support::{branch_name, repository, repository_id};
+use crate::workspace::infra::in_memory_agent_run_repository::InMemoryAgentRunRepository;
 use crate::workspace::infra::in_memory_project_repository::InMemoryProjectRepository;
 use crate::workspace::infra::recording_fakes::{
     PostCheckoutRun, RecordingCheckoutFiles, RecordingProjectEvents,
@@ -136,6 +137,7 @@ struct Fixture {
     git: Arc<InMemoryGitRepositories>,
     files: Arc<RecordingCheckoutFiles>,
     events: Arc<RecordingProjectEvents>,
+    agent_runs: Arc<InMemoryAgentRunRepository>,
     service: WorkspaceService,
 }
 
@@ -158,15 +160,22 @@ impl Fixture {
         let git = Arc::new(InMemoryGitRepositories::new());
         let files = Arc::new(RecordingCheckoutFiles::default());
         let events = Arc::new(RecordingProjectEvents::default());
+        let agent_runs = Arc::new(InMemoryAgentRunRepository::default());
         git.add_repository(&path_of(API_NAME), &branch_name(MAIN));
         git.add_repository(&path_of(WEB_NAME), &branch_name(MAIN));
-        let service =
-            WorkspaceService::new(projects.clone(), git.clone(), files.clone(), events.clone());
+        let service = WorkspaceService::new(
+            projects.clone(),
+            git.clone(),
+            files.clone(),
+            events.clone(),
+            agent_runs.clone(),
+        );
         Self {
             projects,
             git,
             files,
             events,
+            agent_runs,
             service,
         }
     }
@@ -626,6 +635,27 @@ mod delete_context {
                 WorkspaceError::DefaultContextIsFixed
             ))
         );
+    }
+
+    #[test]
+    fn deletes_the_contexts_agent_runs() {
+        use crate::workspace::domain::agent_run::AgentRun;
+        use crate::workspace::domain::identifiers::AgentRunId;
+        use crate::workspace::domain::ports::AgentRunRepository;
+
+        let fixture = Fixture::new();
+        let id = fixture.create_login();
+        let run = AgentRun::started(
+            AgentRunId::generate(),
+            id.clone(),
+            PROMPT.to_string(),
+            "2024-01-15T10:00:00Z".to_string(),
+        );
+        fixture.agent_runs.start_run(&run).unwrap();
+
+        fixture.service.delete_context(&tag(), &id).unwrap();
+
+        assert!(fixture.agent_runs.list_runs(&id).unwrap().is_empty());
     }
 
     #[test]

@@ -229,6 +229,40 @@ mod error_kinds {
     }
 
     #[test]
+    fn an_agent_runner_failure_is_agent_run() {
+        use crate::workspace::application::error::AgentRunServiceError;
+        use crate::workspace::domain::agent_runner::AgentRunError;
+
+        let error = AgentRunServiceError::Runner(AgentRunError::UnknownTool {
+            tool_id: "kiro".into(),
+        });
+
+        assert_eq!(kind_of(error), WorkspaceErrorKind::AgentRun);
+    }
+
+    #[test]
+    fn no_running_agent_has_its_own_kind() {
+        use crate::workspace::application::error::AgentRunServiceError;
+
+        let error = AgentRunServiceError::NoRunningAgent {
+            context: context_id(),
+        };
+
+        assert_eq!(kind_of(error), WorkspaceErrorKind::NoRunningAgent);
+    }
+
+    #[test]
+    fn an_agent_run_workspace_failure_keeps_the_workspace_kind() {
+        use crate::workspace::application::error::AgentRunServiceError;
+
+        let error = AgentRunServiceError::Workspace(WorkspaceServiceError::ProjectNotFound {
+            tag: ProjectTag::parse(PROJECT_TAG).unwrap(),
+        });
+
+        assert_eq!(kind_of(error), WorkspaceErrorKind::ProjectNotFound);
+    }
+
+    #[test]
     fn keeps_the_readable_message_and_serializes_the_kind_in_camel_case() {
         let error = WorkspaceCommandError::from(WorkspaceServiceError::BranchCheckedOut {
             repository: REPOSITORY_NAME.into(),
@@ -488,5 +522,52 @@ mod project_view {
             serde_json::Value::Null
         );
         assert_eq!(json["branchNaming"]["allowsNoPrefix"], true);
+    }
+}
+
+mod agent_run_view {
+    use super::*;
+    use crate::workspace::domain::agent_run::{AgentRun, AgentRunState};
+    use crate::workspace::domain::identifiers::AgentRunId;
+
+    const RUN_PROMPT: &str = "Build the login page";
+    const STARTED_AT: &str = "2024-01-15T10:00:00Z";
+    const OUTPUT_LINE: &str = "compiling";
+
+    fn finished_run() -> AgentRun {
+        let mut run = AgentRun::started(
+            AgentRunId::parse("run-1").unwrap(),
+            context_id(),
+            RUN_PROMPT.to_string(),
+            STARTED_AT.to_string(),
+        );
+        run.append_lines([OUTPUT_LINE.to_string()]);
+        run.end(AgentRunState::Finished, Some(0));
+        run
+    }
+
+    #[test]
+    fn carries_the_transcript_state_and_start_time() {
+        let view = AgentRunView::from(finished_run());
+
+        assert_eq!(view.id, "run-1");
+        assert_eq!(view.prompt, RUN_PROMPT);
+        assert_eq!(view.output_lines, vec![OUTPUT_LINE]);
+        assert_eq!(view.state, AgentRunStateView::Finished);
+        assert_eq!(view.exit_code, Some(0));
+        assert!(!view.trimmed);
+        assert_eq!(view.started_at, STARTED_AT);
+    }
+
+    #[test]
+    fn serializes_in_camel_case() {
+        let json = serde_json::to_value(AgentRunView::from(finished_run())).unwrap();
+
+        assert_eq!(json["id"], "run-1");
+        assert_eq!(json["contextId"], context_id().to_string());
+        assert_eq!(json["outputLines"], serde_json::json!([OUTPUT_LINE]));
+        assert_eq!(json["state"], "finished");
+        assert_eq!(json["exitCode"], 0);
+        assert_eq!(json["startedAt"], STARTED_AT);
     }
 }

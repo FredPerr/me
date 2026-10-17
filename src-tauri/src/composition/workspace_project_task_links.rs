@@ -113,6 +113,7 @@ mod tests {
     use crate::workspace::domain::ports::ProjectRepository;
     use crate::workspace::domain::remote_project_link::RemoteProjectLink;
     use crate::workspace::domain::test_support::{project_with, PROJECT_TAG};
+    use crate::workspace::infra::in_memory_agent_run_repository::InMemoryAgentRunRepository;
     use crate::workspace::infra::in_memory_project_repository::InMemoryProjectRepository;
     use crate::workspace::infra::recording_fakes::{
         RecordingCheckoutFiles, RecordingProjectEvents,
@@ -155,6 +156,7 @@ mod tests {
             git,
             Arc::new(RecordingCheckoutFiles::default()),
             Arc::new(RecordingProjectEvents::default()),
+            Arc::new(InMemoryAgentRunRepository::default()),
         );
         WorkspaceProjectTaskLinks::new(Arc::new(workspace))
     }

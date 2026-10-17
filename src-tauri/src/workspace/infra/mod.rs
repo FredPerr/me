@@ -5,6 +5,7 @@
 #[cfg(test)]
 mod agent_run_repository_contract;
 pub mod file_system_checkout_files;
+pub mod file_system_permission_floor;
 #[cfg(test)]
 pub mod in_memory_agent_run_repository;
 #[cfg(test)]
@@ -15,4 +16,6 @@ mod project_repository_contract;
 pub mod recording_fakes;
 pub mod redb_agent_run_repository;
 pub mod redb_project_repository;
+pub mod system_clock;
+pub mod tauri_agent_run_events;
 pub mod tauri_project_events;

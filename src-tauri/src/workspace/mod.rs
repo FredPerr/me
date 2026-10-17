@@ -11,41 +11,59 @@ pub mod infra;
 
 use std::sync::Arc;
 
+use application::agent_runs::AgentRunService;
 use application::service::WorkspaceService;
-use domain::ports::{AgentRunRepository, ProjectRepository};
+use domain::agent_runner::AgentRunner;
+use domain::ports::{AgentRunRepository, ProjectEvents, ProjectRepository};
 use infra::file_system_checkout_files::FileSystemCheckoutFiles;
+use infra::file_system_permission_floor::FileSystemPermissionFloor;
 use infra::redb_agent_run_repository::RedbAgentRunRepository;
 use infra::redb_project_repository::RedbProjectRepository;
+use infra::system_clock::SystemClock;
+use infra::tauri_agent_run_events::TauriAgentRunEvents;
 use infra::tauri_project_events::TauriProjectEvents;
 
 use crate::git::domain::ports::GitRepositories;
 
-/// The workspace service, held in Tauri state.
+/// The workspace services, held in Tauri state.
 pub struct Workspace {
     pub service: Arc<WorkspaceService>,
-    /// The agent-run transcript store. Built here so the run-driving use case
-    /// can take it; `run_agent` in #80 is its first consumer, so nothing reads
-    /// it yet.
-    #[allow(dead_code)] // used by run_agent in #80
-    pub agent_runs: Arc<dyn AgentRunRepository>,
+    /// Drives agent runs for contexts: status, transcript, conversation id and
+    /// the live `agent-run` event. Shares the project repository with `service`.
+    pub agent_run_service: Arc<AgentRunService>,
 }
 
+/// Builds the workspace services. The agent `runner` is injected because it is
+/// a composition adapter over `ai_session`, built in the composition root; the
+/// event emitter, clock and permission floor are workspace infra built here.
 pub fn build(
     app: tauri::AppHandle,
     database: Arc<redb::Database>,
     git: Arc<dyn GitRepositories>,
+    runner: Arc<dyn AgentRunner>,
 ) -> Result<Workspace, Box<dyn std::error::Error>> {
     let projects: Arc<dyn ProjectRepository> =
         Arc::new(RedbProjectRepository::new(Arc::clone(&database))?);
     let agent_runs: Arc<dyn AgentRunRepository> = Arc::new(RedbAgentRunRepository::new(database)?);
+    let project_events: Arc<dyn ProjectEvents> = Arc::new(TauriProjectEvents::new(app.clone()));
     let service = WorkspaceService::new(
-        projects,
+        Arc::clone(&projects),
         git,
         Arc::new(FileSystemCheckoutFiles),
-        Arc::new(TauriProjectEvents::new(app)),
+        Arc::clone(&project_events),
+        Arc::clone(&agent_runs),
+    );
+    let agent_run_service = AgentRunService::new(
+        projects,
+        agent_runs,
+        runner,
+        Arc::new(TauriAgentRunEvents::new(app)),
+        project_events,
+        Arc::new(SystemClock),
+        Arc::new(FileSystemPermissionFloor),
     );
     Ok(Workspace {
         service: Arc::new(service),
-        agent_runs,
+        agent_run_service: Arc::new(agent_run_service),
     })
 }
