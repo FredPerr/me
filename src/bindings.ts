@@ -102,6 +102,8 @@ export const commands = {
 	 *  the updated settings.
 	 */
 	settingsSetAssignMeToTasks: (value: boolean) => __TAURI_INVOKE<AppSettingsView>("settings_set_assign_me_to_tasks", { value }),
+	/**  Sets the AI tool the app runs by default and returns the updated settings. */
+	settingsSetDefaultAiTool: (value: AiToolView) => __TAURI_INVOKE<AppSettingsView>("settings_set_default_ai_tool", { value }),
 	workTrackingListConnections: () => __TAURI_INVOKE<ConnectionView[]>("work_tracking_list_connections"),
 	workTrackingSaveConnection: (input: SaveConnectionInput) => __TAURI_INVOKE<ConnectionView>("work_tracking_save_connection", { input }),
 	workTrackingRemoveConnection: (connectionId: string) => __TAURI_INVOKE<null>("work_tracking_remove_connection", { connectionId }),
@@ -183,9 +185,13 @@ export type AiSessionErrorKind =
 /**  The session could not be killed. */
 "killFailed";
 
+/**  The AI tool the app runs by default, on the wire. Mirrors [`AiTool`]. */
+export type AiToolView = "kiro";
+
 /**  The app-wide settings on the wire. */
 export type AppSettingsView = {
 	assignMeToTasks: boolean,
+	defaultAiTool: AiToolView,
 };
 
 /**

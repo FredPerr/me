@@ -70,6 +70,7 @@ fn typed_commands() -> tauri_specta::Builder<tauri::Wry> {
             git_hosting::commands::git_hosting_create_pull_request,
             settings::commands::settings_get,
             settings::commands::settings_set_assign_me_to_tasks,
+            settings::commands::settings_set_default_ai_tool,
             work_tracking::commands::work_tracking_list_connections,
             work_tracking::commands::work_tracking_save_connection,
             work_tracking::commands::work_tracking_remove_connection,

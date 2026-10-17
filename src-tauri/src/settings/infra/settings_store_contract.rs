@@ -2,11 +2,15 @@
 //! with `settings_store_contract_tests!(with_store)`, where `with_store` runs a
 //! test against a fresh, empty store.
 
+use crate::settings::domain::ai_tool::AiTool;
 use crate::settings::domain::app_settings::AppSettings;
 use crate::settings::domain::ports::SettingsStore;
 
 fn settings_with_assign_me(assign_me_to_tasks: bool) -> AppSettings {
-    AppSettings { assign_me_to_tasks }
+    AppSettings {
+        assign_me_to_tasks,
+        default_ai_tool: AiTool::default(),
+    }
 }
 
 pub fn loads_the_defaults_when_empty(store: &dyn SettingsStore) {
