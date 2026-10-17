@@ -1,5 +1,6 @@
 import {
 	ActionIcon,
+	Anchor,
 	Button,
 	Card,
 	Flex,
@@ -22,6 +23,7 @@ import {
 	RobotIcon,
 	TrashIcon,
 } from "@phosphor-icons/react";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { ContextView, ProjectView } from "@/bindings";
@@ -69,6 +71,9 @@ export function ContextCard({
 
 	const branchName = context.branches[0]?.branch ?? context.name;
 	const isContextActive = isActive(context.folderPath);
+	const isFromPullRequests =
+		context.origin.kind === "fromPullRequests" ||
+		context.branches.some((cb) => cb.pullRequestMatched !== null);
 	const baseContext = findBaseContext(project, context);
 	const canDraftPullRequests = context.status === "needsHuman" || context.status === "review";
 	const canRunKiro = Boolean(onOpenKiro) && !context.isDefault;
@@ -100,6 +105,15 @@ export function ContextCard({
 					<Stack gap="xs" style={{ flex: 1, minWidth: 0 }}>
 						<Flex gap="xs" align="center">
 							{dragHandle}
+							{isFromPullRequests && (
+								<Tooltip label={t("contexts.createdFromPullRequests")}>
+									<GitPullRequestIcon
+										size={14}
+										color="var(--mantine-color-primary-2)"
+										aria-label={t("contexts.createdFromPullRequests")}
+									/>
+								</Tooltip>
+							)}
 							<Text
 								fw={600}
 								size="xs"
@@ -131,6 +145,7 @@ export function ContextCard({
 											stats.filesDeleted > 0 ||
 											stats.insertions > 0 ||
 											stats.deletions > 0);
+									const matchedPullRequest = cb.pullRequestMatched;
 									const pullRequest = pullRequestLookup?.(cb.repositoryId, cb.branch) ?? null;
 									return (
 										<Flex key={cb.repositoryId} align="center" justify="space-between">
@@ -145,7 +160,26 @@ export function ContextCard({
 													)}
 													)
 												</Text>
-												{pullRequest && <PullRequestStatusIcon pullRequest={pullRequest} />}
+												{matchedPullRequest ? (
+													<Tooltip
+														label={t("contexts.matchedPullRequest", {
+															number: matchedPullRequest.number,
+														})}
+													>
+														<Anchor
+															size="xs"
+															style={{ fontFamily: "monospace" }}
+															onClick={() => openUrl(matchedPullRequest.url)}
+															aria-label={t("contexts.matchedPullRequest", {
+																number: matchedPullRequest.number,
+															})}
+														>
+															#{matchedPullRequest.number}
+														</Anchor>
+													</Tooltip>
+												) : (
+													pullRequest && <PullRequestStatusIcon pullRequest={pullRequest} />
+												)}
 											</Flex>
 											{!context.isDefault && !hasBaseContext && (
 												<Text size="xs" c="red.3" style={{ fontFamily: "monospace" }}>

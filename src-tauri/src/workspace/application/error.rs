@@ -25,6 +25,14 @@ pub enum WorkspaceServiceError {
         repository: String,
         branch: BranchName,
     },
+    /// A matched pull request's head or base branch could not be fetched from
+    /// `origin`, so nothing was created.
+    PullRequestBranchNotFetched {
+        repository: String,
+        pull_request_number: u32,
+        branch: BranchName,
+        error: GitError,
+    },
     BranchCheckedOut {
         repository: String,
         branch: BranchName,
@@ -95,6 +103,16 @@ impl fmt::Display for WorkspaceServiceError {
                 formatter,
                 "Branch '{branch}' already exists in repository '{repository}': \
                  choose another name or check out the existing branch"
+            ),
+            Self::PullRequestBranchNotFetched {
+                repository,
+                pull_request_number,
+                branch,
+                error,
+            } => write!(
+                formatter,
+                "Could not fetch branch '{branch}' of pull request #{pull_request_number} \
+                 in repository '{repository}': {error}"
             ),
             Self::BranchCheckedOut {
                 repository,

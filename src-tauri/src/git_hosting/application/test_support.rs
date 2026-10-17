@@ -68,6 +68,7 @@ pub fn open_pull_request(number: u32) -> HostedPullRequest {
         author: Some(PULL_REQUEST_AUTHOR.to_string()),
         head_branch: HEAD_BRANCH.to_string(),
         base_branch: BASE_BRANCH.to_string(),
+        is_fork: false,
         draft: false,
         state: PullRequestState::Open,
         updated_at: UPDATED_AT.to_string(),

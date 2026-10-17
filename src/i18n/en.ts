@@ -199,6 +199,11 @@ export const en = {
 			noOpenPullRequests: "No open pull requests",
 			pullRequestBaseBranch: "Base: {{base}}",
 			pullRequestsLoadError: "Could not load pull requests.",
+			pullRequestGroupLabel: "Pull requests",
+			pullRequestGroupPlaceholder: "Pick a branch across repositories",
+			pullRequestGroupOption: "{{headBranch}} — {{pullRequests}}",
+			pullRequestForkOption: "#{{number}} {{title}} (from a fork)",
+			newBranchBaseLabel: "New branch {{branch}} — base",
 			bulk: {
 				button: "Bulk create",
 				title: "Bulk create contexts",
@@ -243,6 +248,8 @@ export const en = {
 			loadingBranches: "Loading branches…",
 			noBranchesFound: "No branches found",
 			draftPullRequest: "Create pull requests",
+			createdFromPullRequests: "Created from pull requests",
+			matchedPullRequest: "Open pull request #{{number}}",
 			pullRequestStatus: {
 				open: "Open pull request #{{number}}",
 				draft: "Draft pull request #{{number}}",

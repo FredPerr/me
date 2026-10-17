@@ -71,4 +71,11 @@ pub struct PullRequestUser {
 pub struct BranchReference {
     #[serde(rename = "ref")]
     pub name: String,
+    /// Absent on the list endpoint when the head fork was deleted.
+    pub repo: Option<PullRequestRepository>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PullRequestRepository {
+    pub id: u64,
 }

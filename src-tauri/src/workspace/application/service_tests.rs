@@ -3,11 +3,13 @@
 use std::path::PathBuf;
 
 use super::*;
+use crate::git::domain::remote_url::RemoteUrl;
 use crate::git::infra::in_memory::{InMemoryGitRepositories, Operation};
 use crate::workspace::application::error::CheckoutHolder;
 use crate::workspace::domain::agent_work::AgentTool;
 use crate::workspace::domain::branch_naming::BranchNamingPolicy;
 use crate::workspace::domain::context_branch::ContextCheckout;
+use crate::workspace::domain::context_branch::MatchedPullRequest;
 use crate::workspace::domain::error::WorkspaceError;
 use crate::workspace::domain::project::ProjectSettings;
 use crate::workspace::domain::remote_project_link::RemoteProjectLink;
@@ -517,6 +519,175 @@ mod create_context {
         assert!(fixture.has_branch(WEB_NAME, EXISTING_BRANCH));
         assert!(fixture.stored_context(LOGIN_CONTEXT).is_none());
     }
+
+    mod from_pull_requests {
+        use super::*;
+
+        const PR_HOST: &str = "github";
+        const PR_NUMBER: u32 = 12;
+        const PR_URL: &str = "https://github.com/acme/api/pull/12";
+        const PR_HEAD: &str = "feature/login";
+        const PR_BASE: &str = "develop";
+        const DOCS_API_ORIGIN: &str = "git@github.com:acme/api.git";
+
+        fn matched() -> MatchedPullRequest {
+            MatchedPullRequest {
+                host: PR_HOST.to_string(),
+                number: PR_NUMBER,
+                url: PR_URL.to_string(),
+            }
+        }
+
+        fn pull_request_branch(repository: &str) -> RepositoryBranchChoice {
+            RepositoryBranchChoice {
+                repository: repository_id(repository),
+                choice: BranchChoice::PullRequest {
+                    head: branch_name(PR_HEAD),
+                    base: branch_name(PR_BASE),
+                    matched: matched(),
+                },
+            }
+        }
+
+        /// Puts `PR_HEAD` and `PR_BASE` on api's `origin` only, so a fetch has
+        /// to bring them down. `api` is left with just `main` locally.
+        fn api_with_pull_request_on_origin(fixture: &Fixture) {
+            let api = fixture.open(API_NAME);
+            fixture
+                .git
+                .set_remote(&path_of(API_NAME), RemoteUrl::new(DOCS_API_ORIGIN));
+            for branch in [PR_HEAD, PR_BASE] {
+                api.create_branch(&branch_name(branch), &branch_name(MAIN))
+                    .unwrap();
+                fixture
+                    .git
+                    .publish(&path_of(API_NAME), &branch_name(branch));
+                api.delete_branch(&branch_name(branch), true).unwrap();
+            }
+        }
+
+        fn create_from_pull_request(
+            fixture: &Fixture,
+            branches: Vec<RepositoryBranchChoice>,
+        ) -> Result<Project, WorkspaceServiceError> {
+            fixture.service.create_context(CreateContextCommand {
+                origin: ContextOrigin::FromPullRequests,
+                status: Some(ContextStatus::Review),
+                ..create_command(LOGIN_CONTEXT, branches)
+            })
+        }
+
+        #[test]
+        fn fetches_the_head_and_base_before_checking_out() {
+            let fixture = Fixture::new();
+            api_with_pull_request_on_origin(&fixture);
+
+            create_from_pull_request(&fixture, vec![pull_request_branch(API_ID)]).unwrap();
+
+            assert_eq!(
+                fixture.git.fetched_branches(&path_of(API_NAME)),
+                [branch_name(PR_HEAD), branch_name(PR_BASE)]
+            );
+            assert!(fixture.has_branch(API_NAME, PR_HEAD));
+            assert!(fixture.has_branch(API_NAME, PR_BASE));
+        }
+
+        #[test]
+        fn records_the_matched_pull_request_on_the_branch() {
+            let fixture = Fixture::new();
+            api_with_pull_request_on_origin(&fixture);
+
+            create_from_pull_request(&fixture, vec![pull_request_branch(API_ID)]).unwrap();
+
+            let branch = fixture
+                .stored_context(LOGIN_CONTEXT)
+                .unwrap()
+                .branch_for(&repository_id(API_ID))
+                .unwrap()
+                .clone();
+            assert_eq!(branch.branch, branch_name(PR_HEAD));
+            let link = branch.pull_request.unwrap();
+            assert_eq!(link.matched, Some(matched()));
+            assert_eq!(link.draft, None);
+        }
+
+        #[test]
+        fn starts_in_review_from_pull_requests() {
+            let fixture = Fixture::new();
+            api_with_pull_request_on_origin(&fixture);
+
+            create_from_pull_request(&fixture, vec![pull_request_branch(API_ID)]).unwrap();
+
+            let context = fixture.stored_context(LOGIN_CONTEXT).unwrap();
+            assert_eq!(context.origin, ContextOrigin::FromPullRequests);
+            assert_eq!(context.status, ContextStatus::Review);
+        }
+
+        #[test]
+        fn gives_a_repository_without_a_pull_request_its_new_branch_from_the_selected_base() {
+            let fixture = Fixture::new();
+            api_with_pull_request_on_origin(&fixture);
+            fixture
+                .open(WEB_NAME)
+                .create_branch(&branch_name(PR_BASE), &branch_name(MAIN))
+                .unwrap();
+
+            create_from_pull_request(
+                &fixture,
+                vec![
+                    pull_request_branch(API_ID),
+                    RepositoryBranchChoice {
+                        repository: repository_id(WEB_ID),
+                        choice: BranchChoice::NewBranch {
+                            name: branch_name(SIGNUP_BRANCH),
+                            base_branch: branch_name(PR_BASE),
+                        },
+                    },
+                ],
+            )
+            .unwrap();
+
+            let web_branch = fixture
+                .stored_context(LOGIN_CONTEXT)
+                .unwrap()
+                .branch_for(&repository_id(WEB_ID))
+                .unwrap()
+                .clone();
+            assert_eq!(web_branch.branch, branch_name(SIGNUP_BRANCH));
+            assert_eq!(web_branch.pull_request, None);
+            assert!(fixture.has_branch(WEB_NAME, SIGNUP_BRANCH));
+        }
+
+        #[test]
+        fn creates_nothing_when_a_fetch_fails_and_names_the_pull_request_and_branch() {
+            let fixture = Fixture::new();
+            api_with_pull_request_on_origin(&fixture);
+            fixture.git.fail_on_in(
+                &path_of(API_NAME),
+                Operation::FetchBranch,
+                injected_failure(),
+            );
+
+            let error =
+                create_from_pull_request(&fixture, vec![pull_request_branch(API_ID)]).unwrap_err();
+
+            assert_eq!(
+                error,
+                WorkspaceServiceError::PullRequestBranchNotFetched {
+                    repository: API_NAME.to_string(),
+                    pull_request_number: PR_NUMBER,
+                    branch: branch_name(PR_HEAD),
+                    error: injected_failure(),
+                }
+            );
+            let message = error.to_string();
+            assert!(message.contains(&format!("#{PR_NUMBER}")));
+            assert!(message.contains(PR_HEAD));
+            assert!(fixture.stored_context(LOGIN_CONTEXT).is_none());
+            assert_eq!(fixture.linked_worktree_count(API_NAME), 0);
+            assert_eq!(fixture.change_count(), 0);
+        }
+    }
 }
 
 mod delete_context {
@@ -901,7 +1072,7 @@ mod context_changes {
             .unwrap()
             .branch_for(&repository_id(API_ID))
             .unwrap();
-        assert_eq!(branch.pull_request.as_ref().unwrap().draft, draft());
+        assert_eq!(branch.pull_request.as_ref().unwrap().draft, Some(draft()));
         assert_eq!(fixture.change_count(), 2);
     }
 

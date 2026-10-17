@@ -15,8 +15,9 @@ use super::domain::agent_run::{AgentRun, AgentRunState};
 use super::domain::agent_work::{AgentTool, AgentWork};
 use super::domain::branch_naming::{parse_branch_name, BranchNamingPolicy};
 use super::domain::context::Context;
-use super::domain::context_branch::PullRequestDraft;
-use super::domain::context_branch::{ContextBranch, ContextCheckout};
+use super::domain::context_branch::{
+    ContextBranch, ContextCheckout, MatchedPullRequest, PullRequestDraft,
+};
 use super::domain::context_name::ContextName;
 use super::domain::context_origin::{ContextOrigin, TaskRef};
 use super::domain::context_status::ContextStatus;
@@ -139,7 +140,8 @@ impl From<WorkspaceServiceError> for WorkspaceCommandError {
                 error: GitError::BranchCheckedOut { .. },
                 ..
             } => WorkspaceErrorKind::BranchCheckedOut,
-            WorkspaceServiceError::Git { .. } => WorkspaceErrorKind::Git,
+            WorkspaceServiceError::Git { .. }
+            | WorkspaceServiceError::PullRequestBranchNotFetched { .. } => WorkspaceErrorKind::Git,
             WorkspaceServiceError::Files(_) => WorkspaceErrorKind::Files,
         };
         Self {
@@ -275,6 +277,16 @@ pub struct PullRequestDraftView {
     pub description: String,
 }
 
+/// The pull request a context branch was matched with, on the wire. `host` is
+/// the Git host kind as a plain string ("github", "bitbucket").
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct MatchedPullRequestView {
+    pub host: String,
+    pub number: u32,
+    pub url: String,
+}
+
 /// `linked` is a legacy linked repository: a symlink to another checkout,
 /// which can only be deleted.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
@@ -293,6 +305,8 @@ pub struct ContextBranchView {
     /// `null` when the repository is no longer part of the project.
     pub worktree_path: Option<String>,
     pub pull_request_draft: Option<PullRequestDraftView>,
+    /// The pull request the branch was created from, when it was matched.
+    pub pull_request_matched: Option<MatchedPullRequestView>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
@@ -488,9 +502,19 @@ impl ContextBranchView {
             pull_request_draft: branch
                 .pull_request
                 .as_ref()
-                .map(|link| PullRequestDraftView {
-                    title: link.draft.title.clone(),
-                    description: link.draft.description.clone(),
+                .and_then(|link| link.draft.as_ref())
+                .map(|draft| PullRequestDraftView {
+                    title: draft.title.clone(),
+                    description: draft.description.clone(),
+                }),
+            pull_request_matched: branch
+                .pull_request
+                .as_ref()
+                .and_then(|link| link.matched.as_ref())
+                .map(|matched| MatchedPullRequestView {
+                    host: matched.host.clone(),
+                    number: matched.number,
+                    url: matched.url.clone(),
                 }),
         }
     }
@@ -647,6 +671,16 @@ pub enum BranchChoiceInput {
     ExistingBranch {
         name: String,
     },
+    /// The head branch of a matched pull request, with its base and identity.
+    /// `host` is the Git host kind as a plain string ("github", "bitbucket").
+    #[serde(rename_all = "camelCase")]
+    PullRequest {
+        head_branch: String,
+        base_branch: String,
+        host: String,
+        number: u32,
+        url: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, specta::Type)]
@@ -681,6 +715,17 @@ impl TryFrom<BranchChoiceInput> for BranchChoice {
             },
             BranchChoiceInput::ExistingBranch { name } => Self::ExistingBranch {
                 name: parse_branch_name(&name)?,
+            },
+            BranchChoiceInput::PullRequest {
+                head_branch,
+                base_branch,
+                host,
+                number,
+                url,
+            } => Self::PullRequest {
+                head: parse_branch_name(&head_branch)?,
+                base: parse_branch_name(&base_branch)?,
+                matched: MatchedPullRequest { host, number, url },
             },
         })
     }

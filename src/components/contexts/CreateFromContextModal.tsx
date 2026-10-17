@@ -144,7 +144,8 @@ export function CreateFromContextModal({
 		contextName.trim() !== "" &&
 		branchChoices.every(
 			({ branch }) =>
-				branch.name !== "" && (branch.kind !== "newBranch" || branch.baseBranch !== ""),
+				(branch.kind === "pullRequest" || branch.name !== "") &&
+				(branch.kind !== "newBranch" || branch.baseBranch !== ""),
 		);
 
 	async function handleSubmit() {
