@@ -157,6 +157,13 @@ pub trait ProjectEvents: Send + Sync {
     fn project_changed(&self, tag: &ProjectTag);
 }
 
+/// Tells every open view that the Workbench changed, so each window refetches
+/// the arrangement. There is one Workbench per app, so the signal carries no
+/// payload.
+pub trait WorkbenchEvents: Send + Sync {
+    fn workbench_changed(&self);
+}
+
 /// The wall-clock time a run started, as an ISO 8601 string. A port so the
 /// run-driving use case records `AgentRun::started_at` from a clock the tests
 /// can fix, matching the other timestamp fields stored as strings.

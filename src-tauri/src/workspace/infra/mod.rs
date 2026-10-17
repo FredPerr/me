@@ -22,5 +22,6 @@ pub mod redb_workbench_repository;
 pub mod system_clock;
 pub mod tauri_agent_run_events;
 pub mod tauri_project_events;
+pub mod tauri_workbench_events;
 #[cfg(test)]
 mod workbench_repository_contract;

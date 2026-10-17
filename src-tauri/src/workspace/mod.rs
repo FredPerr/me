@@ -13,9 +13,11 @@ use std::sync::Arc;
 
 use application::agent_runs::AgentRunService;
 use application::service::WorkspaceService;
+use application::workbench_service::WorkbenchService;
 use domain::agent_runner::AgentRunner;
 use domain::ports::{
-    AgentRunRepository, DefaultAgentTool, ProjectEvents, ProjectRepository, WorkbenchRepository,
+    AgentRunRepository, DefaultAgentTool, ProjectEvents, ProjectRepository, WorkbenchEvents,
+    WorkbenchRepository,
 };
 use infra::file_system_checkout_files::FileSystemCheckoutFiles;
 use infra::file_system_permission_floor::FileSystemPermissionFloor;
@@ -25,6 +27,7 @@ use infra::redb_workbench_repository::RedbWorkbenchRepository;
 use infra::system_clock::SystemClock;
 use infra::tauri_agent_run_events::TauriAgentRunEvents;
 use infra::tauri_project_events::TauriProjectEvents;
+use infra::tauri_workbench_events::TauriWorkbenchEvents;
 
 use crate::git::domain::ports::GitRepositories;
 
@@ -34,10 +37,11 @@ pub struct Workspace {
     /// Drives agent runs for contexts: status, transcript, conversation id and
     /// the live `agent-run` event. Shares the project repository with `service`.
     pub agent_run_service: Arc<AgentRunService>,
-    /// The store for the one Workbench (the tab-bar arrangement). Held here so
-    /// its `workbench` table is created at startup; read by WorkbenchService in #94.
-    #[allow(dead_code)] // wired into WorkbenchService in #94
-    pub workbench_repository: Arc<dyn WorkbenchRepository>,
+    /// Drives the Workbench (the tab-bar arrangement): read the reconciled
+    /// arrangement, change a project's placement, reorder a group, set the
+    /// last-open project. Shares the project repository with `service` to
+    /// reconcile against the live project list.
+    pub workbench_service: Arc<WorkbenchService>,
 }
 
 /// Builds the workspace services. The agent `runner` and the `default_tool`
@@ -59,12 +63,19 @@ pub fn build(
     let workbench_repository: Arc<dyn WorkbenchRepository> =
         Arc::new(RedbWorkbenchRepository::new(database)?);
     let project_events: Arc<dyn ProjectEvents> = Arc::new(TauriProjectEvents::new(app.clone()));
+    let workbench_events: Arc<dyn WorkbenchEvents> =
+        Arc::new(TauriWorkbenchEvents::new(app.clone()));
     let service = WorkspaceService::new(
         Arc::clone(&projects),
         git,
         Arc::new(FileSystemCheckoutFiles),
         Arc::clone(&project_events),
         Arc::clone(&agent_runs),
+    );
+    let workbench_service = WorkbenchService::new(
+        workbench_repository,
+        Arc::clone(&projects),
+        workbench_events,
     );
     let agent_run_service = AgentRunService::new(
         projects,
@@ -79,6 +90,6 @@ pub fn build(
     Ok(Workspace {
         service: Arc::new(service),
         agent_run_service: Arc::new(agent_run_service),
-        workbench_repository,
+        workbench_service: Arc::new(workbench_service),
     })
 }
