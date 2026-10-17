@@ -1,7 +1,9 @@
 use std::fmt;
 use std::path::Path;
 
+use super::agent_run::{AgentRun, AgentRunState};
 use super::error::WorkspaceError;
+use super::identifiers::{AgentRunId, ContextId};
 use super::project::Project;
 use super::project_tag::ProjectTag;
 
@@ -138,4 +140,47 @@ impl std::error::Error for CheckoutFilesError {}
 /// Tells every open view that a Project changed.
 pub trait ProjectEvents: Send + Sync {
     fn project_changed(&self, tag: &ProjectTag);
+}
+
+/// Where a context's agent-run transcripts are kept, one record per context
+/// holding its recent runs oldest first. The two caps (200 KB per transcript,
+/// the last ten runs per context) are enforced on write, so a stored context
+/// never holds more than ten runs and no transcript exceeds its size cap.
+/// Synchronous because redb is synchronous. The run-driving use case in ticket
+/// #80 is the only caller; it starts a run, streams lines into it and ends it.
+pub trait AgentRunRepository: Send + Sync {
+    /// Records a freshly started run as the newest run of its context, then
+    /// drops the context's oldest runs beyond the last-ten cap.
+    fn start_run(&self, run: &AgentRun) -> Result<(), StorageError>;
+
+    /// Appends output lines to a run, re-applying the transcript size cap.
+    /// Does nothing when the run is unknown (e.g. already dropped by the cap).
+    fn append_lines(
+        &self,
+        context_id: &ContextId,
+        run_id: &AgentRunId,
+        lines: &[String],
+    ) -> Result<(), StorageError>;
+
+    /// Records how a run ended and its exit code. Does nothing for an unknown run.
+    fn finish_run(
+        &self,
+        context_id: &ContextId,
+        run_id: &AgentRunId,
+        state: AgentRunState,
+        exit_code: Option<i32>,
+    ) -> Result<(), StorageError>;
+
+    /// A context's runs, oldest first. Empty for a context with no runs or an
+    /// unreadable record.
+    fn list_runs(&self, context_id: &ContextId) -> Result<Vec<AgentRun>, StorageError>;
+
+    /// Removes every run of a context, hooked into deleting the context.
+    /// Idempotent.
+    fn delete_runs(&self, context_id: &ContextId) -> Result<(), StorageError>;
+
+    /// Every run left in the `Running` state across all contexts, so the next
+    /// start after a crash can reconcile them (ticket #82). Oldest first within
+    /// each context; contexts in storage order.
+    fn running_runs(&self) -> Result<Vec<AgentRun>, StorageError>;
 }
