@@ -10,7 +10,9 @@ use crate::git::domain::paths::{RepositoryPath, WorktreePath};
 use crate::git::domain::ports::{GitRepositories, GitRepository};
 use crate::workspace::domain::agent_work::AgentWork;
 use crate::workspace::domain::context::Context;
-use crate::workspace::domain::context_branch::{ContextBranch, PullRequestDraft};
+use crate::workspace::domain::context_branch::{
+    ContextBranch, MatchedPullRequest, PullRequestDraft,
+};
 use crate::workspace::domain::context_name::ContextName;
 use crate::workspace::domain::context_origin::ContextOrigin;
 use crate::workspace::domain::context_status::ContextStatus;
@@ -33,12 +35,31 @@ pub enum BranchChoice {
     },
     /// An existing local branch, refused when it is checked out elsewhere.
     ExistingBranch { name: BranchName },
+    /// The head branch of a matched pull request. Its head and base are
+    /// fetched from `origin` before checkout, and the match is recorded on
+    /// the context branch.
+    PullRequest {
+        head: BranchName,
+        base: BranchName,
+        matched: MatchedPullRequest,
+    },
 }
 
 impl BranchChoice {
+    /// The branch the context is checked out on in the repository.
     pub fn branch(&self) -> &BranchName {
         match self {
-            Self::NewBranch { name, .. } | Self::ExistingBranch { name } => name,
+            Self::NewBranch { name, .. }
+            | Self::ExistingBranch { name }
+            | Self::PullRequest { head: name, .. } => name,
+        }
+    }
+
+    /// The matched pull request, when the branch comes from one.
+    fn matched_pull_request(&self) -> Option<&MatchedPullRequest> {
+        match self {
+            Self::PullRequest { matched, .. } => Some(matched),
+            Self::NewBranch { .. } | Self::ExistingBranch { .. } => None,
         }
     }
 }
@@ -67,7 +88,14 @@ impl CreateContextCommand {
             .branches
             .iter()
             .map(|choice| {
-                ContextBranch::new(choice.repository.clone(), choice.choice.branch().clone())
+                let repository = choice.repository.clone();
+                let branch = choice.choice.branch().clone();
+                match choice.choice.matched_pull_request() {
+                    Some(matched) => {
+                        ContextBranch::from_pull_request(repository, branch, matched.clone())
+                    }
+                    None => ContextBranch::new(repository, branch),
+                }
             })
             .collect();
         let context = Context::new(self.name.clone(), branches)?;
@@ -162,6 +190,7 @@ impl WorkspaceService {
         let context = command.context()?;
         project.clone().add_context(context.clone())?;
         let planned = self.plan_checkouts(&project, &context, &command.branches)?;
+        self.fetch_pull_request_branches(&planned)?;
 
         let mut journal = CheckoutJournal::default();
         let created = self
@@ -465,6 +494,37 @@ impl WorkspaceService {
             });
         }
         Ok(planned)
+    }
+
+    /// Fetches the head and base branch of every matched pull request from
+    /// `origin`, before anything is checked out. A fetch is a no-op when the
+    /// branch already exists locally. Any failure stops the create, so nothing
+    /// is made; the error names the pull request and the branch.
+    fn fetch_pull_request_branches(
+        &self,
+        planned: &[PlannedCheckout<'_>],
+    ) -> Result<(), WorkspaceServiceError> {
+        for checkout in planned {
+            let BranchChoice::PullRequest {
+                head,
+                base,
+                matched,
+            } = checkout.choice
+            else {
+                continue;
+            };
+            for branch in [head, base] {
+                checkout.git.fetch_branch(branch).map_err(|error| {
+                    WorkspaceServiceError::PullRequestBranchNotFetched {
+                        repository: checkout.repository.name.clone(),
+                        pull_request_number: matched.number,
+                        branch: branch.clone(),
+                        error,
+                    }
+                })?;
+            }
+        }
+        Ok(())
     }
 
     fn check_out<'a>(

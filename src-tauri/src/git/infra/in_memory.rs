@@ -207,6 +207,9 @@ struct State {
     repositories: HashMap<PathBuf, Repository>,
     failures: Vec<Failure>,
     commit_count: usize,
+    /// Every `fetch_branch`, keyed by the repository's main checkout, in call
+    /// order, including the no-ops: so tests can assert what was fetched.
+    fetched_branches: HashMap<PathBuf, Vec<BranchName>>,
 }
 
 impl State {
@@ -379,6 +382,16 @@ impl InMemoryGitRepositories {
             .branch(branch)
             .expect("branch exists");
         branch.tip() != &branch.base_commit
+    }
+
+    /// The branches `fetch_branch` was called with on `repository`, in order,
+    /// including the no-ops when the branch already existed locally.
+    pub fn fetched_branches(&self, repository: &RepositoryPath) -> Vec<BranchName> {
+        lock(&self.state)
+            .fetched_branches
+            .get(repository.as_path())
+            .cloned()
+            .unwrap_or_default()
     }
 
     /// Every later call of `operation`, in any repository, fails with `error`
@@ -628,20 +641,28 @@ impl GitRepository for InMemoryGitRepository {
     }
 
     fn fetch_branch(&self, name: &BranchName) -> Result<(), GitError> {
-        self.run(Operation::FetchBranch, |repository, _| {
-            let remote_history = repository.remote()?.branches.get(name.as_str()).cloned();
-            if repository.branches.contains_key(name.as_str()) {
-                return Ok(());
-            }
-            let history = remote_history.ok_or_else(|| GitError::CommandFailed {
-                operation: "fetch".into(),
-                output: format!("fatal: couldn't find remote ref {name}"),
-            })?;
-            repository
-                .branches
-                .insert(name.to_string(), Branch::starting_at(name.clone(), history));
-            Ok(())
-        })
+        let mut state = lock(&self.state);
+        if let Some(error) = state.failure_for(Operation::FetchBranch, &self.key) {
+            return Err(error);
+        }
+        state
+            .fetched_branches
+            .entry(self.key.clone())
+            .or_default()
+            .push(name.clone());
+        let repository = state.repository_mut(&self.key);
+        let remote_history = repository.remote()?.branches.get(name.as_str()).cloned();
+        if repository.branches.contains_key(name.as_str()) {
+            return Ok(());
+        }
+        let history = remote_history.ok_or_else(|| GitError::CommandFailed {
+            operation: "fetch".into(),
+            output: format!("fatal: couldn't find remote ref {name}"),
+        })?;
+        repository
+            .branches
+            .insert(name.to_string(), Branch::starting_at(name.clone(), history));
+        Ok(())
     }
 
     fn push(&self) -> Result<String, GitError> {

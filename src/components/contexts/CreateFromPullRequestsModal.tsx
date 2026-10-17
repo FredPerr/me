@@ -124,7 +124,8 @@ export function CreateFromPullRequestsModal({
 		hasSelection &&
 		branchChoices.every(
 			({ branch }) =>
-				branch.name !== "" && (branch.kind !== "newBranch" || branch.baseBranch !== ""),
+				(branch.kind === "pullRequest" || branch.name !== "") &&
+				(branch.kind !== "newBranch" || branch.baseBranch !== ""),
 		);
 
 	/** Open pull requests usually live only on the remote: fetch their branches first. */

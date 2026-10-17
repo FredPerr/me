@@ -368,6 +368,37 @@ mod create_context_input {
             Err(WorkspaceErrorKind::InvalidInput)
         );
     }
+
+    #[test]
+    fn reads_a_pull_request_branch_and_carries_its_identity() {
+        use crate::workspace::application::service::BranchChoice;
+        use crate::workspace::domain::context_branch::MatchedPullRequest;
+
+        let json = serde_json::json!({
+            "kind": "pullRequest",
+            "headBranch": "feature/login",
+            "baseBranch": "develop",
+            "host": "github",
+            "number": 12,
+            "url": "https://github.com/acme/api/pull/12",
+        });
+
+        let parsed: BranchChoiceInput = serde_json::from_value(json).unwrap();
+        let choice = BranchChoice::try_from(parsed).unwrap();
+
+        assert_eq!(
+            choice,
+            BranchChoice::PullRequest {
+                head: branch_name("feature/login"),
+                base: branch_name("develop"),
+                matched: MatchedPullRequest {
+                    host: "github".into(),
+                    number: 12,
+                    url: "https://github.com/acme/api/pull/12".into(),
+                },
+            }
+        );
+    }
 }
 
 mod project_settings_input {
@@ -522,6 +553,47 @@ mod project_view {
             serde_json::Value::Null
         );
         assert_eq!(json["branchNaming"]["allowsNoPrefix"], true);
+    }
+
+    #[test]
+    fn surfaces_the_matched_pull_request_on_a_branch() {
+        use crate::workspace::domain::context_branch::{ContextBranch, MatchedPullRequest};
+
+        let api = repository(API_ID, REPOSITORY_NAME, "./api");
+        let matched = MatchedPullRequest {
+            host: "github".into(),
+            number: 12,
+            url: "https://github.com/acme/api/pull/12".into(),
+        };
+        let feature = Context {
+            branches: vec![ContextBranch::from_pull_request(
+                repository_id(API_ID),
+                branch_name(BRANCH),
+                matched,
+            )],
+            ..context_named(CONTEXT_NAME)
+        };
+        let project = project_with(vec![api])
+            .repair_default_context(&HashMap::from([(
+                repository_id(API_ID),
+                vec![branch_name("main")],
+            )]))
+            .unwrap()
+            .add_context(feature)
+            .unwrap();
+
+        let json = serde_json::to_value(ProjectView::from(&project)).unwrap();
+        let branch = &json["contexts"][1]["branches"][0];
+
+        assert_eq!(branch["pullRequestDraft"], serde_json::Value::Null);
+        assert_eq!(
+            branch["pullRequestMatched"],
+            serde_json::json!({
+                "host": "github",
+                "number": 12,
+                "url": "https://github.com/acme/api/pull/12",
+            })
+        );
     }
 }
 
