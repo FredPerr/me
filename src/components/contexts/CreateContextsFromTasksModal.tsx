@@ -12,9 +12,8 @@ import {
 import { notifications } from "@mantine/notifications";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { selectPendingTasks } from "@/application/work-tracking/selectPendingTasks";
 import { commands, type ProjectView } from "@/bindings";
-import { useLinkedProjectTasks } from "@/hooks/work-tracking/useLinkedProjectTasks";
+import { useProjectPendingTasks } from "@/hooks/work-tracking/useProjectPendingTasks";
 import { useCreateContexts } from "@/hooks/workspace/useCreateContexts";
 import {
 	draftTaskContext,
@@ -42,7 +41,7 @@ export function CreateContextsFromTasksModal({
 	const { t } = useTranslation();
 	const { contexts } = project;
 	const hasLinkedProjects = project.remoteProjectLinks.length > 0;
-	const linkedTasks = useLinkedProjectTasks(project.remoteProjectLinks, hasLinkedProjects);
+	const pendingTaskCards = useProjectPendingTasks(project.tag, hasLinkedProjects);
 	const [step, setStep] = useState<Step>("select");
 	const [selectedKeys, setSelectedKeys] = useState<ReadonlySet<string>>(new Set());
 	const [draftsByKey, setDraftsByKey] = useState<ReadonlyMap<string, TaskContextDraft>>(new Map());
@@ -51,10 +50,7 @@ export function CreateContextsFromTasksModal({
 	const [selectedBaseContextId, setSelectedBaseContextId] = useState<string | null>(null);
 	const { createContexts, creating } = useCreateContexts(project);
 
-	const pendingTasks = useMemo(
-		() => selectPendingTasks(linkedTasks.tasks, contexts),
-		[linkedTasks.tasks, contexts],
-	);
+	const pendingTasks = pendingTaskCards.tasks;
 
 	const defaultBaseContext = findDefaultContext(project) ?? contexts[0];
 	const baseContextId = selectedBaseContextId ?? defaultBaseContext?.id ?? null;
@@ -151,8 +147,9 @@ export function CreateContextsFromTasksModal({
 			{step === "select" ? (
 				<TaskSelectionStep
 					tasks={pendingTasks}
-					loading={linkedTasks.loading}
-					error={linkedTasks.error}
+					loading={pendingTaskCards.loading}
+					error={pendingTaskCards.error}
+					unavailableConnections={pendingTaskCards.unavailableConnections}
 					hasLinkedProjects={hasLinkedProjects}
 					selectedKeys={selectedKeys}
 					onSelectedKeysChange={setSelectedKeys}

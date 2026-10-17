@@ -6,6 +6,7 @@ pub mod error;
 pub mod identifiers;
 pub mod label;
 pub mod page;
+pub mod pending_tasks;
 pub mod person;
 pub mod ports;
 pub mod provider_connection;
