@@ -78,6 +78,7 @@ export const commands = {
 	workTrackingListItems: (connectionId: string, projectId: string, groupId: string, cursor: string | null) => __TAURI_INVOKE<Page<Task>>("work_tracking_list_items", { connectionId, projectId, groupId, cursor }),
 	workTrackingListProjectItems: (connectionId: string, projectId: string, cursor: string | null) => __TAURI_INVOKE<Page<Task>>("work_tracking_list_project_items", { connectionId, projectId, cursor }),
 	workTrackingAssignMeToTask: (connectionId: string, itemId: string) => __TAURI_INVOKE<null>("work_tracking_assign_me_to_task", { connectionId, itemId }),
+	workTrackingPendingTasks: (projectTag: string) => __TAURI_INVOKE<PendingTasksView>("work_tracking_pending_tasks", { projectTag }),
 };
 
 /** Events */
@@ -279,6 +280,26 @@ export type NewPullRequestInput = {
 export type Page<T> = {
 	items: T[],
 	nextCursor: Cursor | null,
+};
+
+/**
+ *  A task still waiting for a context: a dashed card in the board's Idle
+ *  column. Carries its connection and remote project so the frontend can show
+ *  it and create a context from it.
+ */
+export type PendingTaskView = {
+	connectionId: ConnectionId,
+	remoteProjectId: RemoteProjectId,
+	task: Task,
+};
+
+/**
+ *  The board's pending task cards for one Project, plus the connections whose
+ *  links were skipped because they are missing, uncredentialed or unreachable.
+ */
+export type PendingTasksView = {
+	tasks: PendingTaskView[],
+	unavailableConnections: ConnectionId[],
 };
 
 export type Person = {

@@ -1,6 +1,5 @@
-import type { LinkedTask } from "@/application/work-tracking/listLinkedProjectTasks";
-import { taskRefOf } from "@/application/work-tracking/selectPendingTasks";
 import type { ContextView } from "@/bindings";
+import { type LinkedTask, taskRefOf } from "@/models/work-tracking/pendingTask";
 import type { BulkContextSpec } from "./BulkContextSpec";
 import { buildTaskPreprompt, DEFAULT_TASKS_PREAMBLE } from "./tasksToContextSpecs";
 

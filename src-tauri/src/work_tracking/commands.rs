@@ -6,7 +6,9 @@ use tauri::State;
 
 use super::application::service::{ConnectionView, SaveConnectionCommand, WorkTrackingService};
 use super::domain::error::{InputField, InvalidInputReason, WorkTrackingError};
+use super::domain::identifiers::{ConnectionId, RemoteProjectId};
 use super::domain::page::Page;
+use super::domain::pending_tasks::{PendingTask, PendingTasks};
 use super::domain::remote_project::RemoteProject;
 use super::domain::task::Task;
 use super::domain::task_group::TaskGroup;
@@ -190,6 +192,49 @@ impl From<SaveConnectionInput> for SaveConnectionCommand {
     }
 }
 
+/// A task still waiting for a context: a dashed card in the board's Idle
+/// column. Carries its connection and remote project so the frontend can show
+/// it and create a context from it.
+#[derive(Debug, Clone, PartialEq, Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct PendingTaskView {
+    pub connection_id: ConnectionId,
+    pub remote_project_id: RemoteProjectId,
+    pub task: Task,
+}
+
+impl From<PendingTask> for PendingTaskView {
+    fn from(pending: PendingTask) -> Self {
+        Self {
+            connection_id: pending.connection_id,
+            remote_project_id: pending.remote_project_id,
+            task: pending.task,
+        }
+    }
+}
+
+/// The board's pending task cards for one Project, plus the connections whose
+/// links were skipped because they are missing, uncredentialed or unreachable.
+#[derive(Debug, Clone, PartialEq, Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct PendingTasksView {
+    pub tasks: Vec<PendingTaskView>,
+    pub unavailable_connections: Vec<ConnectionId>,
+}
+
+impl From<PendingTasks> for PendingTasksView {
+    fn from(pending: PendingTasks) -> Self {
+        Self {
+            tasks: pending
+                .tasks
+                .into_iter()
+                .map(PendingTaskView::from)
+                .collect(),
+            unavailable_connections: pending.unavailable_connections,
+        }
+    }
+}
+
 #[tauri::command]
 #[specta::specta]
 pub async fn work_tracking_list_connections(
@@ -276,6 +321,15 @@ pub async fn work_tracking_assign_me_to_task(
     item_id: String,
 ) -> Result<(), WorkTrackingCommandError> {
     Ok(state.assign_me_to_task(&connection_id, &item_id).await?)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn work_tracking_pending_tasks(
+    state: State<'_, WorkTrackingService>,
+    project_tag: String,
+) -> Result<PendingTasksView, WorkTrackingCommandError> {
+    Ok(state.pending_tasks(&project_tag).await?.into())
 }
 
 #[cfg(test)]
@@ -418,6 +472,58 @@ mod tests {
         let command = SaveConnectionCommand::from(named);
         assert_eq!(command.display_name.as_deref(), Some("Acme"));
         assert_eq!(command.api_key, "k");
+    }
+
+    #[test]
+    fn pending_tasks_view_wire_shape() {
+        use crate::work_tracking::domain::identifiers::{RemoteProjectId, TaskId};
+        use crate::work_tracking::domain::task::{Task, TaskPriority, TaskStatus};
+
+        let task = Task {
+            id: TaskId::from_numeric(1),
+            project_id: RemoteProjectId::from_numeric(42),
+            group_id: None,
+            parent_id: None,
+            title: "Add login".into(),
+            description: None,
+            status: TaskStatus::Todo,
+            raw_status: "new".into(),
+            priority: TaskPriority::None,
+            raw_priority: None,
+            assignees: vec![],
+            labels: vec![],
+            due_date: None,
+            url: "https://acme.teamwork.com/app/tasks/1".into(),
+            updated_at: None,
+        };
+        let view = PendingTasksView::from(PendingTasks {
+            tasks: vec![PendingTask {
+                connection_id: ConnectionId::parse(
+                    "teamwork:acme.teamwork.com",
+                    InputField::ConnectionId,
+                )
+                .unwrap(),
+                remote_project_id: RemoteProjectId::from_numeric(42),
+                task,
+            }],
+            unavailable_connections: vec![ConnectionId::parse(
+                "teamwork:other.teamwork.com",
+                InputField::ConnectionId,
+            )
+            .unwrap()],
+        });
+        let value = serde_json::to_value(&view).unwrap();
+        assert_eq!(
+            value["tasks"][0]["connectionId"],
+            "teamwork:acme.teamwork.com"
+        );
+        assert_eq!(value["tasks"][0]["remoteProjectId"], "42");
+        assert_eq!(value["tasks"][0]["task"]["id"], "1");
+        assert_eq!(value["tasks"][0]["task"]["title"], "Add login");
+        assert_eq!(
+            value["unavailableConnections"][0],
+            "teamwork:other.teamwork.com"
+        );
     }
 
     #[test]

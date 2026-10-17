@@ -303,6 +303,8 @@ export const en = {
 				noLinkedProjects: "Link work tracker projects in this project's settings to pick tasks.",
 				loadError: "Could not load tasks: {{message}}",
 				noPendingTasks: "Every open task already has a context.",
+				connectionsUnavailable:
+					"{{count}} linked connection is unavailable. Reconnect it to see its tasks.",
 				next: "Next ({{count}})",
 				createButton: "Create {{count}} contexts",
 				createdTitle: "Contexts created",

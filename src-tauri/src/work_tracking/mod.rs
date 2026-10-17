@@ -14,6 +14,7 @@ use std::sync::Arc;
 
 use application::registry::WorkTrackerRegistry;
 use application::service::WorkTrackingService;
+use domain::pending_tasks::ProjectTaskLinks;
 use domain::provider_kind::ProviderKind;
 use infra::connection_import::import_legacy_connections;
 use infra::keychain_credential_store::KeychainCredentialStore;
@@ -25,10 +26,13 @@ pub fn build_registry() -> WorkTrackerRegistry {
 
 /// Builds the service on the shared redb handle, importing any connections left
 /// in the old `work-tracking.json` in `app_data_dir` on first run. API keys stay
-/// in the keychain, untouched by the import.
+/// in the keychain, untouched by the import. `project_links` lets the
+/// pending-tasks use case read a Project's remote project links from the
+/// Workspace, so this context never names `workspace`.
 pub fn build_service(
     database: Arc<redb::Database>,
     app_data_dir: &Path,
+    project_links: Arc<dyn ProjectTaskLinks>,
 ) -> Result<WorkTrackingService, Box<dyn std::error::Error>> {
     let connections = Arc::new(
         RedbConnectionRepository::new(database)
@@ -43,5 +47,6 @@ pub fn build_service(
         connections,
         Arc::new(KeychainCredentialStore),
         build_registry(),
+        project_links,
     ))
 }

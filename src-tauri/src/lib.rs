@@ -82,6 +82,7 @@ const TYPED_COMMANDS: &[&str] = &[
     "work_tracking_list_items",
     "work_tracking_list_project_items",
     "work_tracking_assign_me_to_task",
+    "work_tracking_pending_tasks",
 ];
 
 /// The typed commands, exported with their types to `src/bindings.ts`.
@@ -134,6 +135,7 @@ fn typed_commands() -> tauri_specta::Builder<tauri::Wry> {
             work_tracking::commands::work_tracking_list_items,
             work_tracking::commands::work_tracking_list_project_items,
             work_tracking::commands::work_tracking_assign_me_to_task,
+            work_tracking::commands::work_tracking_pending_tasks,
         ])
         .events(tauri_specta::collect_events![
             workspace::infra::tauri_project_events::ProjectChanged,
@@ -189,15 +191,26 @@ pub fn run() {
             app.manage(ai_session::registry::SessionRegistry::new());
             let app_data_dir = app.path().app_data_dir()?;
             let database = storage::open(&app_data_dir)?;
-            let work_tracking = work_tracking::build_service(Arc::clone(&database), &app_data_dir)?;
-            app.manage(work_tracking);
             let settings = settings::build(Arc::clone(&database))?;
             let git = git::build(git_hosting::remote_credentials());
+            // Workspace is built before work_tracking: the pending-tasks use
+            // case reads a Project's remote project links through a composition
+            // adapter over WorkspaceService.
             let workspace = workspace::build(
                 app.handle().clone(),
                 Arc::clone(&database),
                 git.repositories(),
             )?;
+            let project_task_links =
+                composition::workspace_project_task_links::WorkspaceProjectTaskLinks::new(
+                    Arc::clone(&workspace.service),
+                );
+            let work_tracking = work_tracking::build_service(
+                Arc::clone(&database),
+                &app_data_dir,
+                Arc::new(project_task_links),
+            )?;
+            app.manage(work_tracking);
             let project_remotes =
                 composition::workspace_project_remotes::WorkspaceProjectRemotes::new(
                     Arc::clone(&workspace.service),

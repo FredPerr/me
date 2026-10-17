@@ -13,7 +13,8 @@ use crate::work_tracking::domain::error::WorkTrackingError;
 use crate::work_tracking::domain::identifiers::{
     ConnectionId, PersonId, RemoteProjectId, TaskGroupId, TaskId,
 };
-use crate::work_tracking::domain::page::{Page, PageRequest};
+use crate::work_tracking::domain::page::{Cursor, Page, PageRequest};
+use crate::work_tracking::domain::pending_tasks::{ProjectLinks, ProjectTaskLinks};
 use crate::work_tracking::domain::ports::{ConnectionRepository, CredentialStore, WorkTracker};
 use crate::work_tracking::domain::provider_connection::{DisplayName, ProviderConnection};
 use crate::work_tracking::domain::provider_kind::ProviderKind;
@@ -40,6 +41,10 @@ pub struct Script {
     pub projects_result: Result<Page<RemoteProject>, WorkTrackingError>,
     pub groups_result: Result<Page<TaskGroup>, WorkTrackingError>,
     pub items_result: Result<Page<Task>, WorkTrackingError>,
+    /// Successive `list_project_items` pages per remote project id. When a
+    /// project has an entry, each call pops its next page; otherwise
+    /// `items_result` answers. A project's queue may end with an error page.
+    pub project_item_pages: HashMap<String, Vec<Result<Page<Task>, WorkTrackingError>>>,
     pub current_user_result: Result<PersonId, WorkTrackingError>,
     pub assign_result: Result<(), WorkTrackingError>,
     pub created_with_keys: Vec<String>,
@@ -53,6 +58,7 @@ impl Script {
             projects_result: Ok(empty_page()),
             groups_result: Ok(empty_page()),
             items_result: Ok(empty_page()),
+            project_item_pages: HashMap::new(),
             current_user_result: Ok(PersonId::from_numeric(7)),
             assign_result: Ok(()),
             created_with_keys: Vec::new(),
@@ -167,7 +173,45 @@ impl WorkTracker for FakeWorkTracker {
             project_id.as_str(),
             describe(&page)
         ));
-        script.items_result.clone()
+        match script.project_item_pages.get_mut(project_id.as_str()) {
+            Some(pages) if !pages.is_empty() => pages.remove(0),
+            _ => script.items_result.clone(),
+        }
+    }
+}
+
+/// A page of tasks ending the sequence, or continuing with a next cursor.
+pub fn task_page(items: Vec<Task>, next_cursor: Option<u64>) -> Page<Task> {
+    Page {
+        items,
+        next_cursor: next_cursor.map(Cursor::from_numeric),
+    }
+}
+
+/// In-memory `ProjectTaskLinks` returning fixed links and created-from set.
+#[derive(Default)]
+pub struct FakeProjectTaskLinks {
+    results: Mutex<HashMap<String, Result<ProjectLinks, WorkTrackingError>>>,
+}
+
+impl FakeProjectTaskLinks {
+    pub fn set(&self, project_tag: &str, result: Result<ProjectLinks, WorkTrackingError>) {
+        self.results
+            .lock()
+            .unwrap()
+            .insert(project_tag.to_string(), result);
+    }
+}
+
+#[async_trait]
+impl ProjectTaskLinks for FakeProjectTaskLinks {
+    async fn links_for(&self, project_tag: &str) -> Result<ProjectLinks, WorkTrackingError> {
+        self.results
+            .lock()
+            .unwrap()
+            .get(project_tag)
+            .cloned()
+            .unwrap_or(Err(WorkTrackingError::NotFound))
     }
 }
 

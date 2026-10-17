@@ -1,5 +1,5 @@
-import type { LinkedTask } from "@/application/work-tracking/listLinkedProjectTasks";
-import type { ConnectionView, Task } from "@/bindings";
+import type { Task } from "@/bindings";
+import type { LinkedTask } from "@/models/work-tracking/pendingTask";
 
 export const DEFAULT_CONNECTION_ID = "teamwork:acme.teamwork.com";
 const DEFAULT_REMOTE_PROJECT_ID = "42";
@@ -21,17 +21,6 @@ export function buildTask(overrides?: Partial<Task>): Task {
 		dueDate: null,
 		url: "https://acme.teamwork.com/app/tasks/1",
 		updatedAt: null,
-		...overrides,
-	};
-}
-
-export function buildConnection(overrides?: Partial<ConnectionView>): ConnectionView {
-	return {
-		id: DEFAULT_CONNECTION_ID,
-		kind: "teamwork",
-		baseUrl: "https://acme.teamwork.com",
-		displayName: "acme.teamwork.com",
-		credentialConfigured: true,
 		...overrides,
 	};
 }
