@@ -7,6 +7,7 @@ use serde::Serialize;
 
 use super::registry::WorkTrackerRegistry;
 use crate::work_tracking::domain::api_key::ApiKey;
+use crate::work_tracking::domain::assign_me::{AssignMeResult, FailedAssignment, TaskToAssign};
 use crate::work_tracking::domain::base_url::BaseUrl;
 use crate::work_tracking::domain::error::{InputField, WorkTrackingError};
 use crate::work_tracking::domain::identifiers::{
@@ -222,9 +223,41 @@ impl WorkTrackingService {
     ) -> Result<(), WorkTrackingError> {
         let id = ConnectionId::parse(raw_connection_id, InputField::ConnectionId)?;
         let item_id = TaskId::parse(raw_item_id, InputField::ItemId)?;
-        let tracker = self.resolve(&id)?;
+        self.assign_me_to_one(&id, &item_id).await
+    }
+
+    /// Best-effort assignment of the current user to each of the given tasks,
+    /// used by the create-contexts-from-tasks flow after the contexts exist.
+    /// A failure on one task never aborts the batch: the result lists the tasks
+    /// that could not be assigned so the user can assign themselves by hand.
+    /// An empty input assigns nothing and returns no failures.
+    pub async fn assign_me_to_tasks(&self, tasks: &[TaskToAssign]) -> AssignMeResult {
+        let mut result = AssignMeResult::default();
+        for task in tasks {
+            if self
+                .assign_me_to_one(&task.connection_id, &task.task_id)
+                .await
+                .is_err()
+            {
+                result.failed.push(FailedAssignment {
+                    connection_id: task.connection_id.clone(),
+                    task_id: task.task_id.clone(),
+                });
+            }
+        }
+        result
+    }
+
+    /// Resolves "me" and performs the additive assignment for one already-parsed
+    /// task. Shared by the single and batch assign-me paths.
+    async fn assign_me_to_one(
+        &self,
+        connection_id: &ConnectionId,
+        task_id: &TaskId,
+    ) -> Result<(), WorkTrackingError> {
+        let tracker = self.resolve(connection_id)?;
         let user_id = tracker.current_user_id().await?;
-        tracker.assign_user_to_task(&item_id, &user_id).await
+        tracker.assign_user_to_task(task_id, &user_id).await
     }
 
     /// The open tasks of a local Project's linked remote projects still waiting
@@ -364,6 +397,7 @@ mod tests {
     };
     use crate::work_tracking::domain::error::InvalidInputReason;
     use crate::work_tracking::domain::identifiers::RemoteProjectId;
+    use crate::work_tracking::domain::identifiers::TaskId;
     use crate::work_tracking::domain::pending_tasks::{
         CreatedFromTask, PendingTask, ProjectLinks, ProjectTaskLink,
     };
@@ -782,6 +816,93 @@ mod tests {
             block_on(fixture.service.assign_me_to_task(CONNECTION_ID, "321")),
             Err(WorkTrackingError::Forbidden)
         );
+    }
+
+    fn task_to_assign(task_id: &str) -> TaskToAssign {
+        TaskToAssign {
+            connection_id: ConnectionId::parse(CONNECTION_ID, InputField::ConnectionId).unwrap(),
+            task_id: TaskId::parse(task_id, InputField::ItemId).unwrap(),
+        }
+    }
+
+    #[test]
+    fn assign_me_to_tasks_assigns_every_task_on_success() {
+        let fixture = fixture();
+        fixture.connections.insert(sample_connection());
+        fixture.credentials.insert(CONNECTION_ID, "key-1");
+        let tasks = vec![task_to_assign("101"), task_to_assign("102")];
+
+        let result = block_on(fixture.service.assign_me_to_tasks(&tasks));
+
+        assert_eq!(result, AssignMeResult::default());
+        let script = fixture.script.lock().unwrap();
+        let assignments: Vec<_> = script
+            .calls
+            .iter()
+            .filter(|call| call.starts_with("assign_user_to_task"))
+            .collect();
+        assert_eq!(assignments.len(), 2);
+    }
+
+    #[test]
+    fn assign_me_to_tasks_reports_only_the_tasks_that_failed() {
+        let fixture = fixture();
+        fixture.connections.insert(sample_connection());
+        fixture.credentials.insert(CONNECTION_ID, "key-1");
+        fixture
+            .script
+            .lock()
+            .unwrap()
+            .failing_assign_tasks
+            .insert("102".to_string());
+        let tasks = vec![
+            task_to_assign("101"),
+            task_to_assign("102"),
+            task_to_assign("103"),
+        ];
+
+        let result = block_on(fixture.service.assign_me_to_tasks(&tasks));
+
+        // Only the scripted task is listed; the batch is not aborted.
+        assert_eq!(
+            result.failed,
+            vec![FailedAssignment {
+                connection_id: ConnectionId::parse(CONNECTION_ID, InputField::ConnectionId)
+                    .unwrap(),
+                task_id: TaskId::parse("102", InputField::ItemId).unwrap(),
+            }]
+        );
+        let script = fixture.script.lock().unwrap();
+        let assignments = script
+            .calls
+            .iter()
+            .filter(|call| call.starts_with("assign_user_to_task"))
+            .count();
+        assert_eq!(assignments, 3);
+    }
+
+    #[test]
+    fn assign_me_to_tasks_lists_a_task_whose_connection_is_missing() {
+        let fixture = fixture();
+        // No connection is configured, so resolving the adapter fails for the task.
+        let tasks = vec![task_to_assign("101")];
+
+        let result = block_on(fixture.service.assign_me_to_tasks(&tasks));
+
+        assert_eq!(result.failed.len(), 1);
+        assert_eq!(result.failed[0].task_id.as_str(), "101");
+    }
+
+    #[test]
+    fn assign_me_to_tasks_assigns_nothing_for_an_empty_input() {
+        let fixture = fixture();
+        fixture.connections.insert(sample_connection());
+        fixture.credentials.insert(CONNECTION_ID, "key-1");
+
+        let result = block_on(fixture.service.assign_me_to_tasks(&[]));
+
+        assert_eq!(result, AssignMeResult::default());
+        assert!(fixture.script.lock().unwrap().calls.is_empty());
     }
 
     #[test]

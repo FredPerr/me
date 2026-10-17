@@ -82,6 +82,7 @@ const TYPED_COMMANDS: &[&str] = &[
     "work_tracking_list_items",
     "work_tracking_list_project_items",
     "work_tracking_assign_me_to_task",
+    "work_tracking_assign_me_to_tasks",
     "work_tracking_pending_tasks",
 ];
 
@@ -135,6 +136,7 @@ fn typed_commands() -> tauri_specta::Builder<tauri::Wry> {
             work_tracking::commands::work_tracking_list_items,
             work_tracking::commands::work_tracking_list_project_items,
             work_tracking::commands::work_tracking_assign_me_to_task,
+            work_tracking::commands::work_tracking_assign_me_to_tasks,
             work_tracking::commands::work_tracking_pending_tasks,
         ])
         .events(tauri_specta::collect_events![

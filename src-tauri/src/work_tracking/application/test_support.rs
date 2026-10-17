@@ -1,6 +1,6 @@
 //! In-memory fakes for the application-layer tests. Each test owns its own
 //! instances (no statics), so tests run in parallel.
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -47,6 +47,9 @@ pub struct Script {
     pub project_item_pages: HashMap<String, Vec<Result<Page<Task>, WorkTrackingError>>>,
     pub current_user_result: Result<PersonId, WorkTrackingError>,
     pub assign_result: Result<(), WorkTrackingError>,
+    /// Task ids whose assignment fails, overriding `assign_result` for them.
+    /// Lets a batch test fail specific tasks while the rest succeed.
+    pub failing_assign_tasks: HashSet<String>,
     pub created_with_keys: Vec<String>,
     pub calls: Vec<String>,
 }
@@ -61,6 +64,7 @@ impl Script {
             project_item_pages: HashMap::new(),
             current_user_result: Ok(PersonId::from_numeric(7)),
             assign_result: Ok(()),
+            failing_assign_tasks: HashSet::new(),
             created_with_keys: Vec::new(),
             calls: Vec::new(),
         }))
@@ -118,6 +122,9 @@ impl WorkTracker for FakeWorkTracker {
             item_id.as_str(),
             user_id.as_str()
         ));
+        if script.failing_assign_tasks.contains(item_id.as_str()) {
+            return Err(WorkTrackingError::ProviderError { status: None });
+        }
         script.assign_result.clone()
     }
 

@@ -78,6 +78,13 @@ export const commands = {
 	workTrackingListItems: (connectionId: string, projectId: string, groupId: string, cursor: string | null) => __TAURI_INVOKE<Page<Task>>("work_tracking_list_items", { connectionId, projectId, groupId, cursor }),
 	workTrackingListProjectItems: (connectionId: string, projectId: string, cursor: string | null) => __TAURI_INVOKE<Page<Task>>("work_tracking_list_project_items", { connectionId, projectId, cursor }),
 	workTrackingAssignMeToTask: (connectionId: string, itemId: string) => __TAURI_INVOKE<null>("work_tracking_assign_me_to_task", { connectionId, itemId }),
+	/**
+	 *  Best-effort assignment of the current user to each task, run by the
+	 *  create-contexts-from-tasks flow after the contexts exist. Never fails as a
+	 *  whole: the result lists the tasks the user could not be assigned to.
+	 *  An invalid id in the input drops only that task into the failed list.
+	 */
+	workTrackingAssignMeToTasks: (tasks: TaskToAssignInput[]) => __TAURI_INVOKE<AssignMeResultView>("work_tracking_assign_me_to_tasks", { tasks }),
 	workTrackingPendingTasks: (projectTag: string) => __TAURI_INVOKE<PendingTasksView>("work_tracking_pending_tasks", { projectTag }),
 };
 
@@ -98,6 +105,14 @@ export type AgentWorkView = {
 /**  The app-wide settings on the wire. */
 export type AppSettingsView = {
 	assignMeToTasks: boolean,
+};
+
+/**
+ *  The outcome of a best-effort assign-me batch on the wire: the tasks that
+ *  could not be assigned. An empty list means every task was assigned.
+ */
+export type AssignMeResultView = {
+	failed: FailedAssignmentView[],
 };
 
 /**  How the new context gets its branch in one repository. */
@@ -199,6 +214,17 @@ export type CreatedPullRequestView = {
 
 /**  Opaque pagination token; its meaning belongs to the provider adapter. */
 export type Cursor = string;
+
+/**
+ *  A task the current user could not be assigned to, on the wire, so the
+ *  frontend can list it and the user can assign themselves by hand. The ids
+ *  are bare strings: they echo the input, which may include an id that did not
+ *  parse.
+ */
+export type FailedAssignmentView = {
+	connectionId: string,
+	taskId: string,
+};
 
 /**
  *  A failed git command on the wire. `message` is readable and may name local
@@ -521,6 +547,15 @@ export type TaskId = string;
 export type TaskPriority = "none" | "low" | "medium" | "high" | "urgent" | "unknown";
 
 export type TaskStatus = "todo" | "inProgress" | "done" | "cancelled" | "unknown";
+
+/**
+ *  A task to assign the current user to, on the wire. The connection and task
+ *  ids identify a pending task card the frontend created a context from.
+ */
+export type TaskToAssignInput = {
+	connectionId: string,
+	taskId: string,
+};
 
 export type UnreadableProjectView = {
 	tag: string,
