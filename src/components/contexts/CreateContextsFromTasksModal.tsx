@@ -12,7 +12,9 @@ import {
 import { notifications } from "@mantine/notifications";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { commands, type ProjectView } from "@/bindings";
+import type { ProjectView, TaskToAssignInput } from "@/bindings";
+import { useAssignMeToTasksSetting } from "@/hooks/settings/useAssignMeToTasksSetting";
+import { useAssignMeToTasks } from "@/hooks/work-tracking/useAssignMeToTasks";
 import { useProjectPendingTasks } from "@/hooks/work-tracking/useProjectPendingTasks";
 import { useCreateContexts } from "@/hooks/workspace/useCreateContexts";
 import {
@@ -46,9 +48,10 @@ export function CreateContextsFromTasksModal({
 	const [selectedKeys, setSelectedKeys] = useState<ReadonlySet<string>>(new Set());
 	const [draftsByKey, setDraftsByKey] = useState<ReadonlyMap<string, TaskContextDraft>>(new Map());
 	const [instruction, setInstruction] = useState(DEFAULT_TASKS_PREAMBLE);
-	const [assignMe, setAssignMe] = useState(false);
+	const { assignMeToTasks, setAssignMeToTasks } = useAssignMeToTasksSetting();
 	const [selectedBaseContextId, setSelectedBaseContextId] = useState<string | null>(null);
 	const { createContexts, creating } = useCreateContexts(project);
+	const { mutateAsync: assignMeToTracker } = useAssignMeToTasks();
 
 	const pendingTasks = pendingTaskCards.tasks;
 
@@ -98,24 +101,42 @@ export function CreateContextsFromTasksModal({
 	}
 
 	/**
-	 * Adds the current user to each selected remote task. Runs after the local
-	 * contexts are created, so a provider failure here is surfaced as a warning
-	 * without undoing the created contexts.
+	 * Adds the current user to each selected remote task in one best-effort call.
+	 * Runs after the local contexts are created, so a tracker hiccup is surfaced
+	 * as a warning that names the tasks that could not be assigned, without
+	 * undoing the created contexts.
 	 */
 	async function assignMeToSelectedTasks() {
-		const results = await Promise.allSettled(
-			validatedDrafts.map(({ draft }) =>
-				commands.workTrackingAssignMeToTask(draft.task.connectionId, draft.task.task.id),
-			),
+		const tasks: TaskToAssignInput[] = validatedDrafts.map(({ draft }) => ({
+			connectionId: draft.task.connectionId,
+			taskId: draft.task.task.id,
+		}));
+		const result = await assignMeToTracker(tasks);
+		if (result.failed.length === 0) return;
+
+		const failedTitles = result.failed
+			.map((failure) => titleOfTask(failure.connectionId, failure.taskId))
+			.join(", ");
+		notifications.show({
+			title: t("contexts.fromTasks.assignMeFailedTitle"),
+			message: t("contexts.fromTasks.assignMeFailedMessage", {
+				count: result.failed.length,
+				tasks: failedTitles,
+			}),
+			color: "yellow",
+		});
+	}
+
+	/** The title of a selected task, so a failure names the task, not its id. */
+	function titleOfTask(connectionId: string, taskId: string): string {
+		const match = validatedDrafts.find(
+			({ draft }) => draft.task.connectionId === connectionId && draft.task.task.id === taskId,
 		);
-		const failed = results.filter((result) => result.status === "rejected").length;
-		if (failed > 0) {
-			notifications.show({
-				title: t("contexts.fromTasks.assignMeFailedTitle"),
-				message: t("contexts.fromTasks.assignMeFailedMessage", { count: failed }),
-				color: "yellow",
-			});
-		}
+		return match?.draft.contextName ?? taskId;
+	}
+
+	function toggleAssignMe(checked: boolean) {
+		setAssignMeToTasks(checked);
 	}
 
 	async function handleCreate() {
@@ -130,7 +151,7 @@ export function CreateContextsFromTasksModal({
 			message: t("contexts.fromTasks.createdMessage", { count: validatedDrafts.length }),
 			color: "green",
 		});
-		if (assignMe) {
+		if (assignMeToTasks) {
 			await assignMeToSelectedTasks();
 		}
 		onClose();
@@ -187,8 +208,8 @@ export function CreateContextsFromTasksModal({
 					<Checkbox
 						label={t("contexts.fromTasks.assignMeLabel")}
 						description={t("contexts.fromTasks.assignMeHint")}
-						checked={assignMe}
-						onChange={(event) => setAssignMe(event.currentTarget.checked)}
+						checked={assignMeToTasks}
+						onChange={(event) => toggleAssignMe(event.currentTarget.checked)}
 						disabled={creating}
 					/>
 					<ScrollArea.Autosize mah="55vh" type="auto">
