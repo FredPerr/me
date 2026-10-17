@@ -5,6 +5,28 @@ import * as __TAURI_EVENT from "@tauri-apps/api/event";
 
 /** Commands */
 export const commands = {
+	/**
+	 *  Launches the configured IDE on a project path. Typed tauri-specta command;
+	 *  the frontend calls it as `open_in_ide`.
+	 */
+	openInIde: (command: string, path: string, shell: string | null) => __TAURI_INVOKE<null>("open_in_ide", { command, path, shell }),
+	getActiveWorkspaces: (ideCommand: string) => __TAURI_INVOKE<string[]>("get_active_workspaces", { ideCommand }),
+	/**
+	 *  Spawns a new AI CLI session and begins streaming its output.
+	 * 
+	 *  Resolves the chosen adapter, builds a headless spawn spec, launches the
+	 *  child with piped stdio in its own process group, registers it, and starts
+	 *  background tasks that forward stdout/stderr lines to the frontend and watch
+	 *  for exit. Returns immediately with the session id and pid.
+	 */
+	spawnAiSession: (options: SpawnOptions) => __TAURI_INVOKE<SpawnedSession>("spawn_ai_session", { options }),
+	/**
+	 *  Terminates a running session by killing its entire process group.
+	 * 
+	 *  A kill is flagged in the registry first so the exit is reported as `killed`
+	 *  rather than `completed`/`failed`, then the OS process group is signalled.
+	 */
+	killAiSession: (sessionId: string) => __TAURI_INVOKE<null>("kill_ai_session", { sessionId }),
 	checkIsGitRepository: (path: string) => __TAURI_INVOKE<boolean>("check_is_git_repository", { path }),
 	getGitRemoteUrl: (path: string) => __TAURI_INVOKE<string | null>("get_git_remote_url", { path }),
 	listWorktrees: (path: string) => __TAURI_INVOKE<WorktreeView[]>("list_worktrees", { path }),
@@ -144,6 +166,23 @@ export type AgentWorkView = {
 	tool: AgentToolView,
 };
 
+/**  A failed AI-session command on the wire. `message` is a readable sentence. */
+export type AiSessionCommandError = {
+	kind: AiSessionErrorKind,
+	message: string,
+};
+
+/**  The kind of an AI-session command failure, as the frontend sees it. */
+export type AiSessionErrorKind = 
+/**  No adapter is registered for the requested id. */
+"unknownAdapter" | 
+/**  The prompt was empty. */
+"emptyPrompt" | 
+/**  The session could not be spawned (binary not found, spawn failed). */
+"spawnFailed" | 
+/**  The session could not be killed. */
+"killFailed";
+
 /**  The app-wide settings on the wire. */
 export type AppSettingsView = {
 	assignMeToTasks: boolean,
@@ -257,6 +296,12 @@ export type CreatedPullRequestView = {
 /**  Opaque pagination token; its meaning belongs to the provider adapter. */
 export type Cursor = string;
 
+/**  A single environment variable pair from the frontend. */
+export type EnvVar = {
+	key: string,
+	value: string,
+};
+
 /**
  *  A task the current user could not be assigned to, on the wire, so the
  *  frontend can list it and the user can assign themselves by hand. The ids
@@ -321,6 +366,22 @@ export type HostedPullRequestView = {
 	state: PullRequestStateView,
 	updatedAt: string,
 };
+
+/**
+ *  A failed IDE-launch command on the wire. `message` is a readable sentence
+ *  that may name the user's own IDE command and project path.
+ */
+export type IdeLauncherCommandError = {
+	kind: IdeLauncherErrorKind,
+	message: string,
+};
+
+/**  The kind of an IDE-launch failure, as the frontend sees it. */
+export type IdeLauncherErrorKind = 
+/**  The IDE command could not be located on the system. */
+"commandNotFound" | 
+/**  The resolved binary could not be launched. */
+"launchFailed";
 
 export type Label = {
 	name: string,
@@ -541,6 +602,43 @@ export type SignedInHostView = {
 	account: HostedAccountView | null,
 };
 
+/**  Parameters for spawning a session, sent from the frontend (camelCase). */
+export type SpawnOptions = {
+	/**  Adapter id selecting the CLI to run (e.g. `"kiro"`). */
+	adapterId: string,
+	/**  Natural-language prompt / instruction to run headlessly. */
+	prompt: string,
+	/**  Directory the CLI runs in (typically a context worktree path). */
+	workingDirectory: string,
+	/**  Optional explicit binary/path override; falls back to the adapter default. */
+	command: string | null,
+	/**  Optional named agent/profile when supported by the CLI. */
+	agent: string | null,
+	/**
+	 *  Optional prior conversation id to resume, so a follow-up prompt keeps the
+	 *  earlier context (Kiro's `--resume-id`).
+	 */
+	resumeId: string | null,
+	/**  Optional login shell used to resolve the binary via the user's PATH. */
+	shell: string | null,
+	/**  Extra environment variables (e.g. the headless API key). */
+	environment?: EnvVar[],
+	/**
+	 *  Run tools without per-action confirmation. Defaults to false when
+	 *  absent; the frontend sends true for headless runs, which rely on a
+	 *  workspace permission policy for their safety floor.
+	 */
+	trustAllTools?: boolean,
+};
+
+/**  The result returned to the caller when a session is accepted and started. */
+export type SpawnedSession = {
+	sessionId: string,
+	adapterId: string,
+	pid: number | null,
+	workingDirectory: string,
+};
+
 /**
  *  Read model of a remote task, issue or subtask. Options are always emitted
  *  (null when absent) so the wire shape stays stable for specta.
@@ -638,6 +736,26 @@ export type WorkspaceCommandError = {
 	kind: WorkspaceErrorKind,
 	message: string,
 };
+
+/**
+ *  A failed workspace-detection command on the wire. `message` is a readable
+ *  sentence that may name a path on the user's own machine.
+ */
+export type WorkspaceDetectorCommandError = {
+	kind: WorkspaceDetectorErrorKind,
+	message: string,
+};
+
+/**  The kind of a workspace-detection failure, as the frontend sees it. */
+export type WorkspaceDetectorErrorKind = 
+/**  The home directory could not be determined. */
+"homeNotFound" | 
+/**  The IDE's storage file does not exist yet. */
+"storageNotFound" | 
+/**  The storage file could not be read. */
+"storageUnreadable" | 
+/**  The storage file could not be parsed. */
+"storageInvalid";
 
 /**
  *  The kind of a workspace failure, as the frontend sees it. `invalidInput`

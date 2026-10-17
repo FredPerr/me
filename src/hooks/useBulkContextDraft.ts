@@ -155,7 +155,10 @@ export function useBulkContextDraft(project: ProjectView): UseBulkContextDraftRe
 					adapterId: KIRO_ADAPTER_ID,
 					prompt: buildBulkContextPrompt(instruction),
 					workingDirectory,
-					shell: settings?.shell || undefined,
+					command: null,
+					agent: null,
+					resumeId: null,
+					shell: settings?.shell || null,
 					trustAllTools: true,
 				});
 				activeSessionId.current = spawned.sessionId;

@@ -184,16 +184,6 @@ pub trait CliAdapter: Send + Sync {
     }
 }
 
-/// Metadata describing an available adapter, surfaced to the frontend so the UI
-/// can offer the list of supported CLIs without hardcoding it.
-#[derive(serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AdapterInfo {
-    pub id: String,
-    pub display_name: String,
-    pub default_command: String,
-}
-
 /// Holds the set of known adapters, keyed by their stable id.
 pub struct AdapterRegistry {
     adapters: HashMap<&'static str, Box<dyn CliAdapter>>,
@@ -216,22 +206,6 @@ impl AdapterRegistry {
     /// Looks up an adapter by id.
     pub fn get(&self, id: &str) -> Option<&dyn CliAdapter> {
         self.adapters.get(id).map(|boxed| boxed.as_ref())
-    }
-
-    /// Lists metadata for every registered adapter, sorted by display name for
-    /// a stable UI ordering.
-    pub fn list(&self) -> Vec<AdapterInfo> {
-        let mut infos: Vec<AdapterInfo> = self
-            .adapters
-            .values()
-            .map(|adapter| AdapterInfo {
-                id: adapter.id().to_string(),
-                display_name: adapter.display_name().to_string(),
-                default_command: adapter.default_command().to_string(),
-            })
-            .collect();
-        infos.sort_by(|left, right| left.display_name.cmp(&right.display_name));
-        infos
     }
 }
 

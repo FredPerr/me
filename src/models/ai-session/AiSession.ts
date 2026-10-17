@@ -1,9 +1,10 @@
 /**
  * Frontend types for AI CLI session orchestration.
  *
- * These mirror the Rust wire types in `src-tauri/src/ai_session` (serialized as
- * camelCase). They are kept in sync by hand until `ai_session` moves to typed
- * commands.
+ * The command wire types (`SpawnOptions`, `SpawnedSession`) are generated into
+ * `bindings.ts` and re-exported below. The remaining types mirror the plain
+ * `ai-session://output` and `ai-session://status` Tauri events, which are not
+ * tauri-specta events, so they stay hand-kept and in sync by hand.
  */
 
 /** Lifecycle state of a session; mirrors Rust `SessionStatus`. */
@@ -29,34 +30,11 @@ export type StatusEvent = {
 	error: string | null;
 };
 
-/** The descriptor returned when a session starts; mirrors Rust `SpawnedSession`. */
-export type SpawnedSession = {
-	sessionId: string;
-	adapterId: string;
-	pid: number | null;
-	workingDirectory: string;
-};
-
-/** A single environment variable pair; mirrors Rust `EnvVar`. */
-type EnvVar = {
-	key: string;
-	value: string;
-};
-
-/** Options for spawning a session; mirrors Rust `SpawnOptions` (camelCase). */
-export type SpawnOptions = {
-	adapterId: string;
-	prompt: string;
-	workingDirectory: string;
-	command?: string;
-	agent?: string;
-	/** Prior Kiro conversation id to resume so a follow-up keeps the context. */
-	resumeId?: string;
-	shell?: string;
-	environment?: EnvVar[];
-	/** Run tools without per-action confirmation (headless runs set this). */
-	trustAllTools?: boolean;
-};
+// `SpawnOptions` and `SpawnedSession` are the typed command's wire types now,
+// generated into `bindings.ts`. Re-exported here so callers keep one import
+// path. The output/status events stay plain Tauri events, so their types
+// (below) remain hand-kept.
+export type { SpawnedSession, SpawnOptions } from "@/bindings";
 
 /** Terminal statuses for which no further output or kill action applies. */
 const TERMINAL_STATUSES: ReadonlySet<SessionStatus> = new Set<SessionStatus>([

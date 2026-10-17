@@ -21,83 +21,15 @@ mod work_tracking;
 mod workspace;
 mod workspace_detector;
 
-#[tauri::command]
-fn greet(name: &str) -> String {
-    format!("Hello, {}! You've been greeted from Rust!", name)
-}
-
-#[tauri::command]
-async fn open_in_ide(command: String, path: String, shell: Option<String>) -> Result<(), String> {
-    ide_launcher::launch(&command, &path, shell.as_deref())
-}
-
-#[tauri::command]
-async fn check_path_exists(path: String) -> bool {
-    std::path::Path::new(&path).exists()
-}
-
-/// TEMPORARY: commands already moved to tauri-specta. The dispatcher in [`run`]
-/// routes these to the typed handler and every other command to the old
-/// `generate_handler!`. Delete this list, the dispatcher and the old handler
-/// once the last command has moved. Names are the Rust function names.
-const TYPED_COMMANDS: &[&str] = &[
-    "check_is_git_repository",
-    "get_git_remote_url",
-    "list_worktrees",
-    "get_worktree_status",
-    "get_worktree_diff",
-    "read_pull_request_template",
-    "list_branches",
-    "list_local_branches",
-    "delete_local_branch",
-    "delete_worktree",
-    "prune_worktrees",
-    "pull_worktree",
-    "push_worktree",
-    "fetch_pr_branch",
-    "workspace_list_projects",
-    "workspace_get_project",
-    "workspace_create_context",
-    "workspace_delete_context",
-    "workspace_set_context_status",
-    "workspace_set_context_static",
-    "workspace_save_pull_request_draft",
-    "workspace_set_agent_prompt",
-    "workspace_record_agent_conversation",
-    "workspace_run_agent",
-    "workspace_stop_agent_run",
-    "workspace_list_agent_runs",
-    "workspace_update_project_settings",
-    "workspace_add_project",
-    "workspace_delete_project",
-    "workspace_suggest_branch_name",
-    "git_hosting_list_accounts",
-    "git_hosting_start_sign_in",
-    "git_hosting_poll_sign_in",
-    "git_hosting_sign_in_with_token",
-    "git_hosting_sign_out",
-    "git_hosting_project_pull_requests",
-    "git_hosting_context_pull_requests",
-    "git_hosting_create_pull_request",
-    "settings_get",
-    "settings_set_assign_me_to_tasks",
-    "work_tracking_list_connections",
-    "work_tracking_save_connection",
-    "work_tracking_remove_connection",
-    "work_tracking_list_projects",
-    "work_tracking_list_groups",
-    "work_tracking_list_items",
-    "work_tracking_list_project_items",
-    "work_tracking_assign_me_to_task",
-    "work_tracking_assign_me_to_tasks",
-    "work_tracking_pending_tasks",
-];
-
 /// The typed commands, exported with their types to `src/bindings.ts`.
 fn typed_commands() -> tauri_specta::Builder<tauri::Wry> {
     tauri_specta::Builder::<tauri::Wry>::new()
         .error_handling(tauri_specta::ErrorHandlingMode::Throw)
         .commands(tauri_specta::collect_commands![
+            ide_launcher::open_in_ide,
+            workspace_detector::get_active_workspaces,
+            ai_session::spawn_ai_session,
+            ai_session::kill_ai_session,
             git::commands::check_is_git_repository,
             git::commands::get_git_remote_url,
             git::commands::list_worktrees,
@@ -208,17 +140,6 @@ fn guard_window_close(window: &tauri::WebviewWindow, agent_run_service: Arc<Agen
 pub fn run() {
     let typed_builder = typed_commands();
     let typed_handler = typed_builder.invoke_handler();
-    // TEMPORARY: see TYPED_COMMANDS.
-    let legacy_handler: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool = tauri::generate_handler![
-        greet,
-        open_in_ide,
-        check_path_exists,
-        workspace_detector::get_active_workspaces,
-        ai_session::spawn_ai_session,
-        ai_session::kill_ai_session,
-        ai_session::list_ai_sessions,
-        ai_session::list_ai_adapters
-    ];
     let mut builder = tauri::Builder::default().plugin(tauri_plugin_store::Builder::new().build());
 
     #[cfg(desktop)]
@@ -240,13 +161,7 @@ pub fn run() {
         .plugin(tauri_plugin_window_state::Builder::new().build())
         .plugin(shortcuts::plugin())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(move |invoke| {
-            if TYPED_COMMANDS.contains(&invoke.message.command()) {
-                typed_handler(invoke)
-            } else {
-                legacy_handler(invoke)
-            }
-        })
+        .invoke_handler(typed_handler)
         .setup(move |app| {
             typed_builder.mount_events(app);
             app.manage(ai_session::registry::SessionRegistry::new());
