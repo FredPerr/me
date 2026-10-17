@@ -62,3 +62,77 @@ pub trait DefaultAiTool: Send + Sync {
     /// settings cannot be read (the tool is always available).
     fn tool_id(&self) -> String;
 }
+
+/// Where a pull-request suggestion runs and what it is about: everything
+/// `suggest_pull_request` needs from the workspace to build the prompt and pick
+/// the folder, without `ai_assist` importing `workspace`. A composition adapter
+/// implements it over `WorkspaceService`, resolving the values exactly as the
+/// create-pull-request modal does today.
+pub trait PullRequestContext: Send + Sync {
+    /// Resolves the context's checkout of `repository_id` under `context_id` in
+    /// `project_tag`: the context and repository names, the worktree path to
+    /// run in, and the branch the diff is taken against. Errors when the
+    /// project, context or repository is unknown, or the repository has no base
+    /// branch to compare against.
+    fn resolve(
+        &self,
+        project_tag: &str,
+        context_id: &str,
+        repository_id: &str,
+    ) -> Result<PullRequestTarget, PullRequestContextError>;
+}
+
+/// The resolved target of a pull-request suggestion.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PullRequestTarget {
+    /// Human-readable name of the context (the title fallback).
+    pub context_name: String,
+    /// Name of the repository the pull request targets.
+    pub repository_name: String,
+    /// The context's checkout of the repository; the run's working directory.
+    pub worktree_path: String,
+    /// Branch the diff is computed against (the pull request's base).
+    pub base_branch: String,
+}
+
+/// Why a pull-request target could not be resolved. Each maps to a distinct
+/// thing the user is told; `suggest_pull_request` forwards it to its own error.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PullRequestContextError {
+    /// The project, context or repository could not be found.
+    NotFound { reason: String },
+    /// The repository has no base branch to compare the changes against.
+    NoBaseBranch,
+}
+
+/// Reads a worktree's diff against a base branch and its pull request template,
+/// so `suggest_pull_request` gets the same diff and template the frontend read
+/// through `getWorktreeDiff`/`readPullRequestTemplate` — without `ai_assist`
+/// importing `git`. A composition adapter implements it over `GitRepositories`
+/// and the pull-request-template reader.
+#[async_trait]
+pub trait RepositoryDiff: Send + Sync {
+    /// The unified diff of the worktree at `worktree_path` against
+    /// `base_branch`, and the repository's pull request template if it has one.
+    async fn read(
+        &self,
+        worktree_path: &str,
+        base_branch: &str,
+    ) -> Result<RepositoryDiffContents, RepositoryDiffUnavailable>;
+}
+
+/// A worktree's diff against its base and its optional pull request template.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RepositoryDiffContents {
+    /// Unified diff of the branch against the base. May be empty (no changes).
+    pub diff: String,
+    /// The repository's pull request template, if one exists.
+    pub template: Option<String>,
+}
+
+/// The diff or template could not be read (the worktree is missing, the base
+/// branch is unknown, git failed). The run cannot proceed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RepositoryDiffUnavailable {
+    pub reason: String,
+}

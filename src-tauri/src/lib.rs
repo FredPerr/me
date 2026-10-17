@@ -74,6 +74,8 @@ fn typed_commands() -> tauri_specta::Builder<tauri::Wry> {
             settings::commands::settings_set_default_ai_tool,
             ai_assist::commands::ai_assist_suggest_contexts,
             ai_assist::commands::ai_assist_cancel_contexts,
+            ai_assist::commands::ai_assist_suggest_pull_request,
+            ai_assist::commands::ai_assist_cancel_pull_request,
             work_tracking::commands::work_tracking_list_connections,
             work_tracking::commands::work_tracking_save_connection,
             work_tracking::commands::work_tracking_remove_connection,
@@ -242,6 +244,16 @@ pub fn run() {
                 composition::workspace_project_branch_naming::WorkspaceProjectBranchNaming::new(
                     Arc::clone(&workspace.service),
                 );
+            // #89: the pull-request suggestion reads its target (names, worktree,
+            // base branch) from the workspace Project and its diff + template
+            // from git — both through composition ports so ai_assist names no
+            // other context.
+            let pull_request_context =
+                composition::workspace_pull_request_context::WorkspacePullRequestContext::new(
+                    Arc::clone(&workspace.service),
+                );
+            let repository_diff =
+                composition::git_repository_diff::GitRepositoryDiff::new(git.repositories());
             let ai_assist = ai_assist::AiAssist {
                 service: Arc::new(
                     ai_assist::application::suggest_contexts::AiAssistService::new(
@@ -249,6 +261,8 @@ pub fn run() {
                         Arc::new(default_ai_tool),
                         Arc::new(project_branch_naming),
                         Arc::new(composition::tempfile_temp_workspace::TempfileTempWorkspace),
+                        Arc::new(pull_request_context),
+                        Arc::new(repository_diff),
                     ),
                 ),
             };

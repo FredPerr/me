@@ -114,6 +114,16 @@ export const commands = {
 	 *  running, so the modal can call it freely on close.
 	 */
 	aiAssistCancelContexts: () => __TAURI_INVOKE<null>("ai_assist_cancel_contexts"),
+	/**
+	 *  Writes a pull request title and description for one repository tab,
+	 *  read-only in the context's worktree. Returns both halves or a typed error.
+	 */
+	aiAssistSuggestPullRequest: (projectTag: string, contextId: string, repositoryId: string) => __TAURI_INVOKE<SuggestedPullRequestView>("ai_assist_suggest_pull_request", { projectTag, contextId, repositoryId }),
+	/**
+	 *  Cancels the pull-request suggestion in flight, if any. A no-op when none is
+	 *  running, so the modal can call it freely on close.
+	 */
+	aiAssistCancelPullRequest: () => __TAURI_INVOKE<null>("ai_assist_cancel_pull_request"),
 	workTrackingListConnections: () => __TAURI_INVOKE<ConnectionView[]>("work_tracking_list_connections"),
 	workTrackingSaveConnection: (input: SaveConnectionInput) => __TAURI_INVOKE<ConnectionView>("work_tracking_save_connection", { input }),
 	workTrackingRemoveConnection: (connectionId: string) => __TAURI_INVOKE<null>("work_tracking_remove_connection", { connectionId }),
@@ -192,9 +202,11 @@ export type AiAssistCommandError = {
  *  kinds carry the same meaning (and, via i18n, the same message) as the
  *  frontend bulk parser's `no-json-found`/`invalid-json`/`not-an-array`/
  *  `no-valid-rows`; the run kinds are cancel, timeout and a catch-all failure;
- *  `invalidInput` is a blank instruction.
+ *  `invalidInput` is a blank instruction. The pull-request suggestion adds
+ *  `emptyDiff` (no changes to describe) and `emptyAnswer` (the run produced no
+ *  text).
  */
-export type AiAssistErrorKind = "invalidInput" | "noListFound" | "malformed" | "notAList" | "noValidEntries" | "cancelled" | "timedOut" | "failed";
+export type AiAssistErrorKind = "invalidInput" | "noListFound" | "malformed" | "notAList" | "noValidEntries" | "emptyDiff" | "emptyAnswer" | "cancelled" | "timedOut" | "failed";
 
 /**  A failed AI-session command on the wire. `message` is a readable sentence. */
 export type AiSessionCommandError = {
@@ -681,6 +693,15 @@ export type SpawnedSession = {
 	adapterId: string,
 	pid: number | null,
 	workingDirectory: string,
+};
+
+/**
+ *  A written pull request on the wire: both halves the modal needs. The modal
+ *  keeps a title the user already typed and always fills the description.
+ */
+export type SuggestedPullRequestView = {
+	title: string,
+	description: string,
 };
 
 /**
