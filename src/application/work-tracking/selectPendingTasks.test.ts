@@ -1,49 +1,20 @@
 import { describe, expect, it } from "vitest";
 import type { ContextView } from "@/bindings";
-import { toWorkItemId, toWorkProjectId } from "@/domain/work-tracking/identifiers";
-import { ProviderKind } from "@/domain/work-tracking/ProviderKind";
-import { RemoteProjectLink } from "@/domain/work-tracking/RemoteProjectLink";
-import type { WorkItem } from "@/domain/work-tracking/WorkItem";
-import { WorkItemPriority } from "@/domain/work-tracking/WorkItemPriority";
-import { WorkItemStatus } from "@/domain/work-tracking/WorkItemStatus";
 import { buildContext } from "@/test-utils/workspaceBuilders";
+import { buildLinkedTask } from "@/test-utils/workTrackingBuilders";
 import type { LinkedTask } from "./listLinkedProjectTasks";
 import { selectPendingTasks, taskRefOf } from "./selectPendingTasks";
 
-const CONNECTION_ID = RemoteProjectLink.create(
-	{
-		providerKind: ProviderKind.Teamwork,
-		connectionId: "teamwork:acme.teamwork.com",
-		remoteProjectId: "42",
-		remoteProjectName: "Website",
-	},
-	new Date(),
-).connectionId;
 const LOGIN_TITLE = "Add login page";
 const BILLING_TITLE = "Fix billing export";
 
-function buildTask(id: string, title: string): LinkedTask {
-	const item: WorkItem = {
-		id: toWorkItemId(id),
-		projectId: toWorkProjectId("42"),
-		title,
-		status: WorkItemStatus.Todo,
-		rawStatus: "new",
-		priority: WorkItemPriority.None,
-		assignees: [],
-		labels: [],
-		url: `https://acme.teamwork.com/app/tasks/${id}`,
-	};
-	return { connectionId: CONNECTION_ID, item };
-}
-
 function buildContextFrom(task: LinkedTask): ContextView {
-	return buildContext({ name: task.item.title, origin: { kind: "fromTask", ...taskRefOf(task) } });
+	return buildContext({ name: task.task.title, origin: { kind: "fromTask", ...taskRefOf(task) } });
 }
 
 describe("selectPendingTasks", () => {
-	const loginTask = buildTask("1", LOGIN_TITLE);
-	const billingTask = buildTask("2", BILLING_TITLE);
+	const loginTask = buildLinkedTask({ id: "1", title: LOGIN_TITLE });
+	const billingTask = buildLinkedTask({ id: "2", title: BILLING_TITLE });
 
 	it("keeps tasks that have no context yet", () => {
 		expect(selectPendingTasks([loginTask, billingTask], [])).toEqual([loginTask, billingTask]);

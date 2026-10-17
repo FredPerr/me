@@ -1,7 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { InvalidInputReason } from "@/domain/work-tracking/InvalidInputReason";
-import { WorkTrackingError } from "@/domain/work-tracking/WorkTrackingError";
-import { WorkTrackingErrorKind } from "@/domain/work-tracking/WorkTrackingErrorKind";
+import type { WorkTrackingCommandError } from "@/bindings";
 import { en } from "@/i18n/en";
 import {
 	ERROR_KEYS,
@@ -9,6 +7,18 @@ import {
 	RATE_LIMITED_RETRY_AFTER_KEY,
 	REASON_KEYS,
 } from "./errorMessageKey";
+
+function buildError(overrides: Partial<WorkTrackingCommandError>): WorkTrackingCommandError {
+	return {
+		kind: "providerError",
+		message: "failed",
+		field: null,
+		reason: null,
+		retryAfterSeconds: null,
+		status: null,
+		...overrides,
+	};
+}
 
 function resolveTranslation(key: string): unknown {
 	return key
@@ -32,30 +42,19 @@ describe("errorMessageKey", () => {
 	});
 
 	it("maps every non-special kind to its own key", () => {
-		const error = new WorkTrackingError(WorkTrackingErrorKind.Unauthorized, "rejected");
+		const error = buildError({ kind: "unauthorized" });
 
 		expect(errorMessageKey(error)).toEqual({ key: "workTracking.errors.unauthorized" });
 	});
 
 	it("uses the generic invalid input key without a reason", () => {
-		const error = new WorkTrackingError(WorkTrackingErrorKind.InvalidInput, "invalid");
-
-		expect(errorMessageKey(error)).toEqual({ key: "workTracking.errors.invalidInput.generic" });
-	});
-
-	it("uses the generic invalid input key for an unknown reason", () => {
-		const error = new WorkTrackingError(WorkTrackingErrorKind.InvalidInput, "invalid", {
-			reason: "bogus",
-		});
+		const error = buildError({ kind: "invalidInput" });
 
 		expect(errorMessageKey(error)).toEqual({ key: "workTracking.errors.invalidInput.generic" });
 	});
 
 	it("uses the reason key for a known reason", () => {
-		const error = new WorkTrackingError(WorkTrackingErrorKind.InvalidInput, "invalid", {
-			field: "baseUrl",
-			reason: InvalidInputReason.HttpsRequired,
-		});
+		const error = buildError({ kind: "invalidInput", field: "baseUrl", reason: "httpsRequired" });
 
 		expect(errorMessageKey(error)).toEqual({
 			key: "workTracking.errors.invalidInput.httpsRequired",
@@ -63,9 +62,7 @@ describe("errorMessageKey", () => {
 	});
 
 	it("includes the retry delay when the provider sent one", () => {
-		const error = new WorkTrackingError(WorkTrackingErrorKind.RateLimited, "slow down", {
-			retryAfterSeconds: 30,
-		});
+		const error = buildError({ kind: "rateLimited", retryAfterSeconds: 30 });
 
 		expect(errorMessageKey(error)).toEqual({
 			key: "workTracking.errors.rateLimitedRetryAfter",
@@ -74,7 +71,7 @@ describe("errorMessageKey", () => {
 	});
 
 	it("uses the plain rate limit key without a retry delay", () => {
-		const error = new WorkTrackingError(WorkTrackingErrorKind.RateLimited, "slow down");
+		const error = buildError({ kind: "rateLimited" });
 
 		expect(errorMessageKey(error)).toEqual({ key: "workTracking.errors.rateLimited" });
 	});

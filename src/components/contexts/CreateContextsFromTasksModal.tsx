@@ -13,11 +13,9 @@ import { notifications } from "@mantine/notifications";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { selectPendingTasks } from "@/application/work-tracking/selectPendingTasks";
-import type { ProjectView } from "@/bindings";
-import { toWorkItemId } from "@/domain/work-tracking/identifiers";
+import { commands, type ProjectView } from "@/bindings";
 import { useLinkedProjectTasks } from "@/hooks/work-tracking/useLinkedProjectTasks";
 import { useCreateContexts } from "@/hooks/workspace/useCreateContexts";
-import { workTrackingGateway } from "@/infra/work-tracking/workTracking";
 import {
 	draftTaskContext,
 	type TaskContextDraft,
@@ -93,7 +91,7 @@ export function CreateContextsFromTasksModal({
 		setDraftsByKey((current) => {
 			const next = new Map<string, TaskContextDraft>();
 			for (const [key, draft] of current) {
-				next.set(key, { ...draft, prompt: buildTaskPreprompt(nextInstruction, draft.task.item) });
+				next.set(key, { ...draft, prompt: buildTaskPreprompt(nextInstruction, draft.task.task) });
 			}
 			return next;
 		});
@@ -111,10 +109,7 @@ export function CreateContextsFromTasksModal({
 	async function assignMeToSelectedTasks() {
 		const results = await Promise.allSettled(
 			validatedDrafts.map(({ draft }) =>
-				workTrackingGateway.assignMeToTask(
-					draft.task.connectionId,
-					toWorkItemId(draft.task.item.id),
-				),
+				commands.workTrackingAssignMeToTask(draft.task.connectionId, draft.task.task.id),
 			),
 		);
 		const failed = results.filter((result) => result.status === "rejected").length;

@@ -2,28 +2,30 @@ import { ActionIcon, Badge, Group, NavLink, Stack, Title } from "@mantine/core";
 import { ArrowSquareOutIcon } from "@phosphor-icons/react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useTranslation } from "react-i18next";
-import type { WorkProjectId } from "@/domain/work-tracking/identifiers";
-import type { ProviderConnection } from "@/domain/work-tracking/ProviderConnection";
-import { isOpenableProviderUrl } from "@/domain/work-tracking/providerUrl";
-import type { WorkProject } from "@/domain/work-tracking/WorkProject";
-import { WorkProjectStatus } from "@/domain/work-tracking/WorkProjectStatus";
+import type {
+	ConnectionView,
+	RemoteProject,
+	RemoteProjectId,
+	RemoteProjectStatus,
+} from "@/bindings";
+import { isOpenableProviderUrl } from "@/hooks/work-tracking/providerUrl";
 import type { PagedRemoteList } from "@/hooks/work-tracking/usePagedRemoteList";
 import { LoadMoreButton } from "./LoadMoreButton";
 import { RemoteListState } from "./RemoteListState";
 
-const PROJECT_STATUS_LABEL_KEYS: Record<WorkProjectStatus, string> = {
-	[WorkProjectStatus.Active]: "workTracking.projects.status.active",
-	[WorkProjectStatus.Archived]: "workTracking.projects.status.archived",
-	[WorkProjectStatus.Other]: "workTracking.projects.status.other",
+const PROJECT_STATUS_LABEL_KEYS: Record<RemoteProjectStatus, string> = {
+	active: "workTracking.projects.status.active",
+	archived: "workTracking.projects.status.archived",
+	other: "workTracking.projects.status.other",
 };
 
 const LIST_STYLE = { listStyle: "none" } as const;
 
 type RemoteProjectListProps = {
-	list: PagedRemoteList<WorkProject>;
-	selectedRemoteProjectId: WorkProjectId | null;
-	onSelect: (remoteProjectId: WorkProjectId) => void;
-	connection: ProviderConnection;
+	list: PagedRemoteList<RemoteProject>;
+	selectedRemoteProjectId: RemoteProjectId | null;
+	onSelect: (remoteProjectId: RemoteProjectId) => void;
+	connection: ConnectionView;
 	onReplaceKey: () => void;
 };
 
@@ -65,10 +67,10 @@ export function RemoteProjectList({
 }
 
 type RemoteProjectRowProps = {
-	remoteProject: WorkProject;
+	remoteProject: RemoteProject;
 	selected: boolean;
-	onSelect: (remoteProjectId: WorkProjectId) => void;
-	connection: ProviderConnection;
+	onSelect: (remoteProjectId: RemoteProjectId) => void;
+	connection: ConnectionView;
 };
 
 function RemoteProjectRow({
@@ -89,7 +91,7 @@ function RemoteProjectRow({
 				aria-current={selected ? "true" : undefined}
 				label={remoteProject.name}
 				rightSection={
-					remoteProject.status !== WorkProjectStatus.Active && (
+					remoteProject.status !== "active" && (
 						<Badge variant="light" color="gray" size="sm">
 							{t(PROJECT_STATUS_LABEL_KEYS[remoteProject.status])}
 						</Badge>

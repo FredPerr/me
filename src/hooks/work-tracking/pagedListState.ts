@@ -1,5 +1,4 @@
-import type { Page } from "@/domain/work-tracking/Page";
-import type { WorkTrackingError } from "@/domain/work-tracking/WorkTrackingError";
+import type { Page, WorkTrackingCommandError } from "@/bindings";
 
 export enum PagedListStatus {
 	Idle = "idle",
@@ -21,7 +20,7 @@ export type PagedListState<T> = {
 	readonly items: readonly T[];
 	readonly nextCursor: string | undefined;
 	readonly status: PagedListStatus;
-	readonly error: WorkTrackingError | null;
+	readonly error: WorkTrackingCommandError | null;
 };
 
 type PagedListAction<T> =
@@ -29,7 +28,7 @@ type PagedListAction<T> =
 	| { type: PagedListActionType.LoadStarted }
 	| { type: PagedListActionType.LoadMoreStarted }
 	| { type: PagedListActionType.PageLoaded; page: Page<T>; append: boolean }
-	| { type: PagedListActionType.LoadFailed; error: WorkTrackingError };
+	| { type: PagedListActionType.LoadFailed; error: WorkTrackingCommandError };
 
 export function createInitialPagedListState<T>(): PagedListState<T> {
 	return { items: [], nextCursor: undefined, status: PagedListStatus.Idle, error: null };
@@ -49,7 +48,7 @@ export function pagedListReducer<T>(
 		case PagedListActionType.PageLoaded:
 			return {
 				items: action.append ? [...state.items, ...action.page.items] : action.page.items,
-				nextCursor: action.page.nextCursor,
+				nextCursor: action.page.nextCursor ?? undefined,
 				status: PagedListStatus.Ready,
 				error: null,
 			};

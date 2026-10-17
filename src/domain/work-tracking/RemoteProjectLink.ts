@@ -1,8 +1,7 @@
+import type { ConnectionId, RemoteProjectId } from "@/bindings";
 import { InvalidInputReason } from "./InvalidInputReason";
-import type { ConnectionId, WorkProjectId } from "./identifiers";
 import { ProviderKind } from "./ProviderKind";
-import { WorkTrackingError } from "./WorkTrackingError";
-import { WorkTrackingErrorKind } from "./WorkTrackingErrorKind";
+import { RemoteProjectLinkError } from "./RemoteProjectLinkError";
 
 const MAX_ID_LENGTH = 300;
 const MAX_NAME_LENGTH = 200;
@@ -25,10 +24,8 @@ export type RemoteProjectLinkData = {
 	linkedAt: string;
 };
 
-function invalidLink(reason: InvalidInputReason): WorkTrackingError {
-	return new WorkTrackingError(WorkTrackingErrorKind.InvalidInput, "Invalid remote project link", {
-		reason,
-	});
+function invalidLink(reason: InvalidInputReason): RemoteProjectLinkError {
+	return new RemoteProjectLinkError(reason);
 }
 
 function requireText(value: unknown, maxLength: number): string {
@@ -67,7 +64,7 @@ export class RemoteProjectLink {
 	private constructor(
 		public readonly providerKind: ProviderKind,
 		public readonly connectionId: ConnectionId,
-		public readonly remoteProjectId: WorkProjectId,
+		public readonly remoteProjectId: RemoteProjectId,
 		public readonly remoteProjectName: string,
 		public readonly remoteProjectUrl: string | undefined,
 		public readonly linkedAt: string,
@@ -88,7 +85,7 @@ export class RemoteProjectLink {
 		return new RemoteProjectLink(
 			requireProviderKind(props.providerKind),
 			requireText(props.connectionId, MAX_ID_LENGTH) as ConnectionId,
-			requireText(props.remoteProjectId, MAX_ID_LENGTH) as WorkProjectId,
+			requireText(props.remoteProjectId, MAX_ID_LENGTH) as RemoteProjectId,
 			requireText(props.remoteProjectName, MAX_NAME_LENGTH),
 			httpsUrlOrUndefined(props.remoteProjectUrl),
 			linkedAt,
@@ -98,7 +95,7 @@ export class RemoteProjectLink {
 	static identityKeyOf(
 		providerKind: ProviderKind,
 		connectionId: ConnectionId,
-		remoteProjectId: WorkProjectId,
+		remoteProjectId: RemoteProjectId,
 	): string {
 		return `${providerKind}|${connectionId}|${remoteProjectId}`;
 	}

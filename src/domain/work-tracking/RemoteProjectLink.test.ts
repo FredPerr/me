@@ -2,8 +2,7 @@ import { describe, expect, it } from "vitest";
 import { InvalidInputReason } from "./InvalidInputReason";
 import { ProviderKind } from "./ProviderKind";
 import { RemoteProjectLink, type RemoteProjectLinkProps } from "./RemoteProjectLink";
-import { WorkTrackingError } from "./WorkTrackingError";
-import { WorkTrackingErrorKind } from "./WorkTrackingErrorKind";
+import { RemoteProjectLinkError } from "./RemoteProjectLinkError";
 
 const LINKED_AT = new Date("2024-01-15T10:00:00.000Z");
 const CONNECTION_ID = "teamwork:acme.teamwork.com";
@@ -20,14 +19,14 @@ function buildProps(overrides: Partial<RemoteProjectLinkProps> = {}): RemoteProj
 	};
 }
 
-function captureError(action: () => unknown): WorkTrackingError {
+function captureError(action: () => unknown): RemoteProjectLinkError {
 	try {
 		action();
 	} catch (error) {
-		if (error instanceof WorkTrackingError) return error;
+		if (error instanceof RemoteProjectLinkError) return error;
 		throw error;
 	}
-	throw new Error("Expected a WorkTrackingError");
+	throw new Error("Expected a RemoteProjectLinkError");
 }
 
 describe("RemoteProjectLink", () => {
@@ -49,9 +48,7 @@ describe("RemoteProjectLink", () => {
 				RemoteProjectLink.create(buildProps({ providerKind: "jira" as ProviderKind }), LINKED_AT),
 			);
 
-			expect(error.kind).toBe(WorkTrackingErrorKind.InvalidInput);
 			expect(error.reason).toBe(InvalidInputReason.Unsupported);
-			expect("field" in error).toBe(false);
 		});
 
 		it.each([
@@ -61,10 +58,8 @@ describe("RemoteProjectLink", () => {
 		])("rejects an empty %s as required", (_name, overrides) => {
 			const error = captureError(() => RemoteProjectLink.create(buildProps(overrides), LINKED_AT));
 
-			expect(error.kind).toBe(WorkTrackingErrorKind.InvalidInput);
 			expect(error.message).toBe("Invalid remote project link");
 			expect(error.reason).toBe(InvalidInputReason.Required);
-			expect("field" in error).toBe(false);
 		});
 
 		it("accepts IDs of 300 characters and rejects 301", () => {

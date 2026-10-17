@@ -1,36 +1,29 @@
-import type { ProviderConnection } from "@/domain/work-tracking/ProviderConnection";
+import { type ConnectionView, commands, type Task, type TaskStatus } from "@/bindings";
 import type { RemoteProjectLink } from "@/domain/work-tracking/RemoteProjectLink";
-import type { WorkItem } from "@/domain/work-tracking/WorkItem";
-import { WorkItemStatus } from "@/domain/work-tracking/WorkItemStatus";
-import type { WorkTrackingGateway } from "@/domain/work-tracking/WorkTrackingGateway";
 
 export const MAX_PAGES_PER_PROJECT = 20;
 
-const CLOSED_STATUSES: ReadonlySet<WorkItemStatus> = new Set([
-	WorkItemStatus.Done,
-	WorkItemStatus.Cancelled,
-]);
+const CLOSED_STATUSES: ReadonlySet<TaskStatus> = new Set<TaskStatus>(["done", "cancelled"]);
 
 export type LinkedTask = {
-	readonly connectionId: ProviderConnection["id"];
-	readonly item: WorkItem;
+	readonly connectionId: ConnectionView["id"];
+	readonly task: Task;
 };
 
-type ProjectTasksGateway = Pick<WorkTrackingGateway, "listProjectItems">;
-
-async function listAllProjectItems(
-	gateway: ProjectTasksGateway,
-	link: RemoteProjectLink,
-): Promise<WorkItem[]> {
-	const items: WorkItem[] = [];
-	let cursor: string | undefined;
+async function listAllProjectTasks(link: RemoteProjectLink): Promise<Task[]> {
+	const tasks: Task[] = [];
+	let cursor: string | null = null;
 	for (let pageIndex = 0; pageIndex < MAX_PAGES_PER_PROJECT; pageIndex += 1) {
-		const page = await gateway.listProjectItems(link.connectionId, link.remoteProjectId, cursor);
-		items.push(...page.items);
+		const page = await commands.workTrackingListProjectItems(
+			link.connectionId,
+			link.remoteProjectId,
+			cursor,
+		);
+		tasks.push(...page.items);
 		cursor = page.nextCursor;
-		if (cursor === undefined) break;
+		if (cursor === null) break;
 	}
-	return items;
+	return tasks;
 }
 
 /**
@@ -38,20 +31,19 @@ async function listAllProjectItems(
  * connection is gone or lacks a credential are skipped, since they cannot be queried.
  */
 export async function listLinkedProjectTasks(
-	gateway: ProjectTasksGateway,
 	links: readonly RemoteProjectLink[],
-	connections: readonly ProviderConnection[],
+	connections: readonly ConnectionView[],
 ): Promise<LinkedTask[]> {
 	const queryableLinks = links.filter((link) =>
 		connections.some(
 			(connection) => connection.id === link.connectionId && connection.credentialConfigured,
 		),
 	);
-	const itemsPerLink = await Promise.all(
+	const tasksPerLink = await Promise.all(
 		queryableLinks.map(async (link) => {
-			const items = await listAllProjectItems(gateway, link);
-			return items.map((item) => ({ connectionId: link.connectionId, item }));
+			const tasks = await listAllProjectTasks(link);
+			return tasks.map((task) => ({ connectionId: link.connectionId, task }));
 		}),
 	);
-	return itemsPerLink.flat().filter(({ item }) => !CLOSED_STATUSES.has(item.status));
+	return tasksPerLink.flat().filter(({ task }) => !CLOSED_STATUSES.has(task.status));
 }

@@ -1,4 +1,4 @@
-import type { WorkItem } from "@/domain/work-tracking/WorkItem";
+import type { Task } from "@/bindings";
 import type { BulkContextSpec } from "./BulkContextSpec";
 
 /**
@@ -16,7 +16,7 @@ export const DEFAULT_TASKS_PREAMBLE =
  * and reused for every selected task; the task's own title and description are
  * appended so each context carries its specific work item.
  */
-export function buildTaskPreprompt(preamble: string, task: WorkItem): string {
+export function buildTaskPreprompt(preamble: string, task: Task): string {
 	const sections = [preamble.trim(), `Task: ${task.title.trim()}`];
 	const description = task.description?.trim();
 	if (description) {
@@ -35,7 +35,7 @@ export function buildTaskPreprompt(preamble: string, task: WorkItem): string {
  * `preamble` plus the task text becomes each context's agent prompt.
  */
 export function tasksToContextSpecs(
-	tasks: readonly WorkItem[],
+	tasks: readonly Task[],
 	preamble: string,
 	connectionId: string,
 ): BulkContextSpec[] {

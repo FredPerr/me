@@ -18,7 +18,7 @@ export type ValidatedTaskContextDraft = {
 };
 
 export function taskKeyOf(task: LinkedTask): string {
-	return `${task.connectionId}|${task.item.id}`;
+	return `${task.connectionId}|${task.task.id}`;
 }
 
 export function draftTaskContext(
@@ -27,8 +27,8 @@ export function draftTaskContext(
 ): TaskContextDraft {
 	return {
 		task,
-		contextName: task.item.title.trim(),
-		prompt: buildTaskPreprompt(preamble, task.item),
+		contextName: task.task.title.trim(),
+		prompt: buildTaskPreprompt(preamble, task.task),
 	};
 }
 

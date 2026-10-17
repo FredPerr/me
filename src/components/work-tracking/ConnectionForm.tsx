@@ -1,10 +1,10 @@
 import { Alert, Button, PasswordInput, Stack, TextInput } from "@mantine/core";
 import { type FormEvent, useState } from "react";
 import { useTranslation } from "react-i18next";
+import type { WorkTrackingCommandError } from "@/bindings";
 import { DEFAULT_PROVIDER_KIND } from "@/domain/work-tracking/ProviderKind";
-import { WorkTrackingError } from "@/domain/work-tracking/WorkTrackingError";
-import { WorkTrackingErrorKind } from "@/domain/work-tracking/WorkTrackingErrorKind";
 import type { WorkTrackingConnections } from "@/hooks/work-tracking/useWorkTrackingConnections";
+import { toWorkTrackingCommandError } from "@/infra/commandError";
 import { translateError } from "./translateError";
 
 const BASE_URL_FIELD = "baseUrl";
@@ -19,23 +19,23 @@ export function ConnectionForm({ save }: ConnectionFormProps) {
 	const [baseUrl, setBaseUrl] = useState("");
 	const [apiKey, setApiKey] = useState("");
 	const [saving, setSaving] = useState(false);
-	const [error, setError] = useState<WorkTrackingError | null>(null);
+	const [error, setError] = useState<WorkTrackingCommandError | null>(null);
 
 	async function handleSubmit(event: FormEvent<HTMLFormElement>) {
 		event.preventDefault();
 		setSaving(true);
 		setError(null);
 		try {
-			await save({ kind: DEFAULT_PROVIDER_KIND, baseUrl, apiKey });
+			await save({ kind: DEFAULT_PROVIDER_KIND, baseUrl, displayName: null, apiKey });
 			setApiKey("");
 		} catch (saveError) {
-			setError(WorkTrackingError.fromUnknown(saveError));
+			setError(toWorkTrackingCommandError(saveError));
 		} finally {
 			setSaving(false);
 		}
 	}
 
-	const isFieldError = error?.kind === WorkTrackingErrorKind.InvalidInput;
+	const isFieldError = error?.kind === "invalidInput";
 	const errorText = error ? translateError(t, error) : null;
 	const baseUrlError = isFieldError && error.field === BASE_URL_FIELD ? errorText : null;
 	const apiKeyError = isFieldError && error.field === API_KEY_FIELD ? errorText : null;

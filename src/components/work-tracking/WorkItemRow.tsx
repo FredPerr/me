@@ -2,37 +2,33 @@ import { ActionIcon, Avatar, Badge, Checkbox, Group, Paper, Stack, Text } from "
 import { ArrowSquareOutIcon } from "@phosphor-icons/react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useTranslation } from "react-i18next";
-import type { Person } from "@/domain/work-tracking/Person";
-import type { ProviderConnection } from "@/domain/work-tracking/ProviderConnection";
-import { isOpenableProviderUrl } from "@/domain/work-tracking/providerUrl";
-import type { WorkItem } from "@/domain/work-tracking/WorkItem";
-import { WorkItemPriority } from "@/domain/work-tracking/WorkItemPriority";
-import { WorkItemStatus } from "@/domain/work-tracking/WorkItemStatus";
+import type { ConnectionView, Person, Task, TaskPriority, TaskStatus } from "@/bindings";
+import { isOpenableProviderUrl } from "@/hooks/work-tracking/providerUrl";
 import { formatDueDate } from "./formatDueDate";
 
-const STATUS_LABEL_KEYS: Record<WorkItemStatus, string> = {
-	[WorkItemStatus.Todo]: "workTracking.status.todo",
-	[WorkItemStatus.InProgress]: "workTracking.status.inProgress",
-	[WorkItemStatus.Done]: "workTracking.status.done",
-	[WorkItemStatus.Cancelled]: "workTracking.status.cancelled",
-	[WorkItemStatus.Unknown]: "workTracking.status.unknown",
+const STATUS_LABEL_KEYS: Record<TaskStatus, string> = {
+	todo: "workTracking.status.todo",
+	inProgress: "workTracking.status.inProgress",
+	done: "workTracking.status.done",
+	cancelled: "workTracking.status.cancelled",
+	unknown: "workTracking.status.unknown",
 };
 
-const STATUS_COLORS: Record<WorkItemStatus, string> = {
-	[WorkItemStatus.Todo]: "gray",
-	[WorkItemStatus.InProgress]: "blue",
-	[WorkItemStatus.Done]: "green",
-	[WorkItemStatus.Cancelled]: "dark",
-	[WorkItemStatus.Unknown]: "gray",
+const STATUS_COLORS: Record<TaskStatus, string> = {
+	todo: "gray",
+	inProgress: "blue",
+	done: "green",
+	cancelled: "dark",
+	unknown: "gray",
 };
 
-const PRIORITY_LABEL_KEYS: Record<WorkItemPriority, string> = {
-	[WorkItemPriority.None]: "workTracking.priority.none",
-	[WorkItemPriority.Low]: "workTracking.priority.low",
-	[WorkItemPriority.Medium]: "workTracking.priority.medium",
-	[WorkItemPriority.High]: "workTracking.priority.high",
-	[WorkItemPriority.Urgent]: "workTracking.priority.urgent",
-	[WorkItemPriority.Unknown]: "workTracking.priority.unknown",
+const PRIORITY_LABEL_KEYS: Record<TaskPriority, string> = {
+	none: "workTracking.priority.none",
+	low: "workTracking.priority.low",
+	medium: "workTracking.priority.medium",
+	high: "workTracking.priority.high",
+	urgent: "workTracking.priority.urgent",
+	unknown: "workTracking.priority.unknown",
 };
 
 // Same rule as the backend Label constructor; checked again because the value becomes CSS.
@@ -48,23 +44,23 @@ function initialsOf(displayName: string): string {
 		.join("");
 }
 
-function httpsOrUndefined(url: string | undefined): string | undefined {
+function httpsOrUndefined(url: string | null): string | undefined {
 	return url?.startsWith("https://") ? url : undefined;
 }
 
 type WorkItemRowProps = {
-	item: WorkItem;
-	connection: ProviderConnection;
+	task: Task;
+	connection: ConnectionView;
 	isOrphanSubtask: boolean;
 	selectable?: boolean;
 	selected?: boolean;
-	onToggleSelected?: (item: WorkItem, selected: boolean) => void;
+	onToggleSelected?: (task: Task, selected: boolean) => void;
 	/** Shows a short, truncated description under the title when available. */
 	showDescription?: boolean;
 };
 
 export function WorkItemRow({
-	item,
+	task,
 	connection,
 	isOrphanSubtask,
 	selectable = false,
@@ -73,8 +69,8 @@ export function WorkItemRow({
 	showDescription = false,
 }: WorkItemRowProps) {
 	const { t, i18n } = useTranslation();
-	const dueDate = formatDueDate(item.dueDate, i18n.language);
-	const canOpen = isOpenableProviderUrl(item.url, connection.baseUrl);
+	const dueDate = formatDueDate(task.dueDate, i18n.language);
+	const canOpen = isOpenableProviderUrl(task.url, connection.baseUrl);
 
 	return (
 		<Paper withBorder p="xs" radius="sm" mb={4}>
@@ -82,27 +78,27 @@ export function WorkItemRow({
 				{selectable && (
 					<Checkbox
 						checked={selected}
-						onChange={(event) => onToggleSelected?.(item, event.currentTarget.checked)}
-						aria-label={t("workTracking.bulkCreate.selectTask", { title: item.title })}
+						onChange={(event) => onToggleSelected?.(task, event.currentTarget.checked)}
+						aria-label={t("workTracking.bulkCreate.selectTask", { title: task.title })}
 						mt={2}
 					/>
 				)}
 				<Stack gap={4} style={{ minWidth: 0, flex: 1 }}>
 					<Text size="sm" fw={500}>
-						{item.title}
+						{task.title}
 					</Text>
-					{showDescription && item.description && (
+					{showDescription && task.description && (
 						<Text size="xs" c="dimmed" lineClamp={2}>
-							{item.description}
+							{task.description}
 						</Text>
 					)}
 					<Group gap={6}>
-						<Badge variant="light" size="sm" color={STATUS_COLORS[item.status]}>
-							{t(STATUS_LABEL_KEYS[item.status])}
+						<Badge variant="light" size="sm" color={STATUS_COLORS[task.status]}>
+							{t(STATUS_LABEL_KEYS[task.status])}
 						</Badge>
-						{item.priority !== WorkItemPriority.None && (
+						{task.priority !== "none" && (
 							<Badge variant="outline" size="sm" color="orange">
-								{t(PRIORITY_LABEL_KEYS[item.priority])}
+								{t(PRIORITY_LABEL_KEYS[task.priority])}
 							</Badge>
 						)}
 						{isOrphanSubtask && (
@@ -116,9 +112,9 @@ export function WorkItemRow({
 							</Text>
 						)}
 					</Group>
-					{item.labels.length > 0 && (
+					{task.labels.length > 0 && (
 						<Group gap={4}>
-							{item.labels.map((label) => {
+							{task.labels.map((label) => {
 								const color =
 									label.color && LABEL_COLOR_PATTERN.test(label.color) ? label.color : undefined;
 								return (
@@ -134,17 +130,17 @@ export function WorkItemRow({
 							})}
 						</Group>
 					)}
-					{item.assignees.length > 0 && <Assignees assignees={item.assignees} />}
+					{task.assignees.length > 0 && <Assignees assignees={task.assignees} />}
 				</Stack>
 				{canOpen && (
 					<ActionIcon
 						component="a"
-						href={item.url}
+						href={task.url}
 						variant="subtle"
-						aria-label={t("workTracking.items.openInProvider", { title: item.title })}
+						aria-label={t("workTracking.items.openInProvider", { title: task.title })}
 						onClick={(event) => {
 							event.preventDefault();
-							void openUrl(item.url);
+							void openUrl(task.url);
 						}}
 					>
 						<ArrowSquareOutIcon size={16} />

@@ -1,30 +1,28 @@
 import { Stack, Title } from "@mantine/core";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import type { WorkItemId } from "@/domain/work-tracking/identifiers";
-import type { ProviderConnection } from "@/domain/work-tracking/ProviderConnection";
-import type { WorkItem } from "@/domain/work-tracking/WorkItem";
-import { buildWorkItemTree, type WorkItemNode } from "@/domain/work-tracking/WorkItemTree";
+import type { ConnectionView, Task, TaskId } from "@/bindings";
+import { buildTaskTree, type TaskNode } from "@/hooks/work-tracking/taskTree";
 import type { PagedRemoteList } from "@/hooks/work-tracking/usePagedRemoteList";
 import { LoadMoreButton } from "./LoadMoreButton";
 import { RemoteListState } from "./RemoteListState";
 import { WorkItemRow } from "./WorkItemRow";
 
 type WorkItemSelection = {
-	selectedIds: ReadonlySet<WorkItemId>;
-	onToggle: (item: WorkItem, selected: boolean) => void;
+	selectedIds: ReadonlySet<TaskId>;
+	onToggle: (task: Task, selected: boolean) => void;
 };
 
 type WorkItemListProps = {
-	list: PagedRemoteList<WorkItem>;
-	connection: ProviderConnection;
+	list: PagedRemoteList<Task>;
+	connection: ConnectionView;
 	onReplaceKey: () => void;
 	selection?: WorkItemSelection;
 };
 
 export function WorkItemList({ list, connection, onReplaceKey, selection }: WorkItemListProps) {
 	const { t } = useTranslation();
-	const roots = useMemo(() => buildWorkItemTree(list.items), [list.items]);
+	const roots = useMemo(() => buildTaskTree(list.items), [list.items]);
 
 	return (
 		<Stack gap="xs">
@@ -45,8 +43,8 @@ export function WorkItemList({ list, connection, onReplaceKey, selection }: Work
 }
 
 type WorkItemNodesProps = {
-	nodes: readonly WorkItemNode[];
-	connection: ProviderConnection;
+	nodes: readonly TaskNode[];
+	connection: ConnectionView;
 	depth: number;
 	selection?: WorkItemSelection;
 };
@@ -59,13 +57,13 @@ function WorkItemNodes({ nodes, connection, depth, selection }: WorkItemNodesPro
 			style={{ listStyle: "none", margin: 0, padding: 0, paddingLeft: depth > 0 ? 20 : 0 }}
 		>
 			{nodes.map((node) => (
-				<li key={node.item.id}>
+				<li key={node.task.id}>
 					<WorkItemRow
-						item={node.item}
+						task={node.task}
 						connection={connection}
-						isOrphanSubtask={depth === 0 && node.item.parentId !== undefined}
+						isOrphanSubtask={depth === 0 && node.task.parentId !== null}
 						selectable={selection !== undefined}
-						selected={selection?.selectedIds.has(node.item.id) ?? false}
+						selected={selection?.selectedIds.has(node.task.id) ?? false}
 						onToggleSelected={selection?.onToggle}
 					/>
 					{node.children.length > 0 && (

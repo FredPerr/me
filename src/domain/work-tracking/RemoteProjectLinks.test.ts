@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ConnectionId, WorkProjectId } from "./identifiers";
 import { ProviderKind } from "./ProviderKind";
 import { RemoteProjectLink } from "./RemoteProjectLink";
 import { RemoteProjectLinks } from "./RemoteProjectLinks";
@@ -31,9 +30,7 @@ describe("RemoteProjectLinks", () => {
 			const links = RemoteProjectLinks.empty().add(buildLink("42"));
 
 			expect(links.toArray().map((link) => link.remoteProjectId)).toEqual(["42"]);
-			expect(
-				links.has(ProviderKind.Teamwork, CONNECTION_ID as ConnectionId, "42" as WorkProjectId),
-			).toBe(true);
+			expect(links.has(ProviderKind.Teamwork, CONNECTION_ID, "42")).toBe(true);
 		});
 
 		it("returns the same instance when the link is already present unchanged", () => {
@@ -68,9 +65,7 @@ describe("RemoteProjectLinks", () => {
 			const remaining = links.remove(first.identityKey());
 
 			expect(remaining.toArray().map((link) => link.remoteProjectId)).toEqual(["43"]);
-			expect(
-				remaining.has(ProviderKind.Teamwork, CONNECTION_ID as ConnectionId, "42" as WorkProjectId),
-			).toBe(false);
+			expect(remaining.has(ProviderKind.Teamwork, CONNECTION_ID, "42")).toBe(false);
 		});
 
 		it("returns the same instance when the key is absent", () => {

@@ -3,18 +3,21 @@ import {
 	type LinkedTask,
 	listLinkedProjectTasks,
 } from "@/application/work-tracking/listLinkedProjectTasks";
-import type { RemoteProjectLinkView } from "@/bindings";
+import type { RemoteProjectLinkView, WorkTrackingCommandError } from "@/bindings";
 import { RemoteProjectLinks } from "@/domain/work-tracking/RemoteProjectLinks";
-import { WorkTrackingError } from "@/domain/work-tracking/WorkTrackingError";
-import { workTrackingGateway } from "@/infra/work-tracking/workTracking";
+import { isWorkTrackingCommandError } from "@/infra/commandError";
 import { ConnectionsStatus, useWorkTrackingConnections } from "./useWorkTrackingConnections";
 
 export type LinkedProjectTasks = {
 	tasks: readonly LinkedTask[];
 	loading: boolean;
-	error: WorkTrackingError | null;
+	error: WorkTrackingCommandError | null;
 	reload: () => void;
 };
+
+function asWorkTrackingError(error: unknown): WorkTrackingCommandError | null {
+	return isWorkTrackingCommandError(error) ? error : null;
+}
 
 export function useLinkedProjectTasks(
 	remoteProjectLinkViews: readonly RemoteProjectLinkView[],
@@ -27,7 +30,7 @@ export function useLinkedProjectTasks(
 	const { connections, status: connectionsStatus } = useWorkTrackingConnections();
 	const [tasks, setTasks] = useState<readonly LinkedTask[]>([]);
 	const [loading, setLoading] = useState(false);
-	const [error, setError] = useState<WorkTrackingError | null>(null);
+	const [error, setError] = useState<WorkTrackingCommandError | null>(null);
 	const requestSequenceRef = useRef(0);
 
 	const load = useCallback(async () => {
@@ -36,16 +39,10 @@ export function useLinkedProjectTasks(
 		setLoading(true);
 		setError(null);
 		try {
-			const loaded = await listLinkedProjectTasks(
-				workTrackingGateway,
-				remoteProjectLinks.toArray(),
-				connections,
-			);
+			const loaded = await listLinkedProjectTasks(remoteProjectLinks.toArray(), connections);
 			if (sequence === requestSequenceRef.current) setTasks(loaded);
 		} catch (loadError) {
-			if (sequence === requestSequenceRef.current) {
-				setError(WorkTrackingError.fromUnknown(loadError));
-			}
+			if (sequence === requestSequenceRef.current) setError(asWorkTrackingError(loadError));
 		} finally {
 			if (sequence === requestSequenceRef.current) setLoading(false);
 		}
