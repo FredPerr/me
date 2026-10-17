@@ -59,6 +59,10 @@ fn typed_commands() -> tauri_specta::Builder<tauri::Wry> {
             workspace::commands::workspace_add_project,
             workspace::commands::workspace_delete_project,
             workspace::commands::workspace_suggest_branch_name,
+            workspace::commands::workbench_get,
+            workspace::commands::workbench_set_placement,
+            workspace::commands::workbench_reorder,
+            workspace::commands::workbench_set_last_project,
             git_hosting::commands::git_hosting_list_accounts,
             git_hosting::commands::git_hosting_start_sign_in,
             git_hosting::commands::git_hosting_poll_sign_in,
@@ -88,6 +92,7 @@ fn typed_commands() -> tauri_specta::Builder<tauri::Wry> {
         .events(tauri_specta::collect_events![
             workspace::infra::tauri_project_events::ProjectChanged,
             workspace::infra::tauri_agent_run_events::AgentRunChanged,
+            workspace::infra::tauri_workbench_events::WorkbenchChanged,
             git_hosting::infra::tauri_git_hosting_events::GitHostingChanged
         ])
 }

@@ -571,3 +571,61 @@ mod agent_run_view {
         assert_eq!(json["startedAt"], STARTED_AT);
     }
 }
+
+mod workbench_view {
+    use super::*;
+    use crate::workspace::domain::workbench::{Placement, Workbench, WorkbenchEntry};
+
+    const PINNED_TAG: &str = "alpha";
+    const SHOWN_TAG: &str = "beta";
+
+    fn tag(raw: &str) -> ProjectTag {
+        ProjectTag::parse(raw).unwrap()
+    }
+
+    fn arrangement() -> Workbench {
+        Workbench {
+            entries: vec![
+                WorkbenchEntry {
+                    project_tag: tag(PINNED_TAG),
+                    placement: Placement::Pinned,
+                },
+                WorkbenchEntry {
+                    project_tag: tag(SHOWN_TAG),
+                    placement: Placement::Shown,
+                },
+            ],
+            last_project_tag: Some(tag(SHOWN_TAG)),
+        }
+    }
+
+    #[test]
+    fn carries_the_entries_and_last_open_tag() {
+        let view = WorkbenchView::from(arrangement());
+
+        assert_eq!(view.entries.len(), 2);
+        assert_eq!(view.entries[0].project_tag, PINNED_TAG);
+        assert_eq!(view.entries[0].placement, PlacementView::Pinned);
+        assert_eq!(view.last_project_tag.as_deref(), Some(SHOWN_TAG));
+    }
+
+    #[test]
+    fn serializes_in_camel_case() {
+        let json = serde_json::to_value(WorkbenchView::from(arrangement())).unwrap();
+
+        assert_eq!(json["entries"][0]["projectTag"], PINNED_TAG);
+        assert_eq!(json["entries"][0]["placement"], "pinned");
+        assert_eq!(json["entries"][1]["placement"], "shown");
+        assert_eq!(json["lastProjectTag"], SHOWN_TAG);
+    }
+
+    #[test]
+    fn placement_round_trips_through_camel_case() {
+        let json = serde_json::json!("hidden");
+
+        let placement: PlacementView = serde_json::from_value(json).unwrap();
+
+        assert_eq!(placement, PlacementView::Hidden);
+        assert_eq!(Placement::from(placement), Placement::Hidden);
+    }
+}
