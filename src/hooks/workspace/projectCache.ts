@@ -4,6 +4,7 @@ import {
 	branchNameSuggestionsQueryKey,
 	PROJECT_LIST_QUERY_KEY,
 	projectQueryKey,
+	WORKBENCH_QUERY_KEY,
 } from "./workspaceQueryKeys";
 
 /** Puts the Project a command returned into the project query and the project list. */
@@ -33,5 +34,8 @@ export async function invalidateProject(queryClient: QueryClient, projectTag: st
 		queryClient.invalidateQueries({ queryKey: projectQueryKey(projectTag) }),
 		queryClient.invalidateQueries({ queryKey: PROJECT_LIST_QUERY_KEY }),
 		queryClient.invalidateQueries({ queryKey: branchNameSuggestionsQueryKey(projectTag) }),
+		// Creating or deleting a project changes which projects exist; the
+		// server-reconciled Workbench must refetch so the bar gains or loses the tab.
+		queryClient.invalidateQueries({ queryKey: WORKBENCH_QUERY_KEY }),
 	]);
 }
