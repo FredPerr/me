@@ -14,7 +14,7 @@ use std::sync::Arc;
 use application::agent_runs::AgentRunService;
 use application::service::WorkspaceService;
 use domain::agent_runner::AgentRunner;
-use domain::ports::{AgentRunRepository, ProjectEvents, ProjectRepository};
+use domain::ports::{AgentRunRepository, DefaultAgentTool, ProjectEvents, ProjectRepository};
 use infra::file_system_checkout_files::FileSystemCheckoutFiles;
 use infra::file_system_permission_floor::FileSystemPermissionFloor;
 use infra::redb_agent_run_repository::RedbAgentRunRepository;
@@ -33,14 +33,17 @@ pub struct Workspace {
     pub agent_run_service: Arc<AgentRunService>,
 }
 
-/// Builds the workspace services. The agent `runner` is injected because it is
-/// a composition adapter over `ai_session`, built in the composition root; the
-/// event emitter, clock and permission floor are workspace infra built here.
+/// Builds the workspace services. The agent `runner` and the `default_tool`
+/// (the Default AI tool a fresh context's first run uses, #90) are injected
+/// because they are composition adapters over `ai_session` and `settings`,
+/// built in the composition root; the event emitter, clock and permission
+/// floor are workspace infra built here.
 pub fn build(
     app: tauri::AppHandle,
     database: Arc<redb::Database>,
     git: Arc<dyn GitRepositories>,
     runner: Arc<dyn AgentRunner>,
+    default_tool: Arc<dyn DefaultAgentTool>,
 ) -> Result<Workspace, Box<dyn std::error::Error>> {
     let projects: Arc<dyn ProjectRepository> =
         Arc::new(RedbProjectRepository::new(Arc::clone(&database))?);
@@ -61,6 +64,7 @@ pub fn build(
         project_events,
         Arc::new(SystemClock),
         Arc::new(FileSystemPermissionFloor),
+        default_tool,
     );
     Ok(Workspace {
         service: Arc::new(service),

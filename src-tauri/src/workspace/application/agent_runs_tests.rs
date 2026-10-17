@@ -15,8 +15,8 @@ use crate::workspace::domain::test_support::{settings, PROJECT_TAG};
 use crate::workspace::infra::in_memory_agent_run_repository::InMemoryAgentRunRepository;
 use crate::workspace::infra::in_memory_project_repository::InMemoryProjectRepository;
 use crate::workspace::infra::recording_fakes::{
-    FakeAgentRunner, FakeClock, RecordedAgentRunUpdate, RecordingAgentRunEvents,
-    RecordingPermissionFloor, RecordingProjectEvents,
+    FakeAgentRunner, FakeClock, FakeDefaultAgentTool, RecordedAgentRunUpdate,
+    RecordingAgentRunEvents, RecordingPermissionFloor, RecordingProjectEvents,
 };
 
 const FEATURE_CONTEXT: &str = "Login page";
@@ -46,20 +46,34 @@ fn feature_context(conversation_id: Option<&str>) -> Context {
     }
 }
 
+/// The tool the harness's default-tool port hands a fresh context, unless a
+/// test overrides it. Kiro, the only tool today, so existing assertions stand.
+fn default_kiro_tool() -> AgentTool {
+    AgentTool::Kiro {
+        conversation_id: None,
+    }
+}
+
 struct Harness {
     projects: Arc<InMemoryProjectRepository>,
     agent_runs: Arc<InMemoryAgentRunRepository>,
     runner: Arc<FakeAgentRunner>,
     events: Arc<RecordingAgentRunEvents>,
     permission_floor: Arc<RecordingPermissionFloor>,
+    default_tool: Arc<FakeDefaultAgentTool>,
     service: Arc<AgentRunService>,
     context_id: ContextId,
 }
 
 impl Harness {
     /// A project with a default (static) context and `feature_context`, a
-    /// runner scripted to emit `scripted` after `Started`.
-    fn with(context: Context, scripted: Vec<AgentRunEvent>) -> Self {
+    /// runner scripted to emit `scripted` after `Started`, and the default-tool
+    /// port returning `default_tool` for a fresh context.
+    fn with_default_tool(
+        context: Context,
+        scripted: Vec<AgentRunEvent>,
+        default_tool: AgentTool,
+    ) -> Self {
         let context_id = context.id.clone();
         let project = Project::new(tag(), feature_settings())
             .add_context(Context::new_default(vec![]))
@@ -73,6 +87,7 @@ impl Harness {
         let runner = Arc::new(FakeAgentRunner::scripted(RUN_ID, scripted));
         let events = Arc::new(RecordingAgentRunEvents::default());
         let permission_floor = Arc::new(RecordingPermissionFloor::default());
+        let default_tool = Arc::new(FakeDefaultAgentTool::returning(default_tool));
         let service = Arc::new(AgentRunService::new(
             projects.clone(),
             agent_runs.clone(),
@@ -81,6 +96,7 @@ impl Harness {
             Arc::new(RecordingProjectEvents::default()),
             Arc::new(FakeClock::at(STARTED_AT)),
             permission_floor.clone(),
+            default_tool.clone(),
         ));
         Self {
             projects,
@@ -88,9 +104,15 @@ impl Harness {
             runner,
             events,
             permission_floor,
+            default_tool,
             service,
             context_id,
         }
+    }
+
+    /// A harness whose default-tool port hands a fresh context Kiro.
+    fn with(context: Context, scripted: Vec<AgentRunEvent>) -> Self {
+        Self::with_default_tool(context, scripted, default_kiro_tool())
     }
 
     fn feature(scripted: Vec<AgentRunEvent>) -> Self {
@@ -375,6 +397,61 @@ mod transcript {
             harness.only_run().output_lines,
             vec![FIRST_LINE, SECOND_LINE]
         );
+    }
+}
+
+mod resolving_the_tool {
+    use super::*;
+
+    #[tokio::test]
+    async fn a_fresh_context_reads_the_default_tool_from_the_port() {
+        let harness = Harness::with_default_tool(
+            feature_context(None),
+            vec![],
+            AgentTool::Kiro {
+                conversation_id: None,
+            },
+        );
+
+        harness.run().await;
+
+        assert!(
+            harness.default_tool.was_consulted(),
+            "a fresh context must consult the default-tool port"
+        );
+        let spec = harness.runner.started_specs().into_iter().next().unwrap();
+        assert_eq!(spec.tool_id, "kiro");
+    }
+
+    #[tokio::test]
+    async fn a_fresh_context_records_the_tool_it_started_on() {
+        let harness = Harness::feature(vec![]);
+
+        harness.run().await;
+
+        let agent = harness.stored_context().agent.expect("agent work recorded");
+        assert_eq!(
+            agent.tool,
+            AgentTool::Kiro {
+                conversation_id: None
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn an_established_context_keeps_its_recorded_tool_without_the_port() {
+        let harness = Harness::with(feature_context(Some(EXISTING_CONVERSATION)), vec![]);
+
+        harness.run().await;
+
+        assert!(
+            !harness.default_tool.was_consulted(),
+            "a context with recorded agent work must not consult the port"
+        );
+        let spec = harness.runner.started_specs().into_iter().next().unwrap();
+        assert_eq!(spec.tool_id, "kiro");
+        // The recorded tool wins, so its conversation id is resumed.
+        assert_eq!(spec.resume_id.as_deref(), Some(EXISTING_CONVERSATION));
     }
 }
 

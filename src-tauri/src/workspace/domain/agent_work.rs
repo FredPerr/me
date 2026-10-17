@@ -9,6 +9,15 @@ pub struct AgentWork {
 }
 
 impl AgentWork {
+    /// A fresh work on `tool`, with no prompt and no conversation yet, for a
+    /// context's first run.
+    pub fn on_tool(tool: AgentTool) -> Self {
+        Self {
+            prompt: None,
+            tool: tool.fresh(),
+        }
+    }
+
     pub fn with_prompt(self, prompt: Option<String>) -> Self {
         Self {
             prompt: prompt.filter(|text| !text.trim().is_empty()),
@@ -39,12 +48,36 @@ impl Default for AgentWork {
     }
 }
 
+/// The `ai_session` adapter id of the Kiro tool, the id the runner spawns.
+const KIRO_ADAPTER_ID: &str = "kiro";
+
 /// The agent doing the work, with what it needs to resume its conversation.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "tool", rename_all = "camelCase")]
 pub enum AgentTool {
     #[serde(rename_all = "camelCase")]
     Kiro { conversation_id: Option<String> },
+}
+
+impl AgentTool {
+    /// A fresh tool with no conversation yet, ready to record on a context's
+    /// first run so follow-up runs resume it.
+    pub fn fresh(&self) -> Self {
+        match self {
+            Self::Kiro { .. } => Self::Kiro {
+                conversation_id: None,
+            },
+        }
+    }
+
+    /// The `ai_session` adapter id the runner spawns for this tool. The single
+    /// source mapping a context's recorded tool to its adapter id, so adding a
+    /// tool later is one new arm here.
+    pub fn adapter_id(&self) -> &'static str {
+        match self {
+            Self::Kiro { .. } => KIRO_ADAPTER_ID,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -78,6 +111,27 @@ mod tests {
             }
         );
         assert_eq!(work.prompt.as_deref(), Some(PROMPT));
+    }
+
+    #[test]
+    fn kiro_maps_to_its_adapter_id() {
+        let tool = AgentTool::Kiro {
+            conversation_id: None,
+        };
+        assert_eq!(tool.adapter_id(), "kiro");
+    }
+
+    #[test]
+    fn a_fresh_tool_keeps_the_kind_and_drops_the_conversation() {
+        let tool = AgentTool::Kiro {
+            conversation_id: Some(CONVERSATION_ID.to_string()),
+        };
+        assert_eq!(
+            tool.fresh(),
+            AgentTool::Kiro {
+                conversation_id: None
+            }
+        );
     }
 
     #[test]

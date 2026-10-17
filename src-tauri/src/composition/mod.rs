@@ -6,6 +6,7 @@ pub mod ai_session_ai_assist_runner;
 pub mod git_hosting_push_listener;
 pub mod git_repository_diff;
 pub mod git_worktree_pushes;
+pub mod settings_default_agent_tool;
 pub mod settings_default_ai_tool;
 pub mod tempfile_temp_workspace;
 pub mod workspace_project_branch_naming;

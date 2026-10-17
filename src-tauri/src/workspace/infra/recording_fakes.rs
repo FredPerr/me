@@ -9,8 +9,9 @@ use crate::workspace::domain::agent_runner::{
     AgentRunError, AgentRunEvent, AgentRunEventSink, AgentRunEvents, AgentRunSpec, AgentRunUpdate,
     AgentRunner, RunFinalState, RunHandle,
 };
+use crate::workspace::domain::agent_work::AgentTool;
 use crate::workspace::domain::ports::{
-    CheckoutFiles, CheckoutFilesError, Clock, PermissionFloor, ProjectEvents,
+    CheckoutFiles, CheckoutFilesError, Clock, DefaultAgentTool, PermissionFloor, ProjectEvents,
 };
 use crate::workspace::domain::project_tag::ProjectTag;
 
@@ -173,6 +174,34 @@ impl RecordingPermissionFloor {
 impl PermissionFloor for RecordingPermissionFloor {
     fn seed(&self, working_directory: &str) {
         lock(&self.seeded).push(working_directory.to_string());
+    }
+}
+
+/// A fake Default-AI-tool port returning a fixed tool and recording whether it
+/// was consulted, so a test can prove a fresh context reads the default while
+/// an established one does not.
+pub struct FakeDefaultAgentTool {
+    tool: AgentTool,
+    consulted: Mutex<bool>,
+}
+
+impl FakeDefaultAgentTool {
+    pub fn returning(tool: AgentTool) -> Self {
+        Self {
+            tool,
+            consulted: Mutex::new(false),
+        }
+    }
+
+    pub fn was_consulted(&self) -> bool {
+        *lock(&self.consulted)
+    }
+}
+
+impl DefaultAgentTool for FakeDefaultAgentTool {
+    fn default_tool(&self) -> AgentTool {
+        *lock(&self.consulted) = true;
+        self.tool.clone()
     }
 }
 
