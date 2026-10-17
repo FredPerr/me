@@ -4,4 +4,5 @@
 pub mod agent_runs;
 mod checkout_journal;
 pub mod error;
+pub mod quit_guard;
 pub mod service;

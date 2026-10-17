@@ -24,6 +24,7 @@ use tauri::async_runtime::JoinHandle;
 use tokio::sync::mpsc;
 
 use super::error::{AgentRunServiceError, WorkspaceServiceError};
+use super::quit_guard::RunInProgress;
 use crate::workspace::domain::agent_run::{AgentRun, AgentRunState};
 use crate::workspace::domain::agent_runner::{
     AgentRunEvent, AgentRunEvents, AgentRunSpec, AgentRunUpdate, AgentRunner, RunFinalState,
@@ -51,11 +52,15 @@ pub struct StartedRun {
     pub context_id: ContextId,
 }
 
-/// A context's in-flight run: the handle to stop it and the background task
-/// draining its events. The consumer handle lets a test await the run; in the
-/// app it only needs to exist to be replaced when the run ends.
+/// A context's in-flight run: the handle to stop it, the project and context
+/// it belongs to (so the quit guard can name and stop it without re-reading
+/// storage), and the background task draining its events. The consumer handle
+/// lets a test await the run; in the app it only needs to exist to be replaced
+/// when the run ends.
 struct ActiveRun {
     handle: RunHandle,
+    context_id: ContextId,
+    context_name: String,
     #[cfg_attr(not(test), allow(dead_code))]
     consumer: JoinHandle<()>,
 }
@@ -141,7 +146,12 @@ impl AgentRunService {
             .unwrap_or_else(PoisonError::into_inner)
             .insert(
                 context_id.as_str().to_string(),
-                ActiveRun { handle, consumer },
+                ActiveRun {
+                    handle,
+                    context_id: context_id.clone(),
+                    context_name: context.name.to_string(),
+                    consumer,
+                },
             );
         Ok(StartedRun {
             run_id: run.id,
@@ -167,6 +177,90 @@ impl AgentRunService {
         context_id: &ContextId,
     ) -> Result<Vec<AgentRun>, AgentRunServiceError> {
         Ok(self.agent_runs.list_runs(context_id)?)
+    }
+
+    /// The runs the current session is driving, each with its context's name,
+    /// so the quit guard can decide whether to warn and what to say. The
+    /// in-memory active handles are the source of truth: they are the runs this
+    /// process actually started and can still stop, unlike opaque session ids.
+    /// Ordered by context id for a stable message.
+    pub fn in_progress_runs(&self) -> Vec<RunInProgress> {
+        let active = self.active.lock().unwrap_or_else(PoisonError::into_inner);
+        let mut runs: Vec<RunInProgress> = active
+            .values()
+            .map(|run| RunInProgress {
+                context_id: run.context_id.clone(),
+                context_name: run.context_name.clone(),
+            })
+            .collect();
+        runs.sort_by(|left, right| left.context_id.as_str().cmp(right.context_id.as_str()));
+        runs
+    }
+
+    /// Stops every run the current session is driving, for quitting cleanly.
+    /// Each stop flows through the runner and, like `stop_agent_run`, its sink
+    /// then delivers an `Ended(Stopped)` the background task records as Stopped
+    /// while moving the context to needs human. Stops are attempted for all
+    /// runs even if one fails; the first failure is returned afterwards.
+    pub async fn stop_all_in_progress(&self) -> Result<(), AgentRunServiceError> {
+        let handles: Vec<RunHandle> = self
+            .active
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .values()
+            .map(|run| run.handle.clone())
+            .collect();
+        let mut first_error = None;
+        for handle in handles {
+            if let Err(error) = self.runner.stop(&handle).await {
+                first_error.get_or_insert(AgentRunServiceError::from(error));
+            }
+        }
+        first_error.map_or(Ok(()), Err)
+    }
+
+    /// Reconciles runs left `Running` in storage by a previous process that
+    /// crashed or was force-quit (#82): each is recorded `Interrupted` and its
+    /// context moved to needs human, unless the context is static. Called once
+    /// at startup, before any run is started, so every `Running` run it finds
+    /// is a leftover rather than one this process is driving.
+    pub fn reconcile_interrupted_runs(&self) -> Result<(), AgentRunServiceError> {
+        let interrupted = self.agent_runs.running_runs()?;
+        for run in interrupted {
+            self.agent_runs.finish_run(
+                &run.context_id,
+                &run.id,
+                AgentRunState::Interrupted,
+                None,
+            )?;
+            self.move_interrupted_context(&run.context_id)?;
+        }
+        Ok(())
+    }
+
+    /// Moves the context of an interrupted run to needs human. The owning
+    /// project is found from storage because a leftover run only knows its
+    /// context id; a static context keeps its status through `move_context`.
+    fn move_interrupted_context(&self, context_id: &ContextId) -> Result<(), AgentRunServiceError> {
+        let Some((project_tag, context)) = self.find_owning_project(context_id)? else {
+            return Ok(());
+        };
+        self.move_context(&project_tag, &context, ContextStatus::NeedsHuman)
+    }
+
+    /// The project tag and context owning `context_id`, searched across all
+    /// readable projects. `None` when no project holds the context (its project
+    /// may have been deleted since the run was recorded).
+    fn find_owning_project(
+        &self,
+        context_id: &ContextId,
+    ) -> Result<Option<(ProjectTag, Context)>, AgentRunServiceError> {
+        let listing = self.projects.list().map_err(WorkspaceServiceError::from)?;
+        Ok(listing.projects.into_iter().find_map(|project| {
+            project
+                .find_context(context_id)
+                .map(|context| (project.tag().clone(), context.clone()))
+        }))
     }
 
     /// Consumes a run's events on a background task: appends lines, records the

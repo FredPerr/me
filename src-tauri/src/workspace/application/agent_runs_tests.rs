@@ -440,6 +440,126 @@ mod stopping {
     }
 }
 
+mod in_progress_runs {
+    use super::*;
+
+    #[tokio::test]
+    async fn lists_a_live_run_with_its_context_name() {
+        let harness = Harness::feature(vec![]);
+        harness.run().await;
+
+        let in_progress = harness.service.in_progress_runs();
+
+        assert_eq!(in_progress.len(), 1);
+        assert_eq!(in_progress[0].context_id, harness.context_id);
+        assert_eq!(in_progress[0].context_name, FEATURE_CONTEXT);
+    }
+
+    #[tokio::test]
+    async fn is_empty_when_no_run_is_active() {
+        let harness = Harness::feature(vec![]);
+
+        assert!(harness.service.in_progress_runs().is_empty());
+    }
+
+    #[tokio::test]
+    async fn is_empty_again_once_the_run_ends() {
+        let harness = Harness::feature(vec![ended(RunFinalState::Finished)]);
+
+        harness.run_to_completion().await;
+
+        assert!(harness.service.in_progress_runs().is_empty());
+    }
+}
+
+mod stop_all_in_progress {
+    use super::*;
+
+    #[tokio::test]
+    async fn stops_each_run_and_records_it_stopped_with_the_context_needing_human() {
+        let harness = Harness::feature(vec![]);
+        harness.run().await;
+
+        harness.service.stop_all_in_progress().await.unwrap();
+        // The process ending after the stop flows through the same sink.
+        harness.runner.end_latest_run(RunFinalState::Stopped, None);
+        harness.await_consumer().await;
+
+        assert_eq!(harness.runner.stopped_handles().len(), 1);
+        assert_eq!(harness.only_run().state, AgentRunState::Stopped);
+        assert_eq!(harness.status(), ContextStatus::NeedsHuman);
+    }
+
+    #[tokio::test]
+    async fn does_nothing_when_no_run_is_active() {
+        let harness = Harness::feature(vec![]);
+
+        harness.service.stop_all_in_progress().await.unwrap();
+
+        assert!(harness.runner.stopped_handles().is_empty());
+    }
+}
+
+mod reconciling_interrupted_runs {
+    use super::*;
+    use crate::workspace::domain::agent_run::AgentRun;
+
+    const LEFTOVER_RUN: &str = "leftover-run";
+
+    /// Persists a run left `Running` on the harness's context, as a crashed
+    /// process would, without going through `run_agent`.
+    fn persist_running_run(harness: &Harness) {
+        let run = AgentRun::started(
+            AgentRunId::parse(LEFTOVER_RUN).unwrap(),
+            harness.context_id.clone(),
+            PROMPT.to_string(),
+            STARTED_AT.to_string(),
+        );
+        harness.agent_runs.start_run(&run).unwrap();
+    }
+
+    #[tokio::test]
+    async fn a_leftover_run_becomes_interrupted_and_its_context_needs_human() {
+        let harness = Harness::feature(vec![]);
+        persist_running_run(&harness);
+
+        harness.service.reconcile_interrupted_runs().unwrap();
+
+        assert_eq!(harness.only_run().state, AgentRunState::Interrupted);
+        assert_eq!(harness.status(), ContextStatus::NeedsHuman);
+    }
+
+    #[tokio::test]
+    async fn a_static_context_keeps_its_status_but_its_run_is_still_interrupted() {
+        let context = Context {
+            is_static: true,
+            ..feature_context(None)
+        };
+        let harness = Harness::with(context, vec![]);
+        let status_before = harness.status();
+        persist_running_run(&harness);
+
+        harness.service.reconcile_interrupted_runs().unwrap();
+
+        assert_eq!(harness.status(), status_before);
+        assert_eq!(harness.only_run().state, AgentRunState::Interrupted);
+    }
+
+    #[tokio::test]
+    async fn does_nothing_when_no_run_was_left_running() {
+        let harness = Harness::feature(vec![]);
+
+        harness.service.reconcile_interrupted_runs().unwrap();
+
+        assert!(harness
+            .agent_runs
+            .list_runs(&harness.context_id)
+            .unwrap()
+            .is_empty());
+        assert_eq!(harness.status(), ContextStatus::default());
+    }
+}
+
 mod the_typed_event {
     use super::*;
 
