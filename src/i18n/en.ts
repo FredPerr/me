@@ -248,6 +248,8 @@ export const en = {
 			loadingBranches: "Loading branches…",
 			noBranchesFound: "No branches found",
 			draftPullRequest: "Create pull requests",
+			createdFromPullRequests: "Created from pull requests",
+			matchedPullRequest: "Open pull request #{{number}}",
 			pullRequestStatus: {
 				open: "Open pull request #{{number}}",
 				draft: "Draft pull request #{{number}}",
