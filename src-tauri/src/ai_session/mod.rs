@@ -5,18 +5,40 @@
 //! their output to the frontend over Tauri events line-by-line, and terminates
 //! them by process group on request.
 //!
-//! The three Tauri commands exposed are [`spawn_ai_session`], [`kill_ai_session`]
-//! and [`list_ai_adapters`]; [`list_ai_sessions`] reports currently tracked ids.
+//! The typed Tauri commands exposed are [`spawn_ai_session`] and
+//! [`kill_ai_session`], both driving the frontend's AI-assist drafts.
 
 pub mod adapter;
 pub mod kiro;
 pub mod process;
 pub mod registry;
 
-use adapter::{AdapterInfo, SpawnRequest};
+use adapter::SpawnRequest;
 use registry::{SessionRegistry, SessionStatus};
 use serde::{Deserialize, Serialize};
 use tauri::State;
+
+/// The kind of an AI-session command failure, as the frontend sees it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub enum AiSessionErrorKind {
+    /// No adapter is registered for the requested id.
+    UnknownAdapter,
+    /// The prompt was empty.
+    EmptyPrompt,
+    /// The session could not be spawned (binary not found, spawn failed).
+    SpawnFailed,
+    /// The session could not be killed.
+    KillFailed,
+}
+
+/// A failed AI-session command on the wire. `message` is a readable sentence.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct AiSessionCommandError {
+    pub kind: AiSessionErrorKind,
+    pub message: String,
+}
 
 /// Event name carrying a line of output for a session.
 pub const EVENT_OUTPUT: &str = "ai-session://output";
@@ -54,7 +76,7 @@ pub struct StatusEvent {
 }
 
 /// Parameters for spawning a session, sent from the frontend (camelCase).
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct SpawnOptions {
     /// Adapter id selecting the CLI to run (e.g. `"kiro"`).
@@ -83,7 +105,7 @@ pub struct SpawnOptions {
 }
 
 /// A single environment variable pair from the frontend.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct EnvVar {
     pub key: String,
@@ -91,7 +113,7 @@ pub struct EnvVar {
 }
 
 /// The result returned to the caller when a session is accepted and started.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct SpawnedSession {
     pub session_id: String,
@@ -107,18 +129,25 @@ pub struct SpawnedSession {
 /// background tasks that forward stdout/stderr lines to the frontend and watch
 /// for exit. Returns immediately with the session id and pid.
 #[tauri::command]
+#[specta::specta]
 pub async fn spawn_ai_session(
     app: tauri::AppHandle,
     registry: State<'_, SessionRegistry>,
     options: SpawnOptions,
-) -> Result<SpawnedSession, String> {
+) -> Result<SpawnedSession, AiSessionCommandError> {
     let adapter = registry
         .adapters()
         .get(&options.adapter_id)
-        .ok_or_else(|| format!("Unknown AI CLI adapter '{}'", options.adapter_id))?;
+        .ok_or_else(|| AiSessionCommandError {
+            kind: AiSessionErrorKind::UnknownAdapter,
+            message: format!("Unknown AI CLI adapter '{}'", options.adapter_id),
+        })?;
 
     if options.prompt.trim().is_empty() {
-        return Err("Prompt must not be empty".to_string());
+        return Err(AiSessionCommandError {
+            kind: AiSessionErrorKind::EmptyPrompt,
+            message: "Prompt must not be empty".to_string(),
+        });
     }
 
     let request = SpawnRequest {
@@ -135,9 +164,19 @@ pub async fn spawn_ai_session(
         trust_all_tools: options.trust_all_tools,
     };
 
-    let spec = adapter.build_spec(&request, options.command.as_deref())?;
+    let spec = adapter
+        .build_spec(&request, options.command.as_deref())
+        .map_err(|message| AiSessionCommandError {
+            kind: AiSessionErrorKind::SpawnFailed,
+            message,
+        })?;
 
-    process::spawn(app, &registry, options.adapter_id, spec).await
+    process::spawn(app, &registry, options.adapter_id, spec)
+        .await
+        .map_err(|message| AiSessionCommandError {
+            kind: AiSessionErrorKind::SpawnFailed,
+            message,
+        })
 }
 
 /// Terminates a running session by killing its entire process group.
@@ -145,23 +184,13 @@ pub async fn spawn_ai_session(
 /// A kill is flagged in the registry first so the exit is reported as `killed`
 /// rather than `completed`/`failed`, then the OS process group is signalled.
 #[tauri::command]
+#[specta::specta]
 pub async fn kill_ai_session(
     registry: State<'_, SessionRegistry>,
     session_id: String,
-) -> Result<(), String> {
-    process::kill_session(&registry, &session_id)
-}
-
-/// Lists the ids of sessions currently tracked as running.
-#[tauri::command]
-pub async fn list_ai_sessions(registry: State<'_, SessionRegistry>) -> Result<Vec<String>, String> {
-    Ok(registry.running_ids())
-}
-
-/// Lists the AI CLI adapters this build supports, for populating the UI.
-#[tauri::command]
-pub async fn list_ai_adapters(
-    registry: State<'_, SessionRegistry>,
-) -> Result<Vec<AdapterInfo>, String> {
-    Ok(registry.adapters().list())
+) -> Result<(), AiSessionCommandError> {
+    process::kill_session(&registry, &session_id).map_err(|message| AiSessionCommandError {
+        kind: AiSessionErrorKind::KillFailed,
+        message,
+    })
 }

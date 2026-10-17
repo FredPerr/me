@@ -91,14 +91,6 @@ impl SessionRegistry {
         session.kill_requested = true;
         session.pid
     }
-
-    /// Lists the ids of currently running sessions.
-    pub fn running_ids(&self) -> Vec<String> {
-        self.sessions
-            .lock()
-            .map(|sessions| sessions.keys().cloned().collect())
-            .unwrap_or_default()
-    }
 }
 
 impl Default for SessionRegistry {
@@ -112,10 +104,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn new_registry_has_no_running_sessions() {
+    fn new_registry_tracks_no_session() {
         let registry = SessionRegistry::new();
 
-        assert!(registry.running_ids().is_empty());
         assert!(registry.pid_of("missing").is_none());
     }
 

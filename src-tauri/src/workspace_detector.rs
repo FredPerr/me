@@ -1,6 +1,29 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
+
+/// The kind of a workspace-detection failure, as the frontend sees it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub enum WorkspaceDetectorErrorKind {
+    /// The home directory could not be determined.
+    HomeNotFound,
+    /// The IDE's storage file does not exist yet.
+    StorageNotFound,
+    /// The storage file could not be read.
+    StorageUnreadable,
+    /// The storage file could not be parsed.
+    StorageInvalid,
+}
+
+/// A failed workspace-detection command on the wire. `message` is a readable
+/// sentence that may name a path on the user's own machine.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceDetectorCommandError {
+    pub kind: WorkspaceDetectorErrorKind,
+    pub message: String,
+}
 
 #[derive(Deserialize)]
 struct StorageJson {
@@ -22,21 +45,32 @@ struct WindowEntry {
 }
 
 #[tauri::command]
-pub async fn get_active_workspaces(ide_command: String) -> Result<Vec<String>, String> {
+#[specta::specta]
+pub async fn get_active_workspaces(
+    ide_command: String,
+) -> Result<Vec<String>, WorkspaceDetectorCommandError> {
     let storage_path = resolve_storage_path(&ide_command)?;
 
-    let content = fs::read_to_string(&storage_path)
-        .map_err(|e| format!("Failed to read storage file: {}", e))?;
+    let content = fs::read_to_string(&storage_path).map_err(|e| WorkspaceDetectorCommandError {
+        kind: WorkspaceDetectorErrorKind::StorageUnreadable,
+        message: format!("Failed to read storage file: {}", e),
+    })?;
 
     let storage: StorageJson =
-        serde_json::from_str(&content).map_err(|e| format!("Failed to parse storage: {}", e))?;
+        serde_json::from_str(&content).map_err(|e| WorkspaceDetectorCommandError {
+            kind: WorkspaceDetectorErrorKind::StorageInvalid,
+            message: format!("Failed to parse storage: {}", e),
+        })?;
 
     let workspaces = extract_workspace_paths(storage);
     Ok(workspaces)
 }
 
-fn resolve_storage_path(ide_command: &str) -> Result<PathBuf, String> {
-    let home = dirs::home_dir().ok_or("Could not determine home directory")?;
+fn resolve_storage_path(ide_command: &str) -> Result<PathBuf, WorkspaceDetectorCommandError> {
+    let home = dirs::home_dir().ok_or(WorkspaceDetectorCommandError {
+        kind: WorkspaceDetectorErrorKind::HomeNotFound,
+        message: "Could not determine home directory".to_string(),
+    })?;
     let app_name = ide_name_to_app_support_folder(ide_command);
 
     let path = home
@@ -47,7 +81,10 @@ fn resolve_storage_path(ide_command: &str) -> Result<PathBuf, String> {
     if path.exists() {
         Ok(path)
     } else {
-        Err(format!("Storage file not found at: {:?}", path))
+        Err(WorkspaceDetectorCommandError {
+            kind: WorkspaceDetectorErrorKind::StorageNotFound,
+            message: format!("Storage file not found at: {:?}", path),
+        })
     }
 }
 
@@ -117,6 +154,22 @@ fn percent_decode(input: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_missing_storage_file_is_sent_as_the_storage_not_found_kind() {
+        let error = WorkspaceDetectorCommandError {
+            kind: WorkspaceDetectorErrorKind::StorageNotFound,
+            message: "Storage file not found at: \"/x\"".to_string(),
+        };
+
+        assert_eq!(
+            serde_json::to_value(error).unwrap(),
+            serde_json::json!({
+                "kind": "storageNotFound",
+                "message": "Storage file not found at: \"/x\"",
+            })
+        );
+    }
 
     #[test]
     fn maps_kiro_to_correct_folder() {
