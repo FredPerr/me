@@ -104,6 +104,16 @@ export const commands = {
 	settingsSetAssignMeToTasks: (value: boolean) => __TAURI_INVOKE<AppSettingsView>("settings_set_assign_me_to_tasks", { value }),
 	/**  Sets the AI tool the app runs by default and returns the updated settings. */
 	settingsSetDefaultAiTool: (value: AiToolView) => __TAURI_INVOKE<AppSettingsView>("settings_set_default_ai_tool", { value }),
+	/**
+	 *  Expands one instruction into named context drafts, read-only in a fresh
+	 *  temp folder. Returns the drafts or a typed error.
+	 */
+	aiAssistSuggestContexts: (projectTag: string, instruction: string) => __TAURI_INVOKE<ContextDraftView[]>("ai_assist_suggest_contexts", { projectTag, instruction }),
+	/**
+	 *  Cancels the context suggestion in flight, if any. A no-op when none is
+	 *  running, so the modal can call it freely on close.
+	 */
+	aiAssistCancelContexts: () => __TAURI_INVOKE<null>("ai_assist_cancel_contexts"),
 	workTrackingListConnections: () => __TAURI_INVOKE<ConnectionView[]>("work_tracking_list_connections"),
 	workTrackingSaveConnection: (input: SaveConnectionInput) => __TAURI_INVOKE<ConnectionView>("work_tracking_save_connection", { input }),
 	workTrackingRemoveConnection: (connectionId: string) => __TAURI_INVOKE<null>("work_tracking_remove_connection", { connectionId }),
@@ -167,6 +177,24 @@ export type AgentWorkView = {
 	prompt: string | null,
 	tool: AgentToolView,
 };
+
+/**
+ *  A failed AI-assist command on the wire. `message` is a readable English
+ *  sentence; it may carry the tool's failure reason for the `failed` kind.
+ */
+export type AiAssistCommandError = {
+	kind: AiAssistErrorKind,
+	message: string,
+};
+
+/**
+ *  The kind of an AI-assist failure, as the frontend sees it. The four parse
+ *  kinds carry the same meaning (and, via i18n, the same message) as the
+ *  frontend bulk parser's `no-json-found`/`invalid-json`/`not-an-array`/
+ *  `no-valid-rows`; the run kinds are cancel, timeout and a catch-all failure;
+ *  `invalidInput` is a blank instruction.
+ */
+export type AiAssistErrorKind = "invalidInput" | "noListFound" | "malformed" | "notAList" | "noValidEntries" | "cancelled" | "timedOut" | "failed";
 
 /**  A failed AI-session command on the wire. `message` is a readable sentence. */
 export type AiSessionCommandError = {
@@ -262,6 +290,16 @@ export type ContextBranchView = {
  *  which can only be deleted.
  */
 export type ContextCheckoutView = "worktree" | "linked";
+
+/**
+ *  A ready-to-create context draft on the wire. `branchName` is valid under the
+ *  project's naming policy; `prompt` is the optional Kiro prompt.
+ */
+export type ContextDraftView = {
+	contextName: string,
+	branchName: string,
+	prompt: string | null,
+};
 
 export type ContextOriginView = { kind: "manual" } | { kind: "fromContext" } | { kind: "fromBranches" } | { kind: "fromPullRequests" } | { kind: "fromTask"; connectionId: string; taskId: string };
 

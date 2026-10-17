@@ -13,7 +13,20 @@
 //!   - the composition root (`crate::composition::ai_session_ai_assist_runner`)
 //!     implements the runner over `ai_session`; neither module names the other.
 //!
-//! This ticket (#87) adds only the runner port, the agent-text extraction and
-//! the composition adapter. The use cases and commands arrive in #88/#89.
+//! #88 adds the `application` layer (`AiAssistService::suggest_contexts`), the
+//! ports it reads through, and the typed commands; #89 adds the pull-request
+//! suggestion alongside it.
 
+pub mod application;
+pub mod commands;
 pub mod domain;
+
+use std::sync::Arc;
+
+use application::suggest_contexts::AiAssistService;
+
+/// The AI-assist service, held in Tauri state. Built in the composition root
+/// from the runner adapter and the settings/workspace/temp ports.
+pub struct AiAssist {
+    pub service: Arc<AiAssistService>,
+}

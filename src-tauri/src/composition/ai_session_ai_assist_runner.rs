@@ -17,11 +17,9 @@
 //! [`reconstruct_outcome`] seam and unit-tested with scripted events and no
 //! binary. The spawn/select shell around it stays thin.
 //!
-//! Nothing constructs this adapter yet: no command consumes it until #88/#89
-//! add the suggestion use cases, so the whole module is dead-code until then,
-//! matching the repo's pattern for not-yet-wired composition pieces. Its own
-//! tests exercise the collect-and-reconstruct seam.
-#![allow(dead_code)] // used by suggest_contexts/suggest_pull_request in #88/#89
+//! Since #88 the `suggest_contexts` use case constructs this adapter (wired in
+//! the application setup), so it is live. Its own tests exercise the
+//! collect-and-reconstruct seam without a real process.
 
 use tauri::{AppHandle, Manager};
 use tokio::sync::mpsc;
@@ -36,8 +34,8 @@ use crate::ai_session::registry::{SessionRegistry, SessionStatus};
 use crate::ai_session::OutputStream;
 use async_trait::async_trait;
 
-/// Not yet constructed anywhere: no command consumes it until #88/#89 add the
-/// suggestion use cases (see the module-level note).
+/// Runs an AI assist over `ai_session`, read-only. Constructed by the
+/// application setup and held by the `AiAssistService`.
 pub struct AiSessionAiAssistRunner {
     app: AppHandle,
 }
