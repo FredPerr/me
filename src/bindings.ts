@@ -11,22 +11,6 @@ export const commands = {
 	 */
 	openInIde: (command: string, path: string, shell: string | null) => __TAURI_INVOKE<null>("open_in_ide", { command, path, shell }),
 	getActiveWorkspaces: (ideCommand: string) => __TAURI_INVOKE<string[]>("get_active_workspaces", { ideCommand }),
-	/**
-	 *  Spawns a new AI CLI session and begins streaming its output.
-	 * 
-	 *  Resolves the chosen adapter, builds a headless spawn spec, launches the
-	 *  child with piped stdio in its own process group, registers it, and starts
-	 *  background tasks that forward stdout/stderr lines to the frontend and watch
-	 *  for exit. Returns immediately with the session id and pid.
-	 */
-	spawnAiSession: (options: SpawnOptions) => __TAURI_INVOKE<SpawnedSession>("spawn_ai_session", { options }),
-	/**
-	 *  Terminates a running session by killing its entire process group.
-	 * 
-	 *  A kill is flagged in the registry first so the exit is reported as `killed`
-	 *  rather than `completed`/`failed`, then the OS process group is signalled.
-	 */
-	killAiSession: (sessionId: string) => __TAURI_INVOKE<null>("kill_ai_session", { sessionId }),
 	checkIsGitRepository: (path: string) => __TAURI_INVOKE<boolean>("check_is_git_repository", { path }),
 	getGitRemoteUrl: (path: string) => __TAURI_INVOKE<string | null>("get_git_remote_url", { path }),
 	listWorktrees: (path: string) => __TAURI_INVOKE<WorktreeView[]>("list_worktrees", { path }),
@@ -208,23 +192,6 @@ export type AiAssistCommandError = {
  */
 export type AiAssistErrorKind = "invalidInput" | "noListFound" | "malformed" | "notAList" | "noValidEntries" | "emptyDiff" | "emptyAnswer" | "cancelled" | "timedOut" | "failed";
 
-/**  A failed AI-session command on the wire. `message` is a readable sentence. */
-export type AiSessionCommandError = {
-	kind: AiSessionErrorKind,
-	message: string,
-};
-
-/**  The kind of an AI-session command failure, as the frontend sees it. */
-export type AiSessionErrorKind = 
-/**  No adapter is registered for the requested id. */
-"unknownAdapter" | 
-/**  The prompt was empty. */
-"emptyPrompt" | 
-/**  The session could not be spawned (binary not found, spawn failed). */
-"spawnFailed" | 
-/**  The session could not be killed. */
-"killFailed";
-
 /**  The AI tool the app runs by default, on the wire. Mirrors [`AiTool`]. */
 export type AiToolView = "kiro";
 
@@ -351,12 +318,6 @@ export type CreatedPullRequestView = {
 
 /**  Opaque pagination token; its meaning belongs to the provider adapter. */
 export type Cursor = string;
-
-/**  A single environment variable pair from the frontend. */
-export type EnvVar = {
-	key: string,
-	value: string,
-};
 
 /**
  *  A task the current user could not be assigned to, on the wire, so the
@@ -656,43 +617,6 @@ export type SignInProgressView = { status: "authorized" } | { status: "pending" 
 export type SignedInHostView = {
 	host: HostKindView,
 	account: HostedAccountView | null,
-};
-
-/**  Parameters for spawning a session, sent from the frontend (camelCase). */
-export type SpawnOptions = {
-	/**  Adapter id selecting the CLI to run (e.g. `"kiro"`). */
-	adapterId: string,
-	/**  Natural-language prompt / instruction to run headlessly. */
-	prompt: string,
-	/**  Directory the CLI runs in (typically a context worktree path). */
-	workingDirectory: string,
-	/**  Optional explicit binary/path override; falls back to the adapter default. */
-	command: string | null,
-	/**  Optional named agent/profile when supported by the CLI. */
-	agent: string | null,
-	/**
-	 *  Optional prior conversation id to resume, so a follow-up prompt keeps the
-	 *  earlier context (Kiro's `--resume-id`).
-	 */
-	resumeId: string | null,
-	/**  Optional login shell used to resolve the binary via the user's PATH. */
-	shell: string | null,
-	/**  Extra environment variables (e.g. the headless API key). */
-	environment?: EnvVar[],
-	/**
-	 *  Run tools without per-action confirmation. Defaults to false when
-	 *  absent; the frontend sends true for headless runs, which rely on a
-	 *  workspace permission policy for their safety floor.
-	 */
-	trustAllTools?: boolean,
-};
-
-/**  The result returned to the caller when a session is accepted and started. */
-export type SpawnedSession = {
-	sessionId: string,
-	adapterId: string,
-	pid: number | null,
-	workingDirectory: string,
 };
 
 /**

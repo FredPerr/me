@@ -399,7 +399,12 @@ impl AgentRunService {
     /// Records the tool a fresh context started on, so follow-up runs keep it.
     /// A failure to persist never blocks the run: the run still uses `tool`,
     /// and the next run resolves the default again.
-    fn record_started_tool(&self, project_tag: &ProjectTag, context_id: &ContextId, tool: AgentTool) {
+    fn record_started_tool(
+        &self,
+        project_tag: &ProjectTag,
+        context_id: &ContextId,
+        tool: AgentTool,
+    ) {
         let context_id = context_id.clone();
         let change = move |project: Project| project.start_agent_with_tool(&context_id, tool);
         match self.projects.update(project_tag, Box::new(change)) {

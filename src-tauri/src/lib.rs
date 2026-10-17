@@ -29,8 +29,6 @@ fn typed_commands() -> tauri_specta::Builder<tauri::Wry> {
         .commands(tauri_specta::collect_commands![
             ide_launcher::open_in_ide,
             workspace_detector::get_active_workspaces,
-            ai_session::spawn_ai_session,
-            ai_session::kill_ai_session,
             git::commands::check_is_git_repository,
             git::commands::get_git_remote_url,
             git::commands::list_worktrees,
