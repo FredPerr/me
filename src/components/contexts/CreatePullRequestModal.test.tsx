@@ -9,6 +9,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 import type {
 	BranchPullRequestStatusView,
 	BranchPullRequestView,
+	ContextView,
 	CreatedPullRequestView,
 	GitHostingCommandError,
 	HostKindView,
@@ -26,24 +27,20 @@ import {
 } from "@/test-utils/workspaceBuilders";
 import { CreatePullRequestModal } from "./CreatePullRequestModal";
 
-const gitHostingCommands = vi.hoisted(() => ({
+const commandMocks = vi.hoisted(() => ({
 	contextPullRequests: vi.fn(),
 	createPullRequest: vi.fn(),
+	suggestPullRequest: vi.fn(),
+	cancelPullRequest: vi.fn(),
 }));
 
 vi.mock("@/bindings", () => ({
 	commands: {
-		gitHostingContextPullRequests: gitHostingCommands.contextPullRequests,
-		gitHostingCreatePullRequest: gitHostingCommands.createPullRequest,
+		gitHostingContextPullRequests: commandMocks.contextPullRequests,
+		gitHostingCreatePullRequest: commandMocks.createPullRequest,
+		aiAssistSuggestPullRequest: commandMocks.suggestPullRequest,
+		aiAssistCancelPullRequest: commandMocks.cancelPullRequest,
 	},
-}));
-
-// Generating a description runs an AI session; these tests never generate one.
-vi.mock("@/hooks/usePullRequestDescriptionDraft", () => ({
-	usePullRequestDescriptionDraft: () => ({
-		stateFor: () => ({ status: "idle", description: "", error: null }),
-		generate: vi.fn(),
-	}),
 }));
 
 vi.mock("@uiw/react-md-editor", () => ({
@@ -127,10 +124,12 @@ describe("CreatePullRequestModal", () => {
 	}
 
 	beforeEach(() => {
-		gitHostingCommands.contextPullRequests
+		commandMocks.contextPullRequests
 			.mockReset()
 			.mockResolvedValue([buildLoginBranch({ kind: "ok", pullRequest: null })]);
-		gitHostingCommands.createPullRequest.mockReset().mockResolvedValue(CREATED);
+		commandMocks.createPullRequest.mockReset().mockResolvedValue(CREATED);
+		commandMocks.suggestPullRequest.mockReset();
+		commandMocks.cancelPullRequest.mockReset();
 	});
 
 	afterEach(cleanup);
@@ -140,11 +139,13 @@ describe("CreatePullRequestModal", () => {
 
 		await userEvent.click(createButton());
 
-		expect(gitHostingCommands.createPullRequest).toHaveBeenCalledWith(
-			PROJECT_TAG,
-			API_REPOSITORY_ID,
-			{ title: TITLE, body: DESCRIPTION, head: LOGIN_BRANCH, base: MAIN_BRANCH, draft: false },
-		);
+		expect(commandMocks.createPullRequest).toHaveBeenCalledWith(PROJECT_TAG, API_REPOSITORY_ID, {
+			title: TITLE,
+			body: DESCRIPTION,
+			head: LOGIN_BRANCH,
+			base: MAIN_BRANCH,
+			draft: false,
+		});
 	});
 
 	it("links to the created pull request", async () => {
@@ -157,7 +158,7 @@ describe("CreatePullRequestModal", () => {
 	});
 
 	it("shows the message of a failed creation", async () => {
-		gitHostingCommands.createPullRequest.mockRejectedValue(PUSH_SKIPPED_ERROR);
+		commandMocks.createPullRequest.mockRejectedValue(PUSH_SKIPPED_ERROR);
 		renderModal();
 
 		await userEvent.click(createButton());
@@ -166,7 +167,7 @@ describe("CreatePullRequestModal", () => {
 	});
 
 	it("asks to sign in to the Git host of a branch that is not connected", async () => {
-		gitHostingCommands.contextPullRequests.mockResolvedValue([
+		commandMocks.contextPullRequests.mockResolvedValue([
 			buildLoginBranch({ kind: "notConnected" }, "bitbucket"),
 		]);
 		renderModal();
@@ -180,7 +181,7 @@ describe("CreatePullRequestModal", () => {
 	});
 
 	it("says when the repository's remote is not on a supported Git host", async () => {
-		gitHostingCommands.contextPullRequests.mockResolvedValue([
+		commandMocks.contextPullRequests.mockResolvedValue([
 			buildLoginBranch({ kind: "unsupportedHost" }, null),
 		]);
 		renderModal();
@@ -190,5 +191,83 @@ describe("CreatePullRequestModal", () => {
 				"This repository's remote is not on GitHub or Bitbucket, so a pull request cannot be created here.",
 			),
 		).toBeDefined();
+	});
+
+	const GENERATED_TITLE = "Generated title";
+	const GENERATED_DESCRIPTION = "- Generated bullet";
+
+	function renderWith(context: ContextView) {
+		const queryClient = new QueryClient({
+			defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+		});
+		const wrapper = ({ children }: { children: ReactNode }) => (
+			<QueryClientProvider client={queryClient}>
+				<MantineProvider env="test">
+					<Notifications />
+					{children}
+				</MantineProvider>
+			</QueryClientProvider>
+		);
+		render(
+			<CreatePullRequestModal opened onClose={vi.fn()} project={project} context={context} />,
+			{ wrapper },
+		);
+	}
+
+	function generateButton() {
+		return screen.getByRole("button", { name: "Generate" });
+	}
+
+	it("fills the title and description when the user has not typed a title", async () => {
+		commandMocks.suggestPullRequest.mockResolvedValue({
+			title: GENERATED_TITLE,
+			description: GENERATED_DESCRIPTION,
+		});
+		const untitled = buildContext({
+			branches: [
+				buildContextBranch({
+					branch: LOGIN_BRANCH,
+					worktreePath: `${PROJECT_PATH}/.worktrees/feature-login/api`,
+					pullRequestDraft: { title: "", description: "" },
+				}),
+			],
+		});
+		renderWith(untitled);
+
+		await userEvent.click(generateButton());
+
+		expect(commandMocks.suggestPullRequest).toHaveBeenCalledWith(
+			PROJECT_TAG,
+			untitled.id,
+			API_REPOSITORY_ID,
+		);
+		expect((await screen.findByDisplayValue(GENERATED_TITLE)) as HTMLInputElement).toBeDefined();
+		expect(await screen.findByDisplayValue(GENERATED_DESCRIPTION)).toBeDefined();
+	});
+
+	it("keeps a title the user already typed and fills only the description", async () => {
+		commandMocks.suggestPullRequest.mockResolvedValue({
+			title: GENERATED_TITLE,
+			description: GENERATED_DESCRIPTION,
+		});
+		renderWith(loginContext);
+
+		await userEvent.click(generateButton());
+
+		// The saved title is kept; only the description is replaced.
+		expect(await screen.findByDisplayValue(TITLE)).toBeDefined();
+		expect(await screen.findByDisplayValue(GENERATED_DESCRIPTION)).toBeDefined();
+	});
+
+	it("shows the message of a failed generation", async () => {
+		commandMocks.suggestPullRequest.mockRejectedValue({
+			kind: "emptyDiff",
+			message: "No changes found against the base branch.",
+		});
+		renderWith(loginContext);
+
+		await userEvent.click(generateButton());
+
+		expect(await screen.findByText("No changes found against the base branch.")).toBeDefined();
 	});
 });
