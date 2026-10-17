@@ -5,8 +5,9 @@ use serde::{Deserialize, Serialize};
 use tauri::State;
 
 use super::application::service::{ConnectionView, SaveConnectionCommand, WorkTrackingService};
+use super::domain::assign_me::{AssignMeResult, FailedAssignment, TaskToAssign};
 use super::domain::error::{InputField, InvalidInputReason, WorkTrackingError};
-use super::domain::identifiers::{ConnectionId, RemoteProjectId};
+use super::domain::identifiers::{ConnectionId, RemoteProjectId, TaskId};
 use super::domain::page::Page;
 use super::domain::pending_tasks::{PendingTask, PendingTasks};
 use super::domain::remote_project::RemoteProject;
@@ -323,6 +324,93 @@ pub async fn work_tracking_assign_me_to_task(
     Ok(state.assign_me_to_task(&connection_id, &item_id).await?)
 }
 
+/// A task to assign the current user to, on the wire. The connection and task
+/// ids identify a pending task card the frontend created a context from.
+#[derive(Debug, Clone, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TaskToAssignInput {
+    connection_id: String,
+    task_id: String,
+}
+
+/// A task the current user could not be assigned to, on the wire, so the
+/// frontend can list it and the user can assign themselves by hand. The ids
+/// are bare strings: they echo the input, which may include an id that did not
+/// parse.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct FailedAssignmentView {
+    pub connection_id: String,
+    pub task_id: String,
+}
+
+impl From<FailedAssignment> for FailedAssignmentView {
+    fn from(failed: FailedAssignment) -> Self {
+        Self {
+            connection_id: failed.connection_id.as_str().to_string(),
+            task_id: failed.task_id.as_str().to_string(),
+        }
+    }
+}
+
+/// The outcome of a best-effort assign-me batch on the wire: the tasks that
+/// could not be assigned. An empty list means every task was assigned.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct AssignMeResultView {
+    pub failed: Vec<FailedAssignmentView>,
+}
+
+impl From<AssignMeResult> for AssignMeResultView {
+    fn from(result: AssignMeResult) -> Self {
+        Self {
+            failed: result.failed.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+/// Best-effort assignment of the current user to each task, run by the
+/// create-contexts-from-tasks flow after the contexts exist. Never fails as a
+/// whole: the result lists the tasks the user could not be assigned to.
+/// An invalid id in the input drops only that task into the failed list.
+#[tauri::command]
+#[specta::specta]
+pub async fn work_tracking_assign_me_to_tasks(
+    state: State<'_, WorkTrackingService>,
+    tasks: Vec<TaskToAssignInput>,
+) -> Result<AssignMeResultView, WorkTrackingCommandError> {
+    let mut to_assign = Vec::with_capacity(tasks.len());
+    let mut failed = Vec::new();
+    for task in tasks {
+        match parse_task_to_assign(&task) {
+            Ok(parsed) => to_assign.push(parsed),
+            // An unparseable id could never be assigned, so it is reported as a
+            // failure rather than aborting the whole batch.
+            Err(failure) => failed.push(failure),
+        }
+    }
+    let mut result = AssignMeResultView::from(state.assign_me_to_tasks(&to_assign).await);
+    result.failed.extend(failed);
+    Ok(result)
+}
+
+fn parse_task_to_assign(task: &TaskToAssignInput) -> Result<TaskToAssign, FailedAssignmentView> {
+    match (
+        ConnectionId::parse(&task.connection_id, InputField::ConnectionId),
+        TaskId::parse(&task.task_id, InputField::ItemId),
+    ) {
+        (Ok(connection_id), Ok(task_id)) => Ok(TaskToAssign {
+            connection_id,
+            task_id,
+        }),
+        // An unparseable id echoes back as the raw string in the failed list.
+        _ => Err(FailedAssignmentView {
+            connection_id: task.connection_id.clone(),
+            task_id: task.task_id.clone(),
+        }),
+    }
+}
+
 #[tauri::command]
 #[specta::specta]
 pub async fn work_tracking_pending_tasks(
@@ -524,6 +612,59 @@ mod tests {
             value["unavailableConnections"][0],
             "teamwork:other.teamwork.com"
         );
+    }
+
+    #[test]
+    fn assign_me_result_view_lists_failed_tasks_in_camel_case() {
+        let result = AssignMeResult {
+            failed: vec![FailedAssignment {
+                connection_id: ConnectionId::parse(
+                    "teamwork:acme.teamwork.com",
+                    InputField::ConnectionId,
+                )
+                .unwrap(),
+                task_id: TaskId::parse("101", InputField::ItemId).unwrap(),
+            }],
+        };
+
+        let value = serde_json::to_value(AssignMeResultView::from(result)).unwrap();
+
+        assert_eq!(
+            value,
+            json!({
+                "failed": [{
+                    "connectionId": "teamwork:acme.teamwork.com",
+                    "taskId": "101",
+                }],
+            })
+        );
+    }
+
+    #[test]
+    fn an_empty_assign_me_result_view_has_an_empty_failed_list() {
+        let value =
+            serde_json::to_value(AssignMeResultView::from(AssignMeResult::default())).unwrap();
+        assert_eq!(value, json!({ "failed": [] }));
+    }
+
+    #[test]
+    fn task_to_assign_input_deserializes_camel_case() {
+        let input: TaskToAssignInput =
+            serde_json::from_str(r#"{"connectionId":"teamwork:acme.teamwork.com","taskId":"101"}"#)
+                .unwrap();
+        assert_eq!(input.connection_id, "teamwork:acme.teamwork.com");
+        assert_eq!(input.task_id, "101");
+    }
+
+    #[test]
+    fn an_unparseable_task_input_is_reported_as_failed() {
+        let failure = parse_task_to_assign(&TaskToAssignInput {
+            connection_id: "teamwork:acme.teamwork.com".into(),
+            task_id: String::new(),
+        })
+        .unwrap_err();
+        assert_eq!(failure.connection_id, "teamwork:acme.teamwork.com");
+        assert_eq!(failure.task_id, "");
     }
 
     #[test]

@@ -1,6 +1,7 @@
 //! Provider-agnostic model of the Work Tracking context. Depends only on
 //! `std`, `serde` and `async_trait`.
 pub mod api_key;
+pub mod assign_me;
 pub mod base_url;
 pub mod error;
 pub mod identifiers;

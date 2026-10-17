@@ -313,7 +313,7 @@ export const en = {
 				assignMeHint: "Adds you as an assignee on the work tracker, keeping existing assignees.",
 				assignMeFailedTitle: "Could not assign you to every task",
 				assignMeFailedMessage:
-					"Assigning you failed for {{count}} task(s). The contexts were still created.",
+					"The contexts were created, but you could not be assigned to {{count}} task(s): {{tasks}}. Assign yourself on the work tracker.",
 				issues: {
 					nameRequired: "A context name is required.",
 					duplicateName: "Another context already uses this name.",
