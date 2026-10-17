@@ -14,13 +14,17 @@ import {
 	Tooltip,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import { ArrowClockwiseIcon, PlusIcon, SparkleIcon, TrashIcon } from "@phosphor-icons/react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { ArrowClockwiseIcon, PlusIcon, SparkleIcon, TrashIcon, XIcon } from "@phosphor-icons/react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { ProjectView } from "@/bindings";
-import { type BulkDraftError, useBulkContextDraft } from "@/hooks/useBulkContextDraft";
+import {
+	type AiAssistErrorKind,
+	type ContextDraftView,
+	commands,
+	type ProjectView,
+} from "@/bindings";
 import { useCreateContexts } from "@/hooks/workspace/useCreateContexts";
-import type { BulkContextDraft } from "@/models/bulk/BulkContextDraft";
+import { isCommandError } from "@/infra/commandError";
 import type { BulkContextSpec } from "@/models/bulk/BulkContextSpec";
 import { findContext } from "@/models/projectView";
 
@@ -32,12 +36,29 @@ type BulkCreateContextsModalProps = {
 
 type RowOrigin = "generated" | "manual";
 
-type ReviewRow = BulkContextDraft & { rowId: string; origin: RowOrigin; include: boolean };
+type ReviewRow = {
+	rowId: string;
+	origin: RowOrigin;
+	include: boolean;
+	contextName: string;
+	branchName: string;
+	prompt?: string;
+};
 
-type EditableRowField = "contextName" | "branchName" | "preprompt";
+type EditableRowField = "contextName" | "branchName" | "prompt";
 
-function toGeneratedRow(draft: BulkContextDraft): ReviewRow {
-	return { ...draft, rowId: crypto.randomUUID(), origin: "generated", include: true };
+/** Phase of the one-shot suggestion run. */
+type GenerationPhase = "idle" | "generating";
+
+function toGeneratedRow(draft: ContextDraftView): ReviewRow {
+	return {
+		rowId: crypto.randomUUID(),
+		origin: "generated",
+		include: true,
+		contextName: draft.contextName,
+		branchName: draft.branchName,
+		prompt: draft.prompt ?? undefined,
+	};
 }
 
 function emptyManualRow(): ReviewRow {
@@ -50,26 +71,36 @@ function emptyManualRow(): ReviewRow {
 	};
 }
 
-function errorMessageKey(error: BulkDraftError): string {
-	if (error.kind === "session") return "contexts.bulk.errorSession";
-	switch (error.reason) {
-		case "no-json-found":
+/**
+ * The i18n key for an AI-assist error kind. The four parse kinds keep the same
+ * messages the frontend parser mapped to before suggestions moved to Rust.
+ */
+function errorMessageKey(kind: AiAssistErrorKind): string {
+	switch (kind) {
+		case "noListFound":
 			return "contexts.bulk.errorNoJson";
-		case "invalid-json":
+		case "malformed":
 			return "contexts.bulk.errorInvalidJson";
-		case "not-an-array":
+		case "notAList":
 			return "contexts.bulk.errorNotArray";
-		default:
+		case "noValidEntries":
 			return "contexts.bulk.errorNoRows";
+		case "cancelled":
+			return "contexts.bulk.errorCancelled";
+		case "timedOut":
+			return "contexts.bulk.errorTimedOut";
+		default:
+			return "contexts.bulk.errorSession";
 	}
 }
 
 /**
  * Bulk context creator. Phase one takes one high-level instruction and runs a
- * headless Kiro expansion into draft contexts. Phase two shows those drafts in
- * an editable table — context name, branch, and an optional Kiro prompt per
- * row, each with an include toggle — and creates the selected ones in a single
- * batch. Prompts are stored (prefilled into Kiro later), never auto-run.
+ * read-only Rust suggestion into draft contexts (named, with a valid branch and
+ * an optional prompt). Phase two shows those drafts in an editable table —
+ * context name, branch, and an optional Kiro prompt per row, each with an
+ * include toggle — and creates the selected ones in a single batch. Prompts are
+ * stored (prefilled into Kiro later), never auto-run.
  */
 export function BulkCreateContextsModal({
 	opened,
@@ -77,7 +108,8 @@ export function BulkCreateContextsModal({
 	project,
 }: BulkCreateContextsModalProps) {
 	const { t } = useTranslation();
-	const { status, drafts, error, generate, reset } = useBulkContextDraft(project);
+	const [phase, setPhase] = useState<GenerationPhase>("idle");
+	const [errorMessage, setErrorMessage] = useState<string | null>(null);
 	const [instruction, setInstruction] = useState("");
 	const [rows, setRows] = useState<ReviewRow[]>([]);
 	const [baseContextId, setBaseContextId] = useState<string | null>(null);
@@ -89,27 +121,13 @@ export function BulkCreateContextsModal({
 		[project.contexts],
 	);
 
-	// Identity of the last drafts batch merged into rows, so a given generation
-	// is applied once (not re-merged on unrelated re-renders).
-	const mergedDraftsRef = useRef<BulkContextDraft[] | null>(null);
-
-	useEffect(() => {
-		if (status !== "ready") return;
-		if (mergedDraftsRef.current === drafts) return;
-		mergedDraftsRef.current = drafts;
-		// Keep every manual row; swap all generated rows for the fresh batch.
-		setRows((current) => [
-			...current.filter((row) => row.origin === "manual"),
-			...drafts.map(toGeneratedRow),
-		]);
-	}, [status, drafts]);
-
 	const selectedCount = useMemo(() => rows.filter((row) => row.include).length, [rows]);
 
 	function handleClose() {
 		if (creating) return;
-		reset();
-		mergedDraftsRef.current = null;
+		void commands.aiAssistCancelContexts();
+		setPhase("idle");
+		setErrorMessage(null);
 		setInstruction("");
 		setRows([]);
 		setBaseContextId(null);
@@ -119,7 +137,28 @@ export function BulkCreateContextsModal({
 	async function handleGenerate() {
 		const trimmed = instruction.trim();
 		if (trimmed.length === 0) return;
-		await generate(trimmed);
+		setPhase("generating");
+		setErrorMessage(null);
+		try {
+			const drafts = await commands.aiAssistSuggestContexts(project.tag, trimmed);
+			setRows((current) => [
+				...current.filter((row) => row.origin === "manual"),
+				...drafts.map(toGeneratedRow),
+			]);
+		} catch (error) {
+			const kind = isCommandError(error) ? (error.kind as AiAssistErrorKind) : "failed";
+			const message = isCommandError(error) ? error.message : String(error);
+			// Cancel leaves the user where they were, silently.
+			if (kind !== "cancelled") {
+				setErrorMessage(t(errorMessageKey(kind), { message }));
+			}
+		} finally {
+			setPhase("idle");
+		}
+	}
+
+	function handleCancelGeneration() {
+		void commands.aiAssistCancelContexts();
 	}
 
 	/** Toggles a row's include flag without changing its origin. */
@@ -150,7 +189,7 @@ export function BulkCreateContextsModal({
 			.map((row) => ({
 				contextName: row.contextName.trim(),
 				branchName: row.branchName.trim(),
-				agentPrompt: row.preprompt?.trim() ? row.preprompt.trim() : undefined,
+				agentPrompt: row.prompt?.trim() ? row.prompt.trim() : undefined,
 			}));
 		if (specs.length === 0) return;
 
@@ -170,7 +209,7 @@ export function BulkCreateContextsModal({
 
 	const hasRows = rows.length > 0;
 	const isReview = hasRows;
-	const isGenerating = status === "generating";
+	const isGenerating = phase === "generating";
 
 	return (
 		<Modal
@@ -209,11 +248,9 @@ export function BulkCreateContextsModal({
 							searchable
 						/>
 					)}
-					{error && (
+					{errorMessage && (
 						<Text size="xs" c="red.4">
-							{t(errorMessageKey(error), {
-								message: error.kind === "session" ? error.message : "",
-							})}
+							{errorMessage}
 						</Text>
 					)}
 					<Group justify="flex-end">
@@ -231,6 +268,16 @@ export function BulkCreateContextsModal({
 									{t("contexts.bulk.addContext")}
 								</Button>
 							</>
+						)}
+						{isGenerating && (
+							<Button
+								variant="subtle"
+								color="red"
+								leftSection={<XIcon size={16} />}
+								onClick={handleCancelGeneration}
+							>
+								{t("contexts.bulk.cancelGeneration")}
+							</Button>
 						)}
 						<Button
 							leftSection={isReview ? <ArrowClockwiseIcon size={16} /> : <SparkleIcon size={16} />}
@@ -333,9 +380,9 @@ export function BulkCreateContextsModal({
 										<Textarea
 											label={index === 0 ? t("contexts.bulk.columnPreprompt") : undefined}
 											placeholder={t("contexts.bulk.prepromptPlaceholder")}
-											value={row.preprompt ?? ""}
+											value={row.prompt ?? ""}
 											onChange={(event) =>
-												editRowField(row.rowId, "preprompt", event.currentTarget.value)
+												editRowField(row.rowId, "prompt", event.currentTarget.value)
 											}
 											disabled={!row.include}
 											autosize

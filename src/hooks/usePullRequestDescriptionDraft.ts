@@ -50,9 +50,9 @@ type UsePullRequestDescriptionDraftResult = {
 /**
  * Drives one headless Kiro run per repository to write a pull request
  * description from that repository's diff (branch vs. base context) and its
- * `.github` PR template. Mirrors {@link useBulkContextDraft}: it buffers the
- * run's stdout and, on terminal status, reconstructs the agent's answer from
- * the ACP stream. Nothing is persisted here — the modal owns the drafts and
+ * `.github` PR template. It buffers the run's stdout and, on terminal status,
+ * reconstructs the agent's answer from the ACP stream (this hook moves to Rust
+ * in #89). Nothing is persisted here — the modal owns the drafts and
  * decides what to do with the generated text.
  */
 export function usePullRequestDescriptionDraft(): UsePullRequestDescriptionDraftResult {
