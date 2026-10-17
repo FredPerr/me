@@ -1,4 +1,6 @@
-//! Tauri command surface of the Work Tracking context.
+//! Typed Tauri commands of the Work Tracking context and their wire types.
+//! Secrets never leave Rust: the API key only passes through `save_connection`
+//! and is never returned.
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
@@ -9,28 +11,102 @@ use super::domain::remote_project::RemoteProject;
 use super::domain::task::Task;
 use super::domain::task_group::TaskGroup;
 
-/// Structured wire error. `message` is a fixed English sentence per kind and
-/// never contains provider or credential data.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+/// The kind of a failed Work Tracking command, on the wire.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
-pub struct CommandError {
-    kind: &'static str,
-    message: &'static str,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    field: Option<&'static str>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    reason: Option<&'static str>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    retry_after_seconds: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    status: Option<u16>,
+pub enum WorkTrackingErrorKind {
+    NotConfigured,
+    InvalidInput,
+    Unauthorized,
+    Forbidden,
+    NotFound,
+    RateLimited,
+    Timeout,
+    Network,
+    ProviderError,
+    InvalidResponse,
+    StorageError,
 }
 
-impl CommandError {
-    fn new(kind: &'static str, message: &'static str) -> Self {
+/// The input that failed validation, on the wire. Mirrors [`InputField`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub enum WorkTrackingField {
+    ProviderKind,
+    BaseUrl,
+    ApiKey,
+    DisplayName,
+    ConnectionId,
+    ProjectId,
+    GroupId,
+    ItemId,
+    Cursor,
+    PageSize,
+}
+
+impl From<InputField> for WorkTrackingField {
+    fn from(field: InputField) -> Self {
+        match field {
+            InputField::ProviderKind => Self::ProviderKind,
+            InputField::BaseUrl => Self::BaseUrl,
+            InputField::ApiKey => Self::ApiKey,
+            InputField::DisplayName => Self::DisplayName,
+            InputField::ConnectionId => Self::ConnectionId,
+            InputField::ProjectId => Self::ProjectId,
+            InputField::GroupId => Self::GroupId,
+            InputField::ItemId => Self::ItemId,
+            InputField::Cursor => Self::Cursor,
+            InputField::PageSize => Self::PageSize,
+        }
+    }
+}
+
+/// Why an input failed validation, on the wire. Mirrors [`InvalidInputReason`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub enum WorkTrackingInvalidReason {
+    Required,
+    TooLong,
+    InvalidFormat,
+    HttpsRequired,
+    UnsupportedComponent,
+    OutOfRange,
+    Unsupported,
+}
+
+impl From<InvalidInputReason> for WorkTrackingInvalidReason {
+    fn from(reason: InvalidInputReason) -> Self {
+        match reason {
+            InvalidInputReason::Required => Self::Required,
+            InvalidInputReason::TooLong => Self::TooLong,
+            InvalidInputReason::InvalidFormat => Self::InvalidFormat,
+            InvalidInputReason::HttpsRequired => Self::HttpsRequired,
+            InvalidInputReason::UnsupportedComponent => Self::UnsupportedComponent,
+            InvalidInputReason::OutOfRange => Self::OutOfRange,
+            InvalidInputReason::Unsupported => Self::Unsupported,
+        }
+    }
+}
+
+/// A failed Work Tracking command on the wire. `message` is a fixed English
+/// sentence per kind and never holds provider or credential data. Every field
+/// is emitted (null when absent) so the frontend reads one stable shape.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkTrackingCommandError {
+    pub kind: WorkTrackingErrorKind,
+    pub message: String,
+    pub field: Option<WorkTrackingField>,
+    pub reason: Option<WorkTrackingInvalidReason>,
+    pub retry_after_seconds: Option<u32>,
+    pub status: Option<u16>,
+}
+
+impl WorkTrackingCommandError {
+    fn new(kind: WorkTrackingErrorKind, message: &str) -> Self {
         Self {
             kind,
-            message,
+            message: message.to_string(),
             field: None,
             reason: None,
             retry_after_seconds: None,
@@ -39,78 +115,52 @@ impl CommandError {
     }
 }
 
-fn field_name(field: InputField) -> &'static str {
-    match field {
-        InputField::ProviderKind => "providerKind",
-        InputField::BaseUrl => "baseUrl",
-        InputField::ApiKey => "apiKey",
-        InputField::DisplayName => "displayName",
-        InputField::ConnectionId => "connectionId",
-        InputField::ProjectId => "projectId",
-        InputField::GroupId => "groupId",
-        InputField::ItemId => "itemId",
-        InputField::Cursor => "cursor",
-        InputField::PageSize => "pageSize",
-    }
-}
-
-fn reason_name(reason: InvalidInputReason) -> &'static str {
-    match reason {
-        InvalidInputReason::Required => "required",
-        InvalidInputReason::TooLong => "tooLong",
-        InvalidInputReason::InvalidFormat => "invalidFormat",
-        InvalidInputReason::HttpsRequired => "httpsRequired",
-        InvalidInputReason::UnsupportedComponent => "unsupportedComponent",
-        InvalidInputReason::OutOfRange => "outOfRange",
-        InvalidInputReason::Unsupported => "unsupported",
-    }
-}
-
-impl From<WorkTrackingError> for CommandError {
+impl From<WorkTrackingError> for WorkTrackingCommandError {
     fn from(error: WorkTrackingError) -> Self {
+        use WorkTrackingErrorKind as Kind;
         match error {
             WorkTrackingError::NotConfigured => {
-                Self::new("notConfigured", "The connection is not configured.")
+                Self::new(Kind::NotConfigured, "The connection is not configured.")
             }
             WorkTrackingError::InvalidInput { field, reason } => Self {
-                field: Some(field_name(field)),
-                reason: Some(reason_name(reason)),
-                ..Self::new("invalidInput", "The input is invalid.")
+                field: Some(field.into()),
+                reason: Some(reason.into()),
+                ..Self::new(Kind::InvalidInput, "The input is invalid.")
             },
             WorkTrackingError::Unauthorized => {
-                Self::new("unauthorized", "The provider rejected the credentials.")
+                Self::new(Kind::Unauthorized, "The provider rejected the credentials.")
             }
             WorkTrackingError::Forbidden => {
-                Self::new("forbidden", "Access to this resource is forbidden.")
+                Self::new(Kind::Forbidden, "Access to this resource is forbidden.")
             }
             WorkTrackingError::NotFound => {
-                Self::new("notFound", "The requested resource was not found.")
+                Self::new(Kind::NotFound, "The requested resource was not found.")
             }
             WorkTrackingError::RateLimited {
                 retry_after_seconds,
             } => Self {
-                retry_after_seconds,
-                ..Self::new("rateLimited", "The provider rate limit was reached.")
+                retry_after_seconds: retry_after_seconds.map(|seconds| seconds as u32),
+                ..Self::new(Kind::RateLimited, "The provider rate limit was reached.")
             },
             WorkTrackingError::Timeout => {
-                Self::new("timeout", "The request to the provider timed out.")
+                Self::new(Kind::Timeout, "The request to the provider timed out.")
             }
             WorkTrackingError::Network => {
-                Self::new("network", "The provider could not be reached.")
+                Self::new(Kind::Network, "The provider could not be reached.")
             }
             WorkTrackingError::ProviderError { status } => Self {
                 status,
                 ..Self::new(
-                    "providerError",
+                    Kind::ProviderError,
                     "The provider returned an unexpected error.",
                 )
             },
             WorkTrackingError::InvalidResponse => Self::new(
-                "invalidResponse",
+                Kind::InvalidResponse,
                 "The provider returned an invalid response.",
             ),
             WorkTrackingError::StorageError => {
-                Self::new("storageError", "Local storage could not be accessed.")
+                Self::new(Kind::StorageError, "Local storage could not be accessed.")
             }
         }
     }
@@ -119,7 +169,7 @@ impl From<WorkTrackingError> for CommandError {
 // No Debug derive: holds the raw API key. Fields are moved uninspected into
 // `SaveConnectionCommand`; the service validates them. The type is `pub` only
 // because `#[tauri::command]` requires it; its fields stay private.
-#[derive(Deserialize)]
+#[derive(Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SaveConnectionInput {
     kind: String,
@@ -141,82 +191,90 @@ impl From<SaveConnectionInput> for SaveConnectionCommand {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn work_tracking_list_connections(
     state: State<'_, WorkTrackingService>,
-) -> Result<Vec<ConnectionView>, CommandError> {
+) -> Result<Vec<ConnectionView>, WorkTrackingCommandError> {
     Ok(state.list_connections()?)
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn work_tracking_save_connection(
     state: State<'_, WorkTrackingService>,
     input: SaveConnectionInput,
-) -> Result<ConnectionView, CommandError> {
+) -> Result<ConnectionView, WorkTrackingCommandError> {
     Ok(state.save_connection(input.into()).await?)
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn work_tracking_remove_connection(
     state: State<'_, WorkTrackingService>,
     connection_id: String,
-) -> Result<(), CommandError> {
+) -> Result<(), WorkTrackingCommandError> {
     Ok(state.remove_connection(&connection_id)?)
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn work_tracking_list_projects(
     state: State<'_, WorkTrackingService>,
     connection_id: String,
     cursor: Option<String>,
-) -> Result<Page<RemoteProject>, CommandError> {
+) -> Result<Page<RemoteProject>, WorkTrackingCommandError> {
     Ok(state
         .list_projects(&connection_id, cursor.as_deref())
         .await?)
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn work_tracking_list_groups(
     state: State<'_, WorkTrackingService>,
     connection_id: String,
     project_id: String,
     cursor: Option<String>,
-) -> Result<Page<TaskGroup>, CommandError> {
+) -> Result<Page<TaskGroup>, WorkTrackingCommandError> {
     Ok(state
         .list_groups(&connection_id, &project_id, cursor.as_deref())
         .await?)
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn work_tracking_list_items(
     state: State<'_, WorkTrackingService>,
     connection_id: String,
     project_id: String,
     group_id: String,
     cursor: Option<String>,
-) -> Result<Page<Task>, CommandError> {
+) -> Result<Page<Task>, WorkTrackingCommandError> {
     Ok(state
         .list_items(&connection_id, &project_id, &group_id, cursor.as_deref())
         .await?)
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn work_tracking_list_project_items(
     state: State<'_, WorkTrackingService>,
     connection_id: String,
     project_id: String,
     cursor: Option<String>,
-) -> Result<Page<Task>, CommandError> {
+) -> Result<Page<Task>, WorkTrackingCommandError> {
     Ok(state
         .list_project_items(&connection_id, &project_id, cursor.as_deref())
         .await?)
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn work_tracking_assign_me_to_task(
     state: State<'_, WorkTrackingService>,
     connection_id: String,
     item_id: String,
-) -> Result<(), CommandError> {
+) -> Result<(), WorkTrackingCommandError> {
     Ok(state.assign_me_to_task(&connection_id, &item_id).await?)
 }
 
@@ -227,14 +285,21 @@ mod tests {
     use super::*;
 
     fn wire(error: WorkTrackingError) -> Value {
-        serde_json::to_value(CommandError::from(error)).unwrap()
+        serde_json::to_value(WorkTrackingCommandError::from(error)).unwrap()
     }
 
     #[test]
-    fn unauthorized_has_only_kind_and_message() {
+    fn unauthorized_emits_every_field_with_nulls() {
         assert_eq!(
             wire(WorkTrackingError::Unauthorized),
-            json!({ "kind": "unauthorized", "message": "The provider rejected the credentials." })
+            json!({
+                "kind": "unauthorized",
+                "message": "The provider rejected the credentials.",
+                "field": null,
+                "reason": null,
+                "retryAfterSeconds": null,
+                "status": null,
+            })
         );
     }
 
@@ -247,8 +312,8 @@ mod tests {
         assert_eq!(value["kind"], "invalidInput");
         assert_eq!(value["field"], "baseUrl");
         assert_eq!(value["reason"], "httpsRequired");
-        assert!(value.get("status").is_none());
-        assert!(value.get("retryAfterSeconds").is_none());
+        assert_eq!(value["status"], Value::Null);
+        assert_eq!(value["retryAfterSeconds"], Value::Null);
     }
 
     #[test]
@@ -261,7 +326,7 @@ mod tests {
         let limited_without_delay = wire(WorkTrackingError::RateLimited {
             retry_after_seconds: None,
         });
-        assert!(limited_without_delay.get("retryAfterSeconds").is_none());
+        assert_eq!(limited_without_delay["retryAfterSeconds"], Value::Null);
         let provider = wire(WorkTrackingError::ProviderError { status: Some(503) });
         assert_eq!(provider["kind"], "providerError");
         assert_eq!(provider["status"], 503);
@@ -289,32 +354,49 @@ mod tests {
             assert!(value["message"]
                 .as_str()
                 .is_some_and(|message| !message.is_empty()));
-            assert_eq!(value.as_object().unwrap().len(), 2, "{value}");
+            // Six keys always present, all null for these variants.
+            assert_eq!(value.as_object().unwrap().len(), 6, "{value}");
+            assert_eq!(value["field"], Value::Null);
+            assert_eq!(value["reason"], Value::Null);
         }
     }
 
     #[test]
-    fn every_field_and_reason_has_a_camel_case_name() {
-        assert_eq!(field_name(InputField::ProviderKind), "providerKind");
-        assert_eq!(field_name(InputField::ApiKey), "apiKey");
-        assert_eq!(field_name(InputField::DisplayName), "displayName");
-        assert_eq!(field_name(InputField::ConnectionId), "connectionId");
-        assert_eq!(field_name(InputField::ProjectId), "projectId");
-        assert_eq!(field_name(InputField::GroupId), "groupId");
-        assert_eq!(field_name(InputField::Cursor), "cursor");
-        assert_eq!(field_name(InputField::PageSize), "pageSize");
-        assert_eq!(reason_name(InvalidInputReason::Required), "required");
-        assert_eq!(reason_name(InvalidInputReason::TooLong), "tooLong");
+    fn every_field_and_reason_maps_to_a_camel_case_name() {
+        let field = |field| {
+            serde_json::to_value(WorkTrackingField::from(field))
+                .unwrap()
+                .as_str()
+                .unwrap()
+                .to_string()
+        };
+        assert_eq!(field(InputField::ProviderKind), "providerKind");
+        assert_eq!(field(InputField::ApiKey), "apiKey");
+        assert_eq!(field(InputField::DisplayName), "displayName");
+        assert_eq!(field(InputField::ConnectionId), "connectionId");
+        assert_eq!(field(InputField::ProjectId), "projectId");
+        assert_eq!(field(InputField::GroupId), "groupId");
+        assert_eq!(field(InputField::ItemId), "itemId");
+        assert_eq!(field(InputField::Cursor), "cursor");
+        assert_eq!(field(InputField::PageSize), "pageSize");
+
+        let reason = |reason| {
+            serde_json::to_value(WorkTrackingInvalidReason::from(reason))
+                .unwrap()
+                .as_str()
+                .unwrap()
+                .to_string()
+        };
+        assert_eq!(reason(InvalidInputReason::Required), "required");
+        assert_eq!(reason(InvalidInputReason::TooLong), "tooLong");
+        assert_eq!(reason(InvalidInputReason::InvalidFormat), "invalidFormat");
+        assert_eq!(reason(InvalidInputReason::HttpsRequired), "httpsRequired");
         assert_eq!(
-            reason_name(InvalidInputReason::InvalidFormat),
-            "invalidFormat"
-        );
-        assert_eq!(
-            reason_name(InvalidInputReason::UnsupportedComponent),
+            reason(InvalidInputReason::UnsupportedComponent),
             "unsupportedComponent"
         );
-        assert_eq!(reason_name(InvalidInputReason::OutOfRange), "outOfRange");
-        assert_eq!(reason_name(InvalidInputReason::Unsupported), "unsupported");
+        assert_eq!(reason(InvalidInputReason::OutOfRange), "outOfRange");
+        assert_eq!(reason(InvalidInputReason::Unsupported), "unsupported");
     }
 
     #[test]

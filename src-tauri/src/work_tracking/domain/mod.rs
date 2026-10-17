@@ -44,9 +44,10 @@ mod serialization_tests {
     }
 
     #[test]
-    fn task_omits_absent_optionals() {
+    fn task_emits_absent_optionals_as_null() {
+        // Wire types keep a stable shape for specta: every optional is present,
+        // null when absent, rather than omitted.
         let json = serde_json::to_string(&minimal_task()).unwrap();
-        assert!(!json.contains("null"), "{json}");
         for key in [
             "groupId",
             "parentId",
@@ -55,10 +56,13 @@ mod serialization_tests {
             "dueDate",
             "updatedAt",
         ] {
-            assert!(!json.contains(&format!("\"{key}\"")), "{key} in {json}");
+            assert!(
+                json.contains(&format!("\"{key}\":null")),
+                "{key} not null in {json}"
+            );
         }
-        assert!(!json.contains("avatarUrl"));
-        assert!(!json.contains("color"));
+        assert!(json.contains("\"avatarUrl\":null"));
+        assert!(json.contains("\"color\":null"));
         assert!(json.contains("\"status\":\"inProgress\""));
         assert!(json.contains("\"priority\":\"none\""));
         assert!(json.contains("\"projectId\":\"2\""));
@@ -73,14 +77,14 @@ mod serialization_tests {
     }
 
     #[test]
-    fn page_cursor_is_bare_string_or_absent() {
+    fn page_cursor_is_bare_string_or_null() {
         let without_cursor: Page<u8> = Page {
             items: vec![],
             next_cursor: None,
         };
         assert_eq!(
             serde_json::to_string(&without_cursor).unwrap(),
-            r#"{"items":[]}"#
+            r#"{"items":[],"nextCursor":null}"#
         );
         let with_cursor: Page<u8> = Page {
             items: vec![1],
@@ -97,9 +101,9 @@ mod serialization_tests {
             "A".into(),
             Some("http://x".into()),
         );
-        assert!(!serde_json::to_string(&insecure)
+        assert!(serde_json::to_string(&insecure)
             .unwrap()
-            .contains("avatarUrl"));
+            .contains("\"avatarUrl\":null"));
         let secure = Person::new(
             PersonId::from_numeric(1),
             "A".into(),

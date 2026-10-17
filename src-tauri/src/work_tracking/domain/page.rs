@@ -7,7 +7,7 @@ pub const MAX_PAGE_SIZE: u32 = 100;
 const MAX_CURSOR_LENGTH: usize = 64;
 
 /// Opaque pagination token; its meaning belongs to the provider adapter.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
 #[serde(transparent)]
 pub struct Cursor(String);
 
@@ -34,11 +34,12 @@ impl Cursor {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+// `next_cursor` is always emitted (null when absent): tauri-specta rc.25 fails
+// on `skip_serializing_if` inside a generic type with an unbound `T`.
+#[derive(Debug, Clone, PartialEq, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
-pub struct Page<T> {
+pub struct Page<T: specta::Type> {
     pub items: Vec<T>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub next_cursor: Option<Cursor>,
 }
 

@@ -1,10 +1,9 @@
 use serde::Serialize;
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct Label {
     name: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
     color: Option<String>,
 }
 

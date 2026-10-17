@@ -2,7 +2,7 @@ use serde::Serialize;
 
 use super::error::{InputField, InvalidInputReason, WorkTrackingError};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub enum ProviderKind {
     Teamwork,
