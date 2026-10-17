@@ -2,18 +2,20 @@ import { Modal } from "@mantine/core";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { AgentChat } from "@/components/agent-chat/AgentChat";
+import { useContextAgentRunConversation } from "@/hooks/agent-runs/useContextAgentRunConversation";
 import { useKiroAgentSession } from "@/hooks/useKiroAgentSession";
 import { createFileProvider } from "@/models/agent-chat/slash/fileProvider";
 import type { SlashProvider } from "@/models/agent-chat/slash/SlashProvider";
 import { createSteeringProvider } from "@/models/agent-chat/slash/steeringProvider";
-import type { KiroConversation } from "@/models/ai-session/KiroConversation";
+import type { LiveAgentRun } from "@/models/agent-runs/agentRunConversation";
 
 type KiroConversationModalProps = {
 	opened: boolean;
 	onClose: () => void;
 	contextId: string;
 	contextName: string;
-	conversation: KiroConversation | undefined;
+	/** The run streaming for this context right now, if any. */
+	liveRun: LiveAgentRun | undefined;
 	isRunning: boolean;
 	prompt: string;
 	onPromptChange: (prompt: string) => void;
@@ -24,17 +26,18 @@ type KiroConversationModalProps = {
 };
 
 /**
- * Modal host for a context's Kiro conversation. The chat UI is now the reusable,
- * CLI-agnostic `AgentChat`; this component only adapts the context's Kiro state
- * into an `AgentSession` and supplies the slash-command providers scoped to the
- * context's working directory.
+ * Modal host for a context's agent conversation. The transcript is the context's
+ * recorded runs read from Rust (surviving reloads) merged with the live run from
+ * the `agent-run` event stream. The chat UI is the reusable, CLI-agnostic
+ * `AgentChat`; this component adapts the run state into an `AgentSession` and
+ * supplies the slash-command providers scoped to the context's working directory.
  */
 export function KiroConversationModal({
 	opened,
 	onClose,
 	contextId,
 	contextName,
-	conversation,
+	liveRun,
 	isRunning,
 	prompt,
 	onPromptChange,
@@ -43,6 +46,8 @@ export function KiroConversationModal({
 	slashBasePath,
 }: KiroConversationModalProps) {
 	const { t } = useTranslation();
+
+	const conversation = useContextAgentRunConversation(contextId, liveRun);
 
 	const session = useKiroAgentSession({
 		id: contextId,

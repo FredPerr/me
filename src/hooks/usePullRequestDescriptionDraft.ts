@@ -166,7 +166,10 @@ export function usePullRequestDescriptionDraft(): UsePullRequestDescriptionDraft
 					adapterId: KIRO_ADAPTER_ID,
 					prompt,
 					workingDirectory: worktreePath,
-					shell: settings?.shell || undefined,
+					command: null,
+					agent: null,
+					resumeId: null,
+					shell: settings?.shell || null,
 					trustAllTools: true,
 				});
 

@@ -5,7 +5,13 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
-use crate::workspace::domain::ports::{CheckoutFiles, CheckoutFilesError, ProjectEvents};
+use crate::workspace::domain::agent_runner::{
+    AgentRunError, AgentRunEvent, AgentRunEventSink, AgentRunEvents, AgentRunSpec, AgentRunUpdate,
+    AgentRunner, RunFinalState, RunHandle,
+};
+use crate::workspace::domain::ports::{
+    CheckoutFiles, CheckoutFilesError, Clock, PermissionFloor, ProjectEvents,
+};
 use crate::workspace::domain::project_tag::ProjectTag;
 
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -99,5 +105,154 @@ impl RecordingProjectEvents {
 impl ProjectEvents for RecordingProjectEvents {
     fn project_changed(&self, tag: &ProjectTag) {
         lock(&self.changed).push(tag.clone());
+    }
+}
+
+/// One `agent-run` update the use case emitted, with the run it concerned.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RecordedAgentRunUpdate {
+    pub context_id: String,
+    pub run_id: String,
+    pub update: AgentRunUpdate,
+}
+
+/// Records the `agent-run` events the use case emits, in order.
+#[derive(Default)]
+pub struct RecordingAgentRunEvents {
+    updates: Mutex<Vec<RecordedAgentRunUpdate>>,
+}
+
+impl RecordingAgentRunEvents {
+    pub fn updates(&self) -> Vec<RecordedAgentRunUpdate> {
+        lock(&self.updates).clone()
+    }
+}
+
+impl AgentRunEvents for RecordingAgentRunEvents {
+    fn run_changed(&self, context_id: &str, run_id: &str, update: AgentRunUpdate) {
+        lock(&self.updates).push(RecordedAgentRunUpdate {
+            context_id: context_id.to_string(),
+            run_id: run_id.to_string(),
+            update,
+        });
+    }
+}
+
+/// A clock fixed at one ISO 8601 instant, so a run's `started_at` is known.
+pub struct FakeClock {
+    now: Mutex<String>,
+}
+
+impl FakeClock {
+    pub fn at(now: &str) -> Self {
+        Self {
+            now: Mutex::new(now.to_string()),
+        }
+    }
+}
+
+impl Clock for FakeClock {
+    fn now_iso8601(&self) -> String {
+        lock(&self.now).clone()
+    }
+}
+
+/// Records the working directories the use case asked to seed, without
+/// touching the disk.
+#[derive(Default)]
+pub struct RecordingPermissionFloor {
+    seeded: Mutex<Vec<String>>,
+}
+
+impl RecordingPermissionFloor {
+    pub fn seeded(&self) -> Vec<String> {
+        lock(&self.seeded).clone()
+    }
+}
+
+impl PermissionFloor for RecordingPermissionFloor {
+    fn seed(&self, working_directory: &str) {
+        lock(&self.seeded).push(working_directory.to_string());
+    }
+}
+
+/// A fake `AgentRunner` for the service tests: it delivers a scripted list of
+/// events through the sink when `start` is called, records the spec it was
+/// started with, and lets a test ask it to deliver a terminal `Ended` event
+/// later to stand in for a process ending. No real process is spawned.
+pub struct FakeAgentRunner {
+    run_id: String,
+    scripted: Mutex<Vec<AgentRunEvent>>,
+    started_specs: Mutex<Vec<AgentRunSpec>>,
+    stopped: Mutex<Vec<RunHandle>>,
+    /// The sink of the most recent run, so a test can push a later `Ended`.
+    sink: Mutex<Option<AgentRunEventSink>>,
+    /// An error to return from `start` instead of starting, when set.
+    start_error: Mutex<Option<AgentRunError>>,
+}
+
+impl FakeAgentRunner {
+    /// A runner that, on `start`, delivers `scripted` (after a `Started`) and
+    /// uses `run_id` as the handle.
+    pub fn scripted(run_id: &str, scripted: Vec<AgentRunEvent>) -> Self {
+        Self {
+            run_id: run_id.to_string(),
+            scripted: Mutex::new(scripted),
+            started_specs: Mutex::new(Vec::new()),
+            stopped: Mutex::new(Vec::new()),
+            sink: Mutex::new(None),
+            start_error: Mutex::new(None),
+        }
+    }
+
+    pub fn started_specs(&self) -> Vec<AgentRunSpec> {
+        lock(&self.started_specs).clone()
+    }
+
+    pub fn stopped_handles(&self) -> Vec<RunHandle> {
+        lock(&self.stopped).clone()
+    }
+
+    /// Delivers a terminal `Ended` event through the latest run's sink, as the
+    /// underlying process ending would. Returns false when no run is active.
+    pub fn end_latest_run(&self, final_state: RunFinalState, exit_code: Option<i32>) -> bool {
+        match lock(&self.sink).as_ref() {
+            Some(sink) => sink
+                .send(AgentRunEvent::Ended {
+                    final_state,
+                    exit_code,
+                })
+                .is_ok(),
+            None => false,
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl AgentRunner for FakeAgentRunner {
+    async fn start(
+        &self,
+        spec: AgentRunSpec,
+        sink: AgentRunEventSink,
+    ) -> Result<RunHandle, AgentRunError> {
+        if let Some(error) = lock(&self.start_error).take() {
+            return Err(error);
+        }
+        lock(&self.started_specs).push(spec);
+        let _ = sink.send(AgentRunEvent::Started {
+            run_id: self.run_id.clone(),
+        });
+        for event in lock(&self.scripted).drain(..) {
+            let _ = sink.send(event);
+        }
+        *lock(&self.sink) = Some(sink);
+        Ok(RunHandle {
+            run_id: self.run_id.clone(),
+        })
+    }
+
+    async fn stop(&self, handle: &RunHandle) -> Result<(), AgentRunError> {
+        lock(&self.stopped).push(handle.clone());
+        Ok(())
     }
 }

@@ -5,10 +5,12 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
-use super::application::error::WorkspaceServiceError;
+use super::application::agent_runs::AgentRunService;
+use super::application::error::{AgentRunServiceError, WorkspaceServiceError};
 use super::application::service::{
     BranchChoice, CreateContextCommand, RepositoryBranchChoice, WorkspaceService,
 };
+use super::domain::agent_run::{AgentRun, AgentRunState};
 use super::domain::agent_work::{AgentTool, AgentWork};
 use super::domain::branch_naming::{parse_branch_name, BranchNamingPolicy};
 use super::domain::context::Context;
@@ -48,6 +50,11 @@ pub enum WorkspaceErrorKind {
     Git,
     Files,
     Storage,
+    /// The agent tool is unknown, the prompt empty, or the run could not be
+    /// started or stopped.
+    AgentRun,
+    /// No agent is running for the context, so there is none to stop.
+    NoRunningAgent,
     Internal,
 }
 
@@ -136,6 +143,75 @@ impl From<WorkspaceServiceError> for WorkspaceCommandError {
         Self {
             kind,
             message: error.to_string(),
+        }
+    }
+}
+
+impl From<AgentRunServiceError> for WorkspaceCommandError {
+    fn from(error: AgentRunServiceError) -> Self {
+        match error {
+            AgentRunServiceError::Workspace(workspace) => workspace.into(),
+            AgentRunServiceError::Runner(_) => Self {
+                kind: WorkspaceErrorKind::AgentRun,
+                message: error.to_string(),
+            },
+            AgentRunServiceError::NoRunningAgent { .. } => Self {
+                kind: WorkspaceErrorKind::NoRunningAgent,
+                message: error.to_string(),
+            },
+        }
+    }
+}
+
+/// How one of a context's agent runs looks to the frontend: its transcript
+/// (oldest first), how it ended and when it started.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentRunView {
+    pub id: String,
+    pub context_id: String,
+    pub prompt: String,
+    pub output_lines: Vec<String>,
+    pub state: AgentRunStateView,
+    pub exit_code: Option<i32>,
+    pub trimmed: bool,
+    pub started_at: String,
+}
+
+/// How a run ended, or that it is still going, on the wire.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub enum AgentRunStateView {
+    Running,
+    Finished,
+    Failed,
+    Stopped,
+    Interrupted,
+}
+
+impl From<AgentRunState> for AgentRunStateView {
+    fn from(state: AgentRunState) -> Self {
+        match state {
+            AgentRunState::Running => Self::Running,
+            AgentRunState::Finished => Self::Finished,
+            AgentRunState::Failed => Self::Failed,
+            AgentRunState::Stopped => Self::Stopped,
+            AgentRunState::Interrupted => Self::Interrupted,
+        }
+    }
+}
+
+impl From<AgentRun> for AgentRunView {
+    fn from(run: AgentRun) -> Self {
+        Self {
+            id: run.id.to_string(),
+            context_id: run.context_id.to_string(),
+            prompt: run.prompt,
+            output_lines: run.output_lines,
+            state: run.state.into(),
+            exit_code: run.exit_code,
+            trimmed: run.trimmed,
+            started_at: run.started_at,
         }
     }
 }
@@ -675,6 +751,10 @@ fn service(workspace: &State<'_, Workspace>) -> Arc<WorkspaceService> {
     workspace.service.clone()
 }
 
+fn agent_run_service(workspace: &State<'_, Workspace>) -> Arc<AgentRunService> {
+    workspace.agent_run_service.clone()
+}
+
 #[tauri::command]
 #[specta::specta]
 pub async fn workspace_list_projects(
@@ -893,6 +973,53 @@ pub async fn workspace_suggest_branch_name(
         let tag = ProjectTag::parse(&project_tag)?;
         let branch = service.suggest_branch_name(&tag, &title, prefix.as_deref())?;
         Ok(branch.to_string())
+    })
+    .await
+}
+
+/// Starts an agent on the context: Rust picks the folder, seeds the permission
+/// floor, records the run and streams an `agent-run` event. A static context
+/// keeps its status; others move to in progress, then needs human on end.
+#[tauri::command]
+#[specta::specta]
+pub async fn workspace_run_agent(
+    workspace: State<'_, Workspace>,
+    project_tag: String,
+    context_id: String,
+    prompt: String,
+) -> Result<(), WorkspaceCommandError> {
+    let service = agent_run_service(&workspace);
+    let tag = ProjectTag::parse(&project_tag)?;
+    let id = ContextId::parse(&context_id)?;
+    service.run_agent(&tag, &id, prompt).await?;
+    Ok(())
+}
+
+/// Stops the context's running agent; its run ends as stopped.
+#[tauri::command]
+#[specta::specta]
+pub async fn workspace_stop_agent_run(
+    workspace: State<'_, Workspace>,
+    context_id: String,
+) -> Result<(), WorkspaceCommandError> {
+    let service = agent_run_service(&workspace);
+    let id = ContextId::parse(&context_id)?;
+    service.stop_agent_run(&id).await?;
+    Ok(())
+}
+
+/// A context's past runs with their transcripts, oldest first.
+#[tauri::command]
+#[specta::specta]
+pub async fn workspace_list_agent_runs(
+    workspace: State<'_, Workspace>,
+    context_id: String,
+) -> Result<Vec<AgentRunView>, WorkspaceCommandError> {
+    let service = agent_run_service(&workspace);
+    run_blocking(move || {
+        let id = ContextId::parse(&context_id)?;
+        let runs = service.list_agent_runs(&id)?;
+        Ok(runs.into_iter().map(AgentRunView::from).collect())
     })
     .await
 }

@@ -1,6 +1,12 @@
 //! Low-level process lifecycle: spawn with piped stdio, stream output, watch
 //! for exit, and kill by process group. Platform-specific concerns (process
 //! groups, signalling) are isolated here behind small helpers.
+//!
+//! Output and terminal status are delivered two ways at once: to the frontend
+//! over Tauri events (the frontend still consumes them), and to an optional
+//! in-process [`AiSessionSink`] an in-Rust caller (the agent-run composition
+//! adapter) passes in. The two are independent, so adding the sink did not
+//! change the existing frontend behaviour.
 
 use crate::ai_session::registry::{RunningSession, SessionRegistry, SessionStatus};
 use crate::ai_session::{
@@ -11,6 +17,24 @@ use std::process::Stdio;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, Command};
+use tokio::sync::mpsc;
+
+/// An in-process observer of one session's output and terminal status, in
+/// addition to the Tauri events. The agent-run adapter listens on this to drive
+/// `workspace` without the frontend being involved.
+#[derive(Debug, Clone)]
+pub enum AiSessionEvent {
+    /// One line of output from the given stream.
+    Line { stream: OutputStream, line: String },
+    /// The process reached a terminal state.
+    Ended {
+        status: SessionStatus,
+        exit_code: Option<i32>,
+    },
+}
+
+/// The channel the in-process events are sent on.
+pub type AiSessionSink = mpsc::UnboundedSender<AiSessionEvent>;
 
 /// Spawns the process described by `spec`, registers it, and starts the
 /// streaming + exit-watching background tasks. Returns the session descriptor.
@@ -19,6 +43,19 @@ pub async fn spawn(
     registry: &State<'_, SessionRegistry>,
     adapter_id: String,
     spec: SpawnSpec,
+) -> Result<SpawnedSession, String> {
+    spawn_with_sink(app, registry, adapter_id, spec, None).await
+}
+
+/// Like [`spawn`], but also forwards every output line and the terminal status
+/// to `sink` when one is given. The Tauri events fire exactly as before either
+/// way, so the frontend is unaffected.
+pub async fn spawn_with_sink(
+    app: AppHandle,
+    registry: &State<'_, SessionRegistry>,
+    adapter_id: String,
+    spec: SpawnSpec,
+    sink: Option<AiSessionSink>,
 ) -> Result<SpawnedSession, String> {
     let session_id = uuid::Uuid::new_v4().to_string();
 
@@ -57,7 +94,7 @@ pub async fn spawn(
         }
     }
 
-    stream_output(&app, &session_id, &mut child);
+    stream_output(&app, &session_id, &mut child, sink.clone());
 
     // Register the session before announcing it is running so a kill issued the
     // instant the frontend sees the status always finds a tracked pid.
@@ -79,7 +116,14 @@ pub async fn spawn(
         },
     );
 
-    watch_for_exit(app, child, session_id.clone(), adapter_id.clone(), pid);
+    watch_for_exit(
+        app,
+        child,
+        session_id.clone(),
+        adapter_id.clone(),
+        pid,
+        sink,
+    );
 
     Ok(SpawnedSession {
         session_id,
@@ -91,13 +135,19 @@ pub async fn spawn(
 
 /// Spawns background tasks that read stdout and stderr line-by-line and emit an
 /// [`OutputEvent`] per line. Handles are taken from the child here.
-fn stream_output(app: &AppHandle, session_id: &str, child: &mut Child) {
+fn stream_output(
+    app: &AppHandle,
+    session_id: &str,
+    child: &mut Child,
+    sink: Option<AiSessionSink>,
+) {
     if let Some(stdout) = child.stdout.take() {
         spawn_line_reader(
             app.clone(),
             session_id.to_string(),
             stdout,
             OutputStream::Stdout,
+            sink.clone(),
         );
     }
     if let Some(stderr) = child.stderr.take() {
@@ -106,12 +156,18 @@ fn stream_output(app: &AppHandle, session_id: &str, child: &mut Child) {
             session_id.to_string(),
             stderr,
             OutputStream::Stderr,
+            sink,
         );
     }
 }
 
-fn spawn_line_reader<R>(app: AppHandle, session_id: String, reader: R, stream: OutputStream)
-where
+fn spawn_line_reader<R>(
+    app: AppHandle,
+    session_id: String,
+    reader: R,
+    stream: OutputStream,
+    sink: Option<AiSessionSink>,
+) where
     R: tokio::io::AsyncRead + Unpin + Send + 'static,
 {
     tokio::spawn(async move {
@@ -119,6 +175,12 @@ where
         loop {
             match lines.next_line().await {
                 Ok(Some(line)) => {
+                    if let Some(sink) = &sink {
+                        let _ = sink.send(AiSessionEvent::Line {
+                            stream,
+                            line: line.clone(),
+                        });
+                    }
                     let _ = app.emit(
                         EVENT_OUTPUT,
                         OutputEvent {
@@ -145,6 +207,7 @@ fn watch_for_exit(
     session_id: String,
     adapter_id: String,
     pid: Option<u32>,
+    sink: Option<AiSessionSink>,
 ) {
     tokio::spawn(async move {
         let wait_result = child.wait().await;
@@ -179,6 +242,10 @@ fn watch_for_exit(
             ),
         };
 
+        if let Some(sink) = &sink {
+            let _ = sink.send(AiSessionEvent::Ended { status, exit_code });
+        }
+
         emit_status(
             &app,
             StatusEvent {
@@ -195,6 +262,18 @@ fn watch_for_exit(
 
 fn emit_status(app: &AppHandle, event: StatusEvent) {
     let _ = app.emit(EVENT_STATUS, event);
+}
+
+/// Terminates a tracked session by killing its process group, callable from
+/// plain Rust (the agent-run adapter) without a Tauri command wrapper. Flags
+/// the kill in the registry first so the exit is reported as `killed`.
+pub fn kill_session(registry: &SessionRegistry, session_id: &str) -> Result<(), String> {
+    let pid = registry
+        .mark_kill_requested(session_id)
+        .or_else(|| registry.pid_of(session_id))
+        .ok_or_else(|| format!("No running session with id '{}'", session_id))?;
+
+    kill_process_group(pid)
 }
 
 // --- Platform-specific process group handling ------------------------------

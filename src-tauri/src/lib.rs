@@ -1,6 +1,10 @@
 use std::sync::Arc;
 
-use tauri::Manager;
+use tauri::{Manager, WindowEvent};
+use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
+
+use workspace::application::agent_runs::AgentRunService;
+use workspace::application::quit_guard::{decide_close, CloseDecision};
 
 mod ai_session;
 mod binary_resolver;
@@ -17,80 +21,15 @@ mod work_tracking;
 mod workspace;
 mod workspace_detector;
 
-#[tauri::command]
-fn greet(name: &str) -> String {
-    format!("Hello, {}! You've been greeted from Rust!", name)
-}
-
-#[tauri::command]
-async fn open_in_ide(command: String, path: String, shell: Option<String>) -> Result<(), String> {
-    ide_launcher::launch(&command, &path, shell.as_deref())
-}
-
-#[tauri::command]
-async fn check_path_exists(path: String) -> bool {
-    std::path::Path::new(&path).exists()
-}
-
-/// TEMPORARY: commands already moved to tauri-specta. The dispatcher in [`run`]
-/// routes these to the typed handler and every other command to the old
-/// `generate_handler!`. Delete this list, the dispatcher and the old handler
-/// once the last command has moved. Names are the Rust function names.
-const TYPED_COMMANDS: &[&str] = &[
-    "check_is_git_repository",
-    "get_git_remote_url",
-    "list_worktrees",
-    "get_worktree_status",
-    "get_worktree_diff",
-    "read_pull_request_template",
-    "list_branches",
-    "list_local_branches",
-    "delete_local_branch",
-    "delete_worktree",
-    "prune_worktrees",
-    "pull_worktree",
-    "push_worktree",
-    "fetch_pr_branch",
-    "workspace_list_projects",
-    "workspace_get_project",
-    "workspace_create_context",
-    "workspace_delete_context",
-    "workspace_set_context_status",
-    "workspace_set_context_static",
-    "workspace_save_pull_request_draft",
-    "workspace_set_agent_prompt",
-    "workspace_record_agent_conversation",
-    "workspace_update_project_settings",
-    "workspace_add_project",
-    "workspace_delete_project",
-    "workspace_suggest_branch_name",
-    "git_hosting_list_accounts",
-    "git_hosting_start_sign_in",
-    "git_hosting_poll_sign_in",
-    "git_hosting_sign_in_with_token",
-    "git_hosting_sign_out",
-    "git_hosting_project_pull_requests",
-    "git_hosting_context_pull_requests",
-    "git_hosting_create_pull_request",
-    "settings_get",
-    "settings_set_assign_me_to_tasks",
-    "work_tracking_list_connections",
-    "work_tracking_save_connection",
-    "work_tracking_remove_connection",
-    "work_tracking_list_projects",
-    "work_tracking_list_groups",
-    "work_tracking_list_items",
-    "work_tracking_list_project_items",
-    "work_tracking_assign_me_to_task",
-    "work_tracking_assign_me_to_tasks",
-    "work_tracking_pending_tasks",
-];
-
 /// The typed commands, exported with their types to `src/bindings.ts`.
 fn typed_commands() -> tauri_specta::Builder<tauri::Wry> {
     tauri_specta::Builder::<tauri::Wry>::new()
         .error_handling(tauri_specta::ErrorHandlingMode::Throw)
         .commands(tauri_specta::collect_commands![
+            ide_launcher::open_in_ide,
+            workspace_detector::get_active_workspaces,
+            ai_session::spawn_ai_session,
+            ai_session::kill_ai_session,
             git::commands::check_is_git_repository,
             git::commands::get_git_remote_url,
             git::commands::list_worktrees,
@@ -114,6 +53,9 @@ fn typed_commands() -> tauri_specta::Builder<tauri::Wry> {
             workspace::commands::workspace_save_pull_request_draft,
             workspace::commands::workspace_set_agent_prompt,
             workspace::commands::workspace_record_agent_conversation,
+            workspace::commands::workspace_run_agent,
+            workspace::commands::workspace_stop_agent_run,
+            workspace::commands::workspace_list_agent_runs,
             workspace::commands::workspace_update_project_settings,
             workspace::commands::workspace_add_project,
             workspace::commands::workspace_delete_project,
@@ -141,25 +83,63 @@ fn typed_commands() -> tauri_specta::Builder<tauri::Wry> {
         ])
         .events(tauri_specta::collect_events![
             workspace::infra::tauri_project_events::ProjectChanged,
+            workspace::infra::tauri_agent_run_events::AgentRunChanged,
             git_hosting::infra::tauri_git_hosting_events::GitHostingChanged
         ])
+}
+
+/// Wires the quit guard to the window's close request. The decision (whether
+/// to warn and what the dialog says) and the stopping of runs are tested
+/// functions on `AgentRunService`; this shell only drives the window and the
+/// native dialog, which can't be unit-tested.
+///
+/// On a close request: with no run in progress the close goes ahead. With runs
+/// in progress the close is prevented and a native dialog lists them with
+/// "Stop runs and quit" and "Cancel". Cancelling leaves the window open;
+/// confirming stops every run (recording each Stopped and moving its context to
+/// needs human) then exits. The exit is deferred to the dialog's async callback
+/// because the close was already prevented; re-emitting the close after
+/// stopping would re-run this guard, so we exit the app directly instead.
+fn guard_window_close(window: &tauri::WebviewWindow, agent_run_service: Arc<AgentRunService>) {
+    let window_handle = window.clone();
+    window.on_window_event(move |event| {
+        let WindowEvent::CloseRequested { api, .. } = event else {
+            return;
+        };
+        let CloseDecision::Confirm { message } =
+            decide_close(&agent_run_service.in_progress_runs())
+        else {
+            return;
+        };
+        api.prevent_close();
+        let app = window_handle.app_handle().clone();
+        let service = Arc::clone(&agent_run_service);
+        window_handle
+            .dialog()
+            .message(message)
+            .title("Agent runs in progress")
+            .buttons(MessageDialogButtons::OkCancelCustom(
+                "Stop runs and quit".to_string(),
+                "Cancel".to_string(),
+            ))
+            .show(move |stop_and_quit| {
+                if !stop_and_quit {
+                    return;
+                }
+                tauri::async_runtime::spawn(async move {
+                    if let Err(error) = service.stop_all_in_progress().await {
+                        eprintln!("[workspace] runs not stopped on quit: {error}");
+                    }
+                    app.exit(0);
+                });
+            });
+    });
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let typed_builder = typed_commands();
     let typed_handler = typed_builder.invoke_handler();
-    // TEMPORARY: see TYPED_COMMANDS.
-    let legacy_handler: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool = tauri::generate_handler![
-        greet,
-        open_in_ide,
-        check_path_exists,
-        workspace_detector::get_active_workspaces,
-        ai_session::spawn_ai_session,
-        ai_session::kill_ai_session,
-        ai_session::list_ai_sessions,
-        ai_session::list_ai_adapters
-    ];
     let mut builder = tauri::Builder::default().plugin(tauri_plugin_store::Builder::new().build());
 
     #[cfg(desktop)]
@@ -181,13 +161,7 @@ pub fn run() {
         .plugin(tauri_plugin_window_state::Builder::new().build())
         .plugin(shortcuts::plugin())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(move |invoke| {
-            if TYPED_COMMANDS.contains(&invoke.message.command()) {
-                typed_handler(invoke)
-            } else {
-                legacy_handler(invoke)
-            }
-        })
+        .invoke_handler(typed_handler)
         .setup(move |app| {
             typed_builder.mount_events(app);
             app.manage(ai_session::registry::SessionRegistry::new());
@@ -197,11 +171,18 @@ pub fn run() {
             let git = git::build(git_hosting::remote_credentials());
             // Workspace is built before work_tracking: the pending-tasks use
             // case reads a Project's remote project links through a composition
-            // adapter over WorkspaceService.
+            // adapter over WorkspaceService. The agent runner is a composition
+            // adapter over ai_session; SessionRegistry is already managed above.
+            let agent_runner = Arc::new(
+                composition::ai_session_agent_runner::AiSessionAgentRunner::new(
+                    app.handle().clone(),
+                ),
+            );
             let workspace = workspace::build(
                 app.handle().clone(),
                 Arc::clone(&database),
                 git.repositories(),
+                agent_runner,
             )?;
             let project_task_links =
                 composition::workspace_project_task_links::WorkspaceProjectTaskLinks::new(
@@ -231,12 +212,26 @@ pub fn run() {
                     &git_hosting.service,
                 )),
             ));
+            // Reconcile runs the previous process left mid-run (#82): at
+            // startup, before any run is started, every run persisted as
+            // Running is a crash leftover, recorded Interrupted with its
+            // context moved to needs human.
+            let agent_run_service = Arc::clone(&workspace.agent_run_service);
+            if let Err(error) = agent_run_service.reconcile_interrupted_runs() {
+                eprintln!("[workspace] interrupted runs not reconciled: {error}");
+            }
             app.manage(git);
             app.manage(push_listener);
             app.manage(git_hosting);
             app.manage(workspace);
             app.manage(settings);
             shortcuts::register(app.handle())?;
+            // Guard the quit (#82): closing with runs in progress asks first
+            // and stops them cleanly. The decision and the stop live in tested
+            // functions; this wiring is a thin shell over them.
+            if let Some(window) = app.get_webview_window("main") {
+                guard_window_close(&window, agent_run_service);
+            }
             Ok(())
         })
         .run(tauri::generate_context!())

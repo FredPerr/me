@@ -114,6 +114,14 @@ pub trait CliAdapter: Send + Sync {
         Vec::new()
     }
 
+    /// Reads this CLI's own conversation id from one line of its output, so a
+    /// follow-up run can resume the same conversation. A pure parser: it never
+    /// touches the process. `None` when the line carries no id (the default, so
+    /// a CLI that does not surface one simply never reports it).
+    fn conversation_id(&self, _line: &str) -> Option<String> {
+        None
+    }
+
     /// Resolves a concrete [`SpawnSpec`] for the request, locating the binary.
     ///
     /// `command_override` lets the caller point at a specific binary/path
@@ -176,16 +184,6 @@ pub trait CliAdapter: Send + Sync {
     }
 }
 
-/// Metadata describing an available adapter, surfaced to the frontend so the UI
-/// can offer the list of supported CLIs without hardcoding it.
-#[derive(serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AdapterInfo {
-    pub id: String,
-    pub display_name: String,
-    pub default_command: String,
-}
-
 /// Holds the set of known adapters, keyed by their stable id.
 pub struct AdapterRegistry {
     adapters: HashMap<&'static str, Box<dyn CliAdapter>>,
@@ -208,22 +206,6 @@ impl AdapterRegistry {
     /// Looks up an adapter by id.
     pub fn get(&self, id: &str) -> Option<&dyn CliAdapter> {
         self.adapters.get(id).map(|boxed| boxed.as_ref())
-    }
-
-    /// Lists metadata for every registered adapter, sorted by display name for
-    /// a stable UI ordering.
-    pub fn list(&self) -> Vec<AdapterInfo> {
-        let mut infos: Vec<AdapterInfo> = self
-            .adapters
-            .values()
-            .map(|adapter| AdapterInfo {
-                id: adapter.id().to_string(),
-                display_name: adapter.display_name().to_string(),
-                default_command: adapter.default_command().to_string(),
-            })
-            .collect();
-        infos.sort_by(|left, right| left.display_name.cmp(&right.display_name));
-        infos
     }
 }
 

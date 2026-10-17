@@ -13,7 +13,7 @@ export type FlowBoardColumnData = {
 	pullRequestLookup?: PullRequestLookup;
 	onOpenKiro: (context: ContextView) => void;
 	isKiroRunning: (contextId: string) => boolean;
-	getKiroHistoryCount: (contextId: string) => number;
+	hasKiroHistory: (contextId: string) => boolean;
 	onCreateFromTasks?: () => void;
 };
 
@@ -25,7 +25,7 @@ export function FlowBoardColumnNode({ data }: { data: FlowBoardColumnData }) {
 		pullRequestLookup,
 		onOpenKiro,
 		isKiroRunning,
-		getKiroHistoryCount,
+		hasKiroHistory,
 		onCreateFromTasks,
 	} = data;
 
@@ -58,7 +58,7 @@ export function FlowBoardColumnNode({ data }: { data: FlowBoardColumnData }) {
 						pullRequestLookup={pullRequestLookup}
 						onOpenKiro={onOpenKiro}
 						isKiroRunning={isKiroRunning(context.id)}
-						hasKiroHistory={getKiroHistoryCount(context.id) > 0}
+						hasKiroHistory={hasKiroHistory(context.id)}
 					/>
 				))}
 			</KanbanColumn>
