@@ -1,10 +1,9 @@
 import { Alert, Button, Group, Modal, PasswordInput, Stack, TextInput } from "@mantine/core";
 import { type FormEvent, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { ProviderConnection } from "@/domain/work-tracking/ProviderConnection";
-import { WorkTrackingError } from "@/domain/work-tracking/WorkTrackingError";
-import { WorkTrackingErrorKind } from "@/domain/work-tracking/WorkTrackingErrorKind";
+import type { ConnectionView, WorkTrackingCommandError } from "@/bindings";
 import type { WorkTrackingConnections } from "@/hooks/work-tracking/useWorkTrackingConnections";
+import { toWorkTrackingCommandError } from "@/infra/commandError";
 import { translateError } from "./translateError";
 
 const API_KEY_FIELD = "apiKey";
@@ -12,7 +11,7 @@ const API_KEY_FIELD = "apiKey";
 type ReplaceKeyModalProps = {
 	opened: boolean;
 	onClose: () => void;
-	connection: ProviderConnection | null;
+	connection: ConnectionView | null;
 	save: WorkTrackingConnections["save"];
 };
 
@@ -20,7 +19,7 @@ export function ReplaceKeyModal({ opened, onClose, connection, save }: ReplaceKe
 	const { t } = useTranslation();
 	const [apiKey, setApiKey] = useState("");
 	const [saving, setSaving] = useState(false);
-	const [error, setError] = useState<WorkTrackingError | null>(null);
+	const [error, setError] = useState<WorkTrackingCommandError | null>(null);
 
 	function handleClose() {
 		setApiKey("");
@@ -43,15 +42,14 @@ export function ReplaceKeyModal({ opened, onClose, connection, save }: ReplaceKe
 			setApiKey("");
 			onClose();
 		} catch (saveError) {
-			setError(WorkTrackingError.fromUnknown(saveError));
+			setError(toWorkTrackingCommandError(saveError));
 		} finally {
 			setSaving(false);
 		}
 	}
 
 	const errorText = error ? translateError(t, error) : null;
-	const isApiKeyError =
-		error?.kind === WorkTrackingErrorKind.InvalidInput && error.field === API_KEY_FIELD;
+	const isApiKeyError = error?.kind === "invalidInput" && error.field === API_KEY_FIELD;
 
 	return (
 		<Modal

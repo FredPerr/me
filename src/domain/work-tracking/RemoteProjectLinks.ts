@@ -1,4 +1,4 @@
-import type { ConnectionId, WorkProjectId } from "./identifiers";
+import type { ConnectionId, RemoteProjectId } from "@/bindings";
 import type { ProviderKind } from "./ProviderKind";
 import { RemoteProjectLink, type RemoteProjectLinkData } from "./RemoteProjectLink";
 
@@ -50,7 +50,7 @@ export class RemoteProjectLinks {
 	has(
 		providerKind: ProviderKind,
 		connectionId: ConnectionId,
-		remoteProjectId: WorkProjectId,
+		remoteProjectId: RemoteProjectId,
 	): boolean {
 		return this.links.some(
 			(link) =>

@@ -19,7 +19,7 @@ pub const MAX_ID_LENGTH: usize = 300;
 /// used as URL path segments and keychain accounts.
 macro_rules! typed_id {
     ($name:ident) => {
-        #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
+        #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, specta::Type)]
         #[serde(transparent)]
         pub struct $name(String);
 

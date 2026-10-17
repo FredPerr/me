@@ -32,13 +32,13 @@ export function TaskContextDraftCard({
 			<Stack gap="sm">
 				<Group justify="space-between" wrap="nowrap" gap="sm">
 					<Text fw={600} size="sm" truncate>
-						{draft.task.item.title}
+						{draft.task.task.title}
 					</Text>
 					<Anchor
 						component="button"
 						type="button"
 						size="xs"
-						onClick={() => openUrl(draft.task.item.url)}
+						onClick={() => openUrl(draft.task.task.url)}
 						style={{ flexShrink: 0 }}
 					>
 						<Group gap={4} wrap="nowrap">

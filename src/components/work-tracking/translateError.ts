@@ -1,8 +1,8 @@
 import type { TFunction } from "i18next";
-import type { WorkTrackingError } from "@/domain/work-tracking/WorkTrackingError";
+import type { WorkTrackingCommandError } from "@/bindings";
 import { errorMessageKey } from "./errorMessageKey";
 
-export function translateError(t: TFunction, error: WorkTrackingError): string {
+export function translateError(t: TFunction, error: WorkTrackingCommandError): string {
 	const { key, values } = errorMessageKey(error);
 	return t(key, values);
 }

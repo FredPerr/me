@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useReducer, useRef } from "react";
-import type { Page } from "@/domain/work-tracking/Page";
-import { WorkTrackingError } from "@/domain/work-tracking/WorkTrackingError";
+import type { Page, WorkTrackingCommandError } from "@/bindings";
+import { isWorkTrackingCommandError } from "@/infra/commandError";
 import {
 	createInitialPagedListState,
 	hasMorePages,
@@ -16,14 +16,22 @@ type FailedRequest = { cursor: string | undefined };
 export type PagedRemoteList<T> = {
 	items: readonly T[];
 	status: PagedListStatus;
-	error: WorkTrackingError | null;
+	error: WorkTrackingCommandError | null;
 	hasMore: boolean;
 	loadMore: () => void;
 	retry: () => void;
 };
 
-function toWorkTrackingError(error: unknown): WorkTrackingError {
-	return error instanceof WorkTrackingError ? error : WorkTrackingError.fromUnknown(error);
+function toWorkTrackingError(error: unknown): WorkTrackingCommandError {
+	if (isWorkTrackingCommandError(error)) return error;
+	return {
+		kind: "providerError",
+		message: String(error),
+		field: null,
+		reason: null,
+		retryAfterSeconds: null,
+		status: null,
+	};
 }
 
 /**

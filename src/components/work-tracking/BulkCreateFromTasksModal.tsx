@@ -3,8 +3,7 @@ import { notifications } from "@mantine/notifications";
 import { InfoIcon } from "@phosphor-icons/react";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { ProjectView } from "@/bindings";
-import type { WorkItem } from "@/domain/work-tracking/WorkItem";
+import type { ProjectView, Task } from "@/bindings";
 import { useBranchNameSuggestion } from "@/hooks/workspace/useBranchNameSuggestion";
 import { useCreateContexts } from "@/hooks/workspace/useCreateContexts";
 import type { BulkContextSpec } from "@/models/bulk/BulkContextSpec";
@@ -16,7 +15,7 @@ type BulkCreateFromTasksModalProps = {
 	onClose: () => void;
 	project: ProjectView;
 	connectionId: string;
-	tasks: readonly WorkItem[];
+	tasks: readonly Task[];
 	onCreated: () => void;
 };
 

@@ -29,7 +29,7 @@ pub struct SaveConnectionCommand {
 }
 
 /// Connection as exposed to the frontend. Never contains the key.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct ConnectionView {
     pub id: ConnectionId,

@@ -3,7 +3,7 @@ import { isCreatedFromTask, type TaskRef } from "@/models/projectView";
 import type { LinkedTask } from "./listLinkedProjectTasks";
 
 export function taskRefOf(task: LinkedTask): TaskRef {
-	return { connectionId: task.connectionId, taskId: task.item.id };
+	return { connectionId: task.connectionId, taskId: task.task.id };
 }
 
 /**
@@ -19,6 +19,6 @@ export function selectPendingTasks(
 	return tasks.filter((task) => {
 		const taskRef = taskRefOf(task);
 		if (contexts.some((context) => isCreatedFromTask(context, taskRef))) return false;
-		return query === "" || task.item.title.toLowerCase().includes(query);
+		return query === "" || task.task.title.toLowerCase().includes(query);
 	});
 }

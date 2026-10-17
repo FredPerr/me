@@ -27,7 +27,7 @@ pub fn sample_connection() -> ProviderConnection {
     ProviderConnection::new(ProviderKind::Teamwork, base_url, display_name)
 }
 
-fn empty_page<T>() -> Page<T> {
+fn empty_page<T: specta::Type>() -> Page<T> {
     Page {
         items: Vec::new(),
         next_cursor: None,

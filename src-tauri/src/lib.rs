@@ -74,6 +74,14 @@ const TYPED_COMMANDS: &[&str] = &[
     "git_hosting_create_pull_request",
     "settings_get",
     "settings_set_assign_me_to_tasks",
+    "work_tracking_list_connections",
+    "work_tracking_save_connection",
+    "work_tracking_remove_connection",
+    "work_tracking_list_projects",
+    "work_tracking_list_groups",
+    "work_tracking_list_items",
+    "work_tracking_list_project_items",
+    "work_tracking_assign_me_to_task",
 ];
 
 /// The typed commands, exported with their types to `src/bindings.ts`.
@@ -118,6 +126,14 @@ fn typed_commands() -> tauri_specta::Builder<tauri::Wry> {
             git_hosting::commands::git_hosting_create_pull_request,
             settings::commands::settings_get,
             settings::commands::settings_set_assign_me_to_tasks,
+            work_tracking::commands::work_tracking_list_connections,
+            work_tracking::commands::work_tracking_save_connection,
+            work_tracking::commands::work_tracking_remove_connection,
+            work_tracking::commands::work_tracking_list_projects,
+            work_tracking::commands::work_tracking_list_groups,
+            work_tracking::commands::work_tracking_list_items,
+            work_tracking::commands::work_tracking_list_project_items,
+            work_tracking::commands::work_tracking_assign_me_to_task,
         ])
         .events(tauri_specta::collect_events![
             workspace::infra::tauri_project_events::ProjectChanged,
@@ -134,14 +150,6 @@ pub fn run() {
         greet,
         open_in_ide,
         check_path_exists,
-        work_tracking::commands::work_tracking_list_connections,
-        work_tracking::commands::work_tracking_save_connection,
-        work_tracking::commands::work_tracking_remove_connection,
-        work_tracking::commands::work_tracking_list_projects,
-        work_tracking::commands::work_tracking_list_groups,
-        work_tracking::commands::work_tracking_list_items,
-        work_tracking::commands::work_tracking_list_project_items,
-        work_tracking::commands::work_tracking_assign_me_to_task,
         workspace_detector::get_active_workspaces,
         ai_session::spawn_ai_session,
         ai_session::kill_ai_session,
@@ -178,9 +186,11 @@ pub fn run() {
         })
         .setup(move |app| {
             typed_builder.mount_events(app);
-            tauri::Manager::manage(app, work_tracking::build_service(app.handle().clone()));
             app.manage(ai_session::registry::SessionRegistry::new());
-            let database = storage::open(&app.path().app_data_dir()?)?;
+            let app_data_dir = app.path().app_data_dir()?;
+            let database = storage::open(&app_data_dir)?;
+            let work_tracking = work_tracking::build_service(Arc::clone(&database), &app_data_dir)?;
+            app.manage(work_tracking);
             let settings = settings::build(Arc::clone(&database))?;
             let git = git::build(git_hosting::remote_credentials());
             let workspace = workspace::build(

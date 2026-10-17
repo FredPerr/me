@@ -189,7 +189,9 @@ fn map_tasklist(
         name: tasklist.name,
         description: tasklist.description,
         kind: TaskGroupKind::TaskList,
-        position: tasklist.display_order,
+        // Display orders are small; narrowing to i32 keeps the wire type a
+        // plain JS number (specta forbids 64-bit integers).
+        position: tasklist.display_order.map(|order| order as i32),
         url: Some(web_urls::tasklist_url(base_url, tasklist.id)),
     }
 }

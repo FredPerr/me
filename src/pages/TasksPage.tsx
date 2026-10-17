@@ -16,27 +16,27 @@ import { SparkleIcon } from "@phosphor-icons/react";
 import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
+import {
+	commands,
+	type RemoteProject,
+	type RemoteProjectId,
+	type Task,
+	type TaskGroup,
+	type TaskGroupId,
+	type TaskId,
+} from "@/bindings";
 import { BulkCreateFromTasksModal } from "@/components/work-tracking/BulkCreateFromTasksModal";
 import { RemoteProjectList } from "@/components/work-tracking/RemoteProjectList";
 import { translateError } from "@/components/work-tracking/translateError";
 import { WorkItemGroupList } from "@/components/work-tracking/WorkItemGroupList";
 import { WorkItemList } from "@/components/work-tracking/WorkItemList";
-import type {
-	WorkItemGroupId,
-	WorkItemId,
-	WorkProjectId,
-} from "@/domain/work-tracking/identifiers";
 import { DEFAULT_PROVIDER_KIND } from "@/domain/work-tracking/ProviderKind";
-import type { WorkItem } from "@/domain/work-tracking/WorkItem";
-import type { WorkItemGroup } from "@/domain/work-tracking/WorkItemGroup";
-import type { WorkProject } from "@/domain/work-tracking/WorkProject";
 import { usePagedRemoteList } from "@/hooks/work-tracking/usePagedRemoteList";
 import {
 	ConnectionsStatus,
 	useWorkTrackingConnections,
 } from "@/hooks/work-tracking/useWorkTrackingConnections";
 import { useProjects } from "@/hooks/workspace/useProjects";
-import { workTrackingGateway } from "@/infra/work-tracking/workTracking";
 import { SettingsTab, settingsPath } from "./settingsTabs";
 
 export function TasksPage() {
@@ -45,11 +45,11 @@ export function TasksPage() {
 	const { connections, status, error, revision, reload } = useWorkTrackingConnections();
 	const { projects, loading } = useProjects();
 	const [selectedProjectTag, setSelectedProjectTag] = useState<string | null>(null);
-	const [selectedRemoteProjectId, setSelectedRemoteProjectId] = useState<WorkProjectId | null>(
+	const [selectedRemoteProjectId, setSelectedRemoteProjectId] = useState<RemoteProjectId | null>(
 		null,
 	);
-	const [selectedGroupId, setSelectedGroupId] = useState<WorkItemGroupId | null>(null);
-	const [selectedTaskIds, setSelectedTaskIds] = useState<ReadonlySet<WorkItemId>>(() => new Set());
+	const [selectedGroupId, setSelectedGroupId] = useState<TaskGroupId | null>(null);
+	const [selectedTaskIds, setSelectedTaskIds] = useState<ReadonlySet<TaskId>>(() => new Set());
 	const [bulkOpened, { open: openBulk, close: closeBulk }] = useDisclosure(false);
 
 	const selectedProject = projects.find((project) => project.tag === selectedProjectTag) ?? null;
@@ -57,26 +57,29 @@ export function TasksPage() {
 		connections.find((candidate) => candidate.kind === DEFAULT_PROVIDER_KIND) ?? null;
 	const connectionId = connection?.id;
 
-	const projectList = usePagedRemoteList<WorkProject>(
-		connectionId ? (cursor) => workTrackingGateway.listProjects(connectionId, cursor) : null,
+	const projectList = usePagedRemoteList<RemoteProject>(
+		connectionId
+			? (cursor) => commands.workTrackingListProjects(connectionId, cursor ?? null)
+			: null,
 		connectionId ? `${revision}|${connectionId}` : "",
 	);
-	const groupList = usePagedRemoteList<WorkItemGroup>(
+	const groupList = usePagedRemoteList<TaskGroup>(
 		connectionId && selectedRemoteProjectId
-			? (cursor) => workTrackingGateway.listGroups(connectionId, selectedRemoteProjectId, cursor)
+			? (cursor) =>
+					commands.workTrackingListGroups(connectionId, selectedRemoteProjectId, cursor ?? null)
 			: null,
 		connectionId && selectedRemoteProjectId
 			? `${revision}|${connectionId}|${selectedRemoteProjectId}`
 			: "",
 	);
-	const itemList = usePagedRemoteList<WorkItem>(
+	const itemList = usePagedRemoteList<Task>(
 		connectionId && selectedRemoteProjectId && selectedGroupId
 			? (cursor) =>
-					workTrackingGateway.listItems(
+					commands.workTrackingListItems(
 						connectionId,
 						selectedRemoteProjectId,
 						selectedGroupId,
-						cursor,
+						cursor ?? null,
 					)
 			: null,
 		connectionId && selectedRemoteProjectId && selectedGroupId
@@ -86,29 +89,29 @@ export function TasksPage() {
 
 	const canSelectTasks = selectedProject !== null;
 	const selectedTasks = useMemo(
-		() => itemList.items.filter((item) => selectedTaskIds.has(item.id)),
+		() => itemList.items.filter((task) => selectedTaskIds.has(task.id)),
 		[itemList.items, selectedTaskIds],
 	);
 
-	const toggleTaskSelected = useCallback((item: WorkItem, selected: boolean) => {
+	const toggleTaskSelected = useCallback((task: Task, selected: boolean) => {
 		setSelectedTaskIds((current) => {
 			const next = new Set(current);
-			if (selected) next.add(item.id);
-			else next.delete(item.id);
+			if (selected) next.add(task.id);
+			else next.delete(task.id);
 			return next;
 		});
 	}, []);
 
 	const clearSelection = useCallback(() => setSelectedTaskIds(new Set()), []);
 
-	function handleSelectRemoteProject(remoteProjectId: WorkProjectId) {
+	function handleSelectRemoteProject(remoteProjectId: RemoteProjectId) {
 		if (remoteProjectId === selectedRemoteProjectId) return;
 		setSelectedRemoteProjectId(remoteProjectId);
 		setSelectedGroupId(null);
 		clearSelection();
 	}
 
-	function handleSelectGroup(groupId: WorkItemGroupId | null) {
+	function handleSelectGroup(groupId: TaskGroupId | null) {
 		setSelectedGroupId(groupId);
 		clearSelection();
 	}
