@@ -25,6 +25,7 @@ function buildPullRequest(overrides?: Partial<HostedPullRequestView>): HostedPul
 		author: "octocat",
 		headBranch: "feature/login",
 		baseBranch: "main",
+		isFork: false,
 		draft: false,
 		state: "open",
 		updatedAt: "2024-05-01T12:00:00Z",

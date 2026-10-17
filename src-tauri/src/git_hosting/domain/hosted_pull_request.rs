@@ -14,6 +14,9 @@ pub struct HostedPullRequest {
     pub author: Option<String>,
     pub head_branch: String,
     pub base_branch: String,
+    /// The head repository differs from the base one, so the branch lives in
+    /// a fork. Defaults to `false` when the host omits the repositories.
+    pub is_fork: bool,
     /// Only ever set while the pull request is open.
     pub draft: bool,
     pub state: PullRequestState,
@@ -53,6 +56,7 @@ mod tests {
             author: None,
             head_branch: String::new(),
             base_branch: String::new(),
+            is_fork: false,
             draft: false,
             state: PullRequestState::Open,
             updated_at: updated_at.to_string(),

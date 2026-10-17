@@ -81,11 +81,18 @@ pub struct PullRequestAuthor {
 #[derive(Debug, Deserialize)]
 pub struct PullRequestEndpoint {
     pub branch: PullRequestBranch,
+    /// Absent on the list endpoint when the source fork is gone.
+    pub repository: Option<PullRequestRepository>,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct PullRequestBranch {
     pub name: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PullRequestRepository {
+    pub uuid: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
