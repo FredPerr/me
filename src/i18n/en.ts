@@ -416,6 +416,10 @@ export const en = {
 		workbench: {
 			hiddenProjects: "Hidden projects",
 			showProject: "Show {{name}}",
+			pin: "Pin",
+			unpin: "Unpin",
+			hide: "Hide",
+			projectSettings: "Project settings",
 		},
 		project: {
 			openInIde: "Open root in IDE",

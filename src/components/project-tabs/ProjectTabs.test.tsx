@@ -7,6 +7,7 @@ import type { ReactNode } from "react";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PlacementView, ProjectView, WorkbenchView } from "@/bindings";
 import "@/i18n";
+import { ProjectEditProvider } from "@/components/settings/ProjectEditProvider";
 import { buildProject } from "@/test-utils/workspaceBuilders";
 import { ProjectTabs } from "./ProjectTabs";
 
@@ -14,6 +15,7 @@ const workbenchCommands = vi.hoisted(() => ({
 	get: vi.fn(),
 	setLastProject: vi.fn(),
 	setPlacement: vi.fn(),
+	reorder: vi.fn(),
 }));
 
 vi.mock("@/bindings", () => ({
@@ -21,6 +23,7 @@ vi.mock("@/bindings", () => ({
 		workbenchGet: workbenchCommands.get,
 		workbenchSetLastProject: workbenchCommands.setLastProject,
 		workbenchSetPlacement: workbenchCommands.setPlacement,
+		workbenchReorder: workbenchCommands.reorder,
 	},
 	events: {},
 }));
@@ -80,7 +83,9 @@ describe("ProjectTabs", () => {
 		});
 		const wrapper = ({ children }: { children: ReactNode }) => (
 			<QueryClientProvider client={queryClient}>
-				<MantineProvider>{children}</MantineProvider>
+				<MantineProvider>
+					<ProjectEditProvider>{children}</ProjectEditProvider>
+				</MantineProvider>
 			</QueryClientProvider>
 		);
 		render(<ProjectTabs projects={projects} />, { wrapper });
