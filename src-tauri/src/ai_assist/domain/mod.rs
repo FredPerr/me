@@ -10,3 +10,5 @@ pub mod bulk_parser;
 pub mod bulk_prompt;
 pub mod context_draft;
 pub mod ports;
+pub mod pull_request_prompt;
+pub mod suggested_pull_request;

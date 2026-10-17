@@ -617,14 +617,7 @@ fn base_branch<'a>(
     context: &Context,
     repository: &RepositoryId,
 ) -> Option<&'a BranchName> {
-    let from_base_context = context
-        .base
-        .as_ref()
-        .and_then(|base| project.find_context(base))
-        .and_then(|base| base.branch_for(repository));
-    from_base_context
-        .or_else(|| project.default_context()?.branch_for(repository))
-        .map(|branch| &branch.branch)
+    project.base_branch_for(context, repository)
 }
 
 /// The context of the project whose checkout of `repository` is at

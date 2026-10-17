@@ -8,8 +8,9 @@
 use serde::Serialize;
 use tauri::State;
 
-use super::application::error::SuggestContextsError;
+use super::application::error::{SuggestContextsError, SuggestPullRequestError};
 use super::domain::context_draft::ContextDraft;
+use super::domain::suggested_pull_request::SuggestedPullRequest;
 use super::AiAssist;
 
 /// A ready-to-create context draft on the wire. `branchName` is valid under the
@@ -32,11 +33,31 @@ impl From<ContextDraft> for ContextDraftView {
     }
 }
 
+/// A written pull request on the wire: both halves the modal needs. The modal
+/// keeps a title the user already typed and always fills the description.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct SuggestedPullRequestView {
+    pub title: String,
+    pub description: String,
+}
+
+impl From<SuggestedPullRequest> for SuggestedPullRequestView {
+    fn from(suggestion: SuggestedPullRequest) -> Self {
+        Self {
+            title: suggestion.title,
+            description: suggestion.description,
+        }
+    }
+}
+
 /// The kind of an AI-assist failure, as the frontend sees it. The four parse
 /// kinds carry the same meaning (and, via i18n, the same message) as the
 /// frontend bulk parser's `no-json-found`/`invalid-json`/`not-an-array`/
 /// `no-valid-rows`; the run kinds are cancel, timeout and a catch-all failure;
-/// `invalidInput` is a blank instruction.
+/// `invalidInput` is a blank instruction. The pull-request suggestion adds
+/// `emptyDiff` (no changes to describe) and `emptyAnswer` (the run produced no
+/// text).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub enum AiAssistErrorKind {
@@ -45,6 +66,8 @@ pub enum AiAssistErrorKind {
     Malformed,
     NotAList,
     NoValidEntries,
+    EmptyDiff,
+    EmptyAnswer,
     Cancelled,
     TimedOut,
     Failed,
@@ -100,6 +123,42 @@ impl From<SuggestContextsError> for AiAssistCommandError {
     }
 }
 
+impl From<SuggestPullRequestError> for AiAssistCommandError {
+    fn from(error: SuggestPullRequestError) -> Self {
+        let (kind, message): (AiAssistErrorKind, String) = match error {
+            SuggestPullRequestError::NotFound { reason } => (
+                AiAssistErrorKind::Failed,
+                format!("The pull request could not be prepared: {reason}"),
+            ),
+            SuggestPullRequestError::NoBaseBranch => (
+                AiAssistErrorKind::Failed,
+                "This repository has no base branch to compare the changes against.".to_string(),
+            ),
+            SuggestPullRequestError::EmptyDiff => (
+                AiAssistErrorKind::EmptyDiff,
+                "No changes found against the base branch.".to_string(),
+            ),
+            SuggestPullRequestError::EmptyAnswer => (
+                AiAssistErrorKind::EmptyAnswer,
+                "Kiro returned an empty description. Try regenerating.".to_string(),
+            ),
+            SuggestPullRequestError::Cancelled => (
+                AiAssistErrorKind::Cancelled,
+                "The suggestion was cancelled.".to_string(),
+            ),
+            SuggestPullRequestError::TimedOut => (
+                AiAssistErrorKind::TimedOut,
+                "The suggestion ran too long and was stopped. Try again.".to_string(),
+            ),
+            SuggestPullRequestError::Failed { reason } => (
+                AiAssistErrorKind::Failed,
+                format!("Kiro run failed: {reason}"),
+            ),
+        };
+        Self { kind, message }
+    }
+}
+
 /// Expands one instruction into named context drafts, read-only in a fresh
 /// temp folder. Returns the drafts or a typed error.
 #[tauri::command]
@@ -122,6 +181,32 @@ pub async fn ai_assist_suggest_contexts(
 #[specta::specta]
 pub async fn ai_assist_cancel_contexts(ai_assist: State<'_, AiAssist>) -> Result<(), ()> {
     ai_assist.service.cancel();
+    Ok(())
+}
+
+/// Writes a pull request title and description for one repository tab,
+/// read-only in the context's worktree. Returns both halves or a typed error.
+#[tauri::command]
+#[specta::specta]
+pub async fn ai_assist_suggest_pull_request(
+    ai_assist: State<'_, AiAssist>,
+    project_tag: String,
+    context_id: String,
+    repository_id: String,
+) -> Result<SuggestedPullRequestView, AiAssistCommandError> {
+    let suggestion = ai_assist
+        .service
+        .suggest_pull_request(&project_tag, &context_id, &repository_id)
+        .await?;
+    Ok(SuggestedPullRequestView::from(suggestion))
+}
+
+/// Cancels the pull-request suggestion in flight, if any. A no-op when none is
+/// running, so the modal can call it freely on close.
+#[tauri::command]
+#[specta::specta]
+pub async fn ai_assist_cancel_pull_request(ai_assist: State<'_, AiAssist>) -> Result<(), ()> {
+    ai_assist.service.cancel_pull_request();
     Ok(())
 }
 
@@ -178,5 +263,35 @@ mod tests {
             serde_json::to_value(error).unwrap(),
             json!({ "kind": "failed", "message": "Kiro run failed: no binary" })
         );
+    }
+
+    #[test]
+    fn a_suggested_pull_request_is_sent_in_camel_case() {
+        let view = SuggestedPullRequestView::from(SuggestedPullRequest {
+            title: "Add login".to_string(),
+            description: "- Adds a login form".to_string(),
+        });
+
+        assert_eq!(
+            serde_json::to_value(view).unwrap(),
+            json!({ "title": "Add login", "description": "- Adds a login form" })
+        );
+    }
+
+    #[test]
+    fn the_pull_request_empty_kinds_map_to_their_wire_kinds() {
+        let cases = [
+            (SuggestPullRequestError::EmptyDiff, "emptyDiff"),
+            (SuggestPullRequestError::EmptyAnswer, "emptyAnswer"),
+            (SuggestPullRequestError::Cancelled, "cancelled"),
+            (SuggestPullRequestError::TimedOut, "timedOut"),
+            (SuggestPullRequestError::NoBaseBranch, "failed"),
+        ];
+        for (error, expected_kind) in cases {
+            let wire = serde_json::to_value(AiAssistCommandError::from(error)).unwrap();
+
+            assert_eq!(wire["kind"], json!(expected_kind));
+            assert!(wire["message"].as_str().is_some_and(|m| !m.is_empty()));
+        }
     }
 }

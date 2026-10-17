@@ -24,9 +24,17 @@ use crate::ai_assist::domain::ai_assist_runner::{
 use crate::ai_assist::domain::bulk_parser::parse_context_drafts;
 use crate::ai_assist::domain::bulk_prompt::build_bulk_context_prompt;
 use crate::ai_assist::domain::context_draft::{ContextDraft, RawContextDraft};
-use crate::ai_assist::domain::ports::{DefaultAiTool, ProjectBranchNaming, TempWorkspace};
+use crate::ai_assist::domain::ports::{
+    DefaultAiTool, ProjectBranchNaming, PullRequestContext, RepositoryDiff, TempWorkspace,
+};
+use crate::ai_assist::domain::pull_request_prompt::{
+    build_pull_request_prompt, PullRequestPromptInput,
+};
+use crate::ai_assist::domain::suggested_pull_request::{
+    parse_suggested_pull_request, SuggestedPullRequest,
+};
 
-use super::error::SuggestContextsError;
+use super::error::{SuggestContextsError, SuggestPullRequestError};
 
 /// Orchestrates the context-suggestion use case over its ports, and holds the
 /// single in-flight cancel trigger so a running suggestion can be cancelled.
@@ -35,9 +43,15 @@ pub struct AiAssistService {
     default_tool: Arc<dyn DefaultAiTool>,
     branch_naming: Arc<dyn ProjectBranchNaming>,
     temp_workspace: Arc<dyn TempWorkspace>,
-    /// The trigger for the suggestion in flight, if any. One at a time: a new
-    /// run replaces it, and it is cleared when the run ends.
+    pull_request_context: Arc<dyn PullRequestContext>,
+    repository_diff: Arc<dyn RepositoryDiff>,
+    /// The trigger for the context suggestion in flight, if any. One at a time:
+    /// a new run replaces it, and it is cleared when the run ends.
     in_flight_cancel: Mutex<Option<CancelTrigger>>,
+    /// The trigger for the pull-request suggestion in flight, if any. A second
+    /// slot because the bulk-create and create-pull-request modals are
+    /// separate: cancelling one must not stop the other.
+    in_flight_pull_request_cancel: Mutex<Option<CancelTrigger>>,
 }
 
 impl AiAssistService {
@@ -46,13 +60,18 @@ impl AiAssistService {
         default_tool: Arc<dyn DefaultAiTool>,
         branch_naming: Arc<dyn ProjectBranchNaming>,
         temp_workspace: Arc<dyn TempWorkspace>,
+        pull_request_context: Arc<dyn PullRequestContext>,
+        repository_diff: Arc<dyn RepositoryDiff>,
     ) -> Self {
         Self {
             runner,
             default_tool,
             branch_naming,
             temp_workspace,
+            pull_request_context,
+            repository_diff,
             in_flight_cancel: Mutex::new(None),
+            in_flight_pull_request_cancel: Mutex::new(None),
         }
     }
 
@@ -83,9 +102,64 @@ impl AiAssistService {
         Ok(named)
     }
 
-    /// Cancels the suggestion in flight, if any. A no-op when none is running.
+    /// Cancels the context suggestion in flight, if any. A no-op when none is
+    /// running.
     pub fn cancel(&self) {
         if let Some(trigger) = self.take_in_flight_cancel() {
+            trigger.cancel();
+        }
+    }
+
+    /// Suggests a pull request title and description for one repository tab,
+    /// read-only in the context's worktree. The pipeline:
+    ///   1. resolve the context/repository names, the worktree path and the
+    ///      base branch (the same values the modal computes),
+    ///   2. read the diff against the base and the pull request template; an
+    ///      empty diff is `EmptyDiff` (there is nothing to describe),
+    ///   3. read the default AI tool and build the prompt,
+    ///   4. run the tool read-only in the worktree, racing cancel and timeout,
+    ///   5. parse the answer into a title and a description; an empty answer is
+    ///      `EmptyAnswer`.
+    ///
+    /// The frontend keeps a title the user has already typed and uses only the
+    /// returned description; the command always returns both halves.
+    pub async fn suggest_pull_request(
+        &self,
+        project_tag: &str,
+        context_id: &str,
+        repository_id: &str,
+    ) -> Result<SuggestedPullRequest, SuggestPullRequestError> {
+        let target = self
+            .pull_request_context
+            .resolve(project_tag, context_id, repository_id)?;
+
+        let contents = self
+            .repository_diff
+            .read(&target.worktree_path, &target.base_branch)
+            .await?;
+        if contents.diff.trim().is_empty() {
+            return Err(SuggestPullRequestError::EmptyDiff);
+        }
+
+        let prompt = build_pull_request_prompt(&PullRequestPromptInput {
+            context_name: target.context_name.clone(),
+            repository_name: target.repository_name,
+            diff: contents.diff,
+            template: contents.template,
+        });
+
+        let answer = self
+            .run_in_worktree(self.default_tool.tool_id(), target.worktree_path, prompt)
+            .await?;
+
+        parse_suggested_pull_request(&answer, &target.context_name)
+            .ok_or(SuggestPullRequestError::EmptyAnswer)
+    }
+
+    /// Cancels the pull-request suggestion in flight, if any. A no-op when none
+    /// is running, so the modal can call it freely on close.
+    pub fn cancel_pull_request(&self) {
+        if let Some(trigger) = self.take_in_flight_pull_request_cancel() {
             trigger.cancel();
         }
     }
@@ -119,6 +193,30 @@ impl AiAssistService {
         // The run is over: drop the trigger whether it finished, timed out or
         // was cancelled, so a later cancel does not fire a dead signal.
         let _ = self.take_in_flight_cancel();
+
+        Ok(outcome?)
+    }
+
+    /// Installs the pull-request cancel trigger, runs the tool read-only in the
+    /// context's worktree (the real diff lives there, so a PR suggestion reads
+    /// the worktree rather than a temp folder), then clears the trigger.
+    async fn run_in_worktree(
+        &self,
+        tool_id: String,
+        worktree_path: String,
+        prompt: String,
+    ) -> Result<String, SuggestPullRequestError> {
+        let (trigger, signal) = cancel_channel();
+        self.install_pull_request_cancel(trigger);
+
+        let spec = AiAssistRunSpec {
+            tool_id,
+            working_directory: worktree_path,
+            prompt,
+        };
+        let outcome = self.runner.run(spec, signal).await;
+
+        let _ = self.take_in_flight_pull_request_cancel();
 
         Ok(outcome?)
     }
@@ -161,6 +259,20 @@ impl AiAssistService {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
+
+    fn install_pull_request_cancel(&self, trigger: CancelTrigger) {
+        *self.lock_pull_request_cancel() = Some(trigger);
+    }
+
+    fn take_in_flight_pull_request_cancel(&self) -> Option<CancelTrigger> {
+        self.lock_pull_request_cancel().take()
+    }
+
+    fn lock_pull_request_cancel(&self) -> std::sync::MutexGuard<'_, Option<CancelTrigger>> {
+        self.in_flight_pull_request_cancel
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
 }
 
 #[cfg(test)]
@@ -168,7 +280,8 @@ mod tests {
     use super::*;
     use crate::ai_assist::domain::ai_assist_runner::{AiAssistRunError, CancelSignal};
     use crate::ai_assist::domain::ports::{
-        BranchNamingUnavailable, TempDirectory, TempWorkspaceUnavailable,
+        BranchNamingUnavailable, PullRequestContextError, PullRequestTarget,
+        RepositoryDiffContents, RepositoryDiffUnavailable, TempDirectory, TempWorkspaceUnavailable,
     };
     use async_trait::async_trait;
     use std::sync::Mutex as StdMutex;
@@ -178,6 +291,15 @@ mod tests {
     const KIRO_TOOL_ID: &str = "kiro";
     const TEMP_PATH: &str = "/tmp/ai-assist-run";
     const TWO_DRAFTS: &str = r#"[{"contextName":"Add login","branchName":"add-login","preprompt":"do login"},{"contextName":"Configure CI","branchName":"configure-ci"}]"#;
+
+    const CONTEXT_ID: &str = "context-1";
+    const REPOSITORY_ID: &str = "repository-1";
+    const CONTEXT_NAME: &str = "Add login";
+    const REPOSITORY_NAME: &str = "api";
+    const WORKTREE_PATH: &str = "/projects/acme/.worktrees/add-login/api";
+    const BASE_BRANCH: &str = "main";
+    const DIFF: &str = "diff --git a/login.ts b/login.ts\n+export const login = () => {}";
+    const PR_ANSWER: &str = "Title: Add the login page\n\n- Adds a login form";
 
     /// A runner scripted with one outcome, recording the spec it was asked to
     /// run so a test can assert the run was read-only in the temp folder.
@@ -313,6 +435,72 @@ mod tests {
         }
     }
 
+    /// Resolves a fixed target, or a scripted resolution error.
+    struct FixedPullRequestContext {
+        resolution: Result<PullRequestTarget, PullRequestContextError>,
+    }
+
+    impl FixedPullRequestContext {
+        fn resolving_to(target: PullRequestTarget) -> Self {
+            Self {
+                resolution: Ok(target),
+            }
+        }
+
+        fn failing(error: PullRequestContextError) -> Self {
+            Self {
+                resolution: Err(error),
+            }
+        }
+    }
+
+    impl PullRequestContext for FixedPullRequestContext {
+        fn resolve(
+            &self,
+            _project_tag: &str,
+            _context_id: &str,
+            _repository_id: &str,
+        ) -> Result<PullRequestTarget, PullRequestContextError> {
+            self.resolution.clone()
+        }
+    }
+
+    fn a_target() -> PullRequestTarget {
+        PullRequestTarget {
+            context_name: CONTEXT_NAME.to_string(),
+            repository_name: REPOSITORY_NAME.to_string(),
+            worktree_path: WORKTREE_PATH.to_string(),
+            base_branch: BASE_BRANCH.to_string(),
+        }
+    }
+
+    /// Returns a fixed diff and template, or a scripted read error.
+    struct FixedRepositoryDiff {
+        contents: Result<RepositoryDiffContents, RepositoryDiffUnavailable>,
+    }
+
+    impl FixedRepositoryDiff {
+        fn with_diff(diff: &str) -> Self {
+            Self {
+                contents: Ok(RepositoryDiffContents {
+                    diff: diff.to_string(),
+                    template: None,
+                }),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl RepositoryDiff for FixedRepositoryDiff {
+        async fn read(
+            &self,
+            _worktree_path: &str,
+            _base_branch: &str,
+        ) -> Result<RepositoryDiffContents, RepositoryDiffUnavailable> {
+            self.contents.clone()
+        }
+    }
+
     fn service_with(
         runner: Arc<dyn AiAssistRunner>,
         branch_naming: Arc<dyn ProjectBranchNaming>,
@@ -325,6 +513,27 @@ mod tests {
             }),
             branch_naming,
             temp_workspace,
+            Arc::new(FixedPullRequestContext::resolving_to(a_target())),
+            Arc::new(FixedRepositoryDiff::with_diff(DIFF)),
+        )
+    }
+
+    /// A service for pull-request tests: the context/diff ports matter, the
+    /// branch-naming and temp-folder ports are irrelevant and use no-op fakes.
+    fn pull_request_service(
+        runner: Arc<dyn AiAssistRunner>,
+        pull_request_context: Arc<dyn PullRequestContext>,
+        repository_diff: Arc<dyn RepositoryDiff>,
+    ) -> AiAssistService {
+        AiAssistService::new(
+            runner,
+            Arc::new(FixedDefaultTool {
+                tool_id: KIRO_TOOL_ID.to_string(),
+            }),
+            Arc::new(SlugBranchNaming),
+            Arc::new(RecordingTempWorkspace::new()),
+            pull_request_context,
+            repository_diff,
         )
     }
 
@@ -494,5 +703,145 @@ mod tests {
                 reason: "no binary".to_string(),
             })
         );
+    }
+
+    #[tokio::test]
+    async fn suggests_a_title_and_a_description() {
+        let service = pull_request_service(
+            Arc::new(ScriptedRunner::returning(PR_ANSWER)),
+            Arc::new(FixedPullRequestContext::resolving_to(a_target())),
+            Arc::new(FixedRepositoryDiff::with_diff(DIFF)),
+        );
+
+        let suggestion = service
+            .suggest_pull_request(PROJECT_TAG, CONTEXT_ID, REPOSITORY_ID)
+            .await
+            .unwrap();
+
+        assert_eq!(suggestion.title, "Add the login page");
+        assert_eq!(suggestion.description, "- Adds a login form");
+    }
+
+    #[tokio::test]
+    async fn an_empty_diff_is_rejected_without_running() {
+        let runner = Arc::new(ScriptedRunner::returning(PR_ANSWER));
+        let service = pull_request_service(
+            Arc::clone(&runner) as Arc<dyn AiAssistRunner>,
+            Arc::new(FixedPullRequestContext::resolving_to(a_target())),
+            Arc::new(FixedRepositoryDiff::with_diff("   \n  ")),
+        );
+
+        let result = service
+            .suggest_pull_request(PROJECT_TAG, CONTEXT_ID, REPOSITORY_ID)
+            .await;
+
+        assert_eq!(result, Err(SuggestPullRequestError::EmptyDiff));
+        assert_eq!(runner.ran_spec(), None);
+    }
+
+    #[tokio::test]
+    async fn an_empty_answer_is_rejected() {
+        let service = pull_request_service(
+            Arc::new(ScriptedRunner::returning("   \n  ")),
+            Arc::new(FixedPullRequestContext::resolving_to(a_target())),
+            Arc::new(FixedRepositoryDiff::with_diff(DIFF)),
+        );
+
+        let result = service
+            .suggest_pull_request(PROJECT_TAG, CONTEXT_ID, REPOSITORY_ID)
+            .await;
+
+        assert_eq!(result, Err(SuggestPullRequestError::EmptyAnswer));
+    }
+
+    #[tokio::test]
+    async fn runs_read_only_in_the_context_worktree() {
+        let runner = Arc::new(ScriptedRunner::returning(PR_ANSWER));
+        let service = pull_request_service(
+            Arc::clone(&runner) as Arc<dyn AiAssistRunner>,
+            Arc::new(FixedPullRequestContext::resolving_to(a_target())),
+            Arc::new(FixedRepositoryDiff::with_diff(DIFF)),
+        );
+
+        service
+            .suggest_pull_request(PROJECT_TAG, CONTEXT_ID, REPOSITORY_ID)
+            .await
+            .unwrap();
+
+        let spec = runner.ran_spec().expect("the runner was asked to run");
+        assert_eq!(spec.tool_id, KIRO_TOOL_ID);
+        // The pull-request suggestion runs in the worktree, not a temp folder.
+        assert_eq!(spec.working_directory, WORKTREE_PATH);
+    }
+
+    #[tokio::test]
+    async fn an_unresolvable_target_surfaces_as_not_found() {
+        let service = pull_request_service(
+            Arc::new(ScriptedRunner::returning(PR_ANSWER)),
+            Arc::new(FixedPullRequestContext::failing(
+                PullRequestContextError::NotFound {
+                    reason: "unknown context".to_string(),
+                },
+            )),
+            Arc::new(FixedRepositoryDiff::with_diff(DIFF)),
+        );
+
+        let result = service
+            .suggest_pull_request(PROJECT_TAG, CONTEXT_ID, REPOSITORY_ID)
+            .await;
+
+        assert_eq!(
+            result,
+            Err(SuggestPullRequestError::NotFound {
+                reason: "unknown context".to_string(),
+            })
+        );
+    }
+
+    #[tokio::test]
+    async fn a_missing_base_branch_surfaces() {
+        let service = pull_request_service(
+            Arc::new(ScriptedRunner::returning(PR_ANSWER)),
+            Arc::new(FixedPullRequestContext::failing(
+                PullRequestContextError::NoBaseBranch,
+            )),
+            Arc::new(FixedRepositoryDiff::with_diff(DIFF)),
+        );
+
+        let result = service
+            .suggest_pull_request(PROJECT_TAG, CONTEXT_ID, REPOSITORY_ID)
+            .await;
+
+        assert_eq!(result, Err(SuggestPullRequestError::NoBaseBranch));
+    }
+
+    #[tokio::test]
+    async fn a_cancelled_pull_request_run_surfaces_as_cancelled() {
+        let service = pull_request_service(
+            Arc::new(ScriptedRunner::failing(AiAssistRunError::Cancelled)),
+            Arc::new(FixedPullRequestContext::resolving_to(a_target())),
+            Arc::new(FixedRepositoryDiff::with_diff(DIFF)),
+        );
+
+        let result = service
+            .suggest_pull_request(PROJECT_TAG, CONTEXT_ID, REPOSITORY_ID)
+            .await;
+
+        assert_eq!(result, Err(SuggestPullRequestError::Cancelled));
+    }
+
+    #[tokio::test]
+    async fn a_timed_out_pull_request_run_surfaces_as_timed_out() {
+        let service = pull_request_service(
+            Arc::new(ScriptedRunner::failing(AiAssistRunError::TimedOut)),
+            Arc::new(FixedPullRequestContext::resolving_to(a_target())),
+            Arc::new(FixedRepositoryDiff::with_diff(DIFF)),
+        );
+
+        let result = service
+            .suggest_pull_request(PROJECT_TAG, CONTEXT_ID, REPOSITORY_ID)
+            .await;
+
+        assert_eq!(result, Err(SuggestPullRequestError::TimedOut));
     }
 }
