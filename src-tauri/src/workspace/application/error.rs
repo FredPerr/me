@@ -4,6 +4,7 @@ use crate::git::domain::branch_name::BranchName;
 use crate::git::domain::error::GitError;
 use crate::workspace::domain::context_name::ContextName;
 use crate::workspace::domain::error::WorkspaceError;
+use crate::workspace::domain::identifiers::ContextId;
 use crate::workspace::domain::ports::{CheckoutFilesError, StorageError, UpdateError};
 use crate::workspace::domain::project_tag::ProjectTag;
 
@@ -120,3 +121,54 @@ impl fmt::Display for WorkspaceServiceError {
 }
 
 impl std::error::Error for WorkspaceServiceError {}
+
+/// Why running or stopping an agent failed. Keeps the project/context
+/// resolution errors of `WorkspaceServiceError` separate from the run-specific
+/// failures so the command layer can map each to its wire kind.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AgentRunServiceError {
+    /// The project or context could not be resolved, or its change refused.
+    Workspace(WorkspaceServiceError),
+    /// The runner could not start or stop the run.
+    Runner(crate::workspace::domain::agent_runner::AgentRunError),
+    /// No agent is currently running for the context, so there is none to stop.
+    NoRunningAgent { context: ContextId },
+}
+
+impl From<WorkspaceServiceError> for AgentRunServiceError {
+    fn from(error: WorkspaceServiceError) -> Self {
+        Self::Workspace(error)
+    }
+}
+
+impl From<StorageError> for AgentRunServiceError {
+    fn from(error: StorageError) -> Self {
+        Self::Workspace(WorkspaceServiceError::Storage(error))
+    }
+}
+
+impl From<UpdateError> for AgentRunServiceError {
+    fn from(error: UpdateError) -> Self {
+        Self::Workspace(WorkspaceServiceError::from(error))
+    }
+}
+
+impl From<crate::workspace::domain::agent_runner::AgentRunError> for AgentRunServiceError {
+    fn from(error: crate::workspace::domain::agent_runner::AgentRunError) -> Self {
+        Self::Runner(error)
+    }
+}
+
+impl fmt::Display for AgentRunServiceError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Workspace(error) => error.fmt(formatter),
+            Self::Runner(error) => error.fmt(formatter),
+            Self::NoRunningAgent { context } => {
+                write!(formatter, "No agent is running for context '{context}'")
+            }
+        }
+    }
+}
+
+impl std::error::Error for AgentRunServiceError {}

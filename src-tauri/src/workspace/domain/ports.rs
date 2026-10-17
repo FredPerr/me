@@ -142,6 +142,26 @@ pub trait ProjectEvents: Send + Sync {
     fn project_changed(&self, tag: &ProjectTag);
 }
 
+/// The wall-clock time a run started, as an ISO 8601 string. A port so the
+/// run-driving use case records `AgentRun::started_at` from a clock the tests
+/// can fix, matching the other timestamp fields stored as strings.
+pub trait Clock: Send + Sync {
+    /// The current instant formatted as ISO 8601, e.g. `2024-01-15T10:00:00Z`.
+    fn now_iso8601(&self) -> String;
+}
+
+/// Seeds the Kiro permission "floor" in a run's working directory before a
+/// trusted (`--trust-all-tools`) run: a `deny` policy Kiro cannot override, so
+/// dangerous commands and secret-file access stay blocked. Ported from the
+/// frontend's `ensurePermissionFloor`. A port so the use case stays off the
+/// disk in tests; the file-system adapter writes the policy once, never
+/// overwriting a user's own edits.
+pub trait PermissionFloor: Send + Sync {
+    /// Ensures the policy exists in `working_directory`. Failures never block a
+    /// run, so this returns nothing; the adapter logs what it could not write.
+    fn seed(&self, working_directory: &str);
+}
+
 /// Where a context's agent-run transcripts are kept, one record per context
 /// holding its recent runs oldest first. The two caps (200 KB per transcript,
 /// the last ten runs per context) are enforced on write, so a stored context

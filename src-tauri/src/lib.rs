@@ -60,6 +60,9 @@ const TYPED_COMMANDS: &[&str] = &[
     "workspace_save_pull_request_draft",
     "workspace_set_agent_prompt",
     "workspace_record_agent_conversation",
+    "workspace_run_agent",
+    "workspace_stop_agent_run",
+    "workspace_list_agent_runs",
     "workspace_update_project_settings",
     "workspace_add_project",
     "workspace_delete_project",
@@ -114,6 +117,9 @@ fn typed_commands() -> tauri_specta::Builder<tauri::Wry> {
             workspace::commands::workspace_save_pull_request_draft,
             workspace::commands::workspace_set_agent_prompt,
             workspace::commands::workspace_record_agent_conversation,
+            workspace::commands::workspace_run_agent,
+            workspace::commands::workspace_stop_agent_run,
+            workspace::commands::workspace_list_agent_runs,
             workspace::commands::workspace_update_project_settings,
             workspace::commands::workspace_add_project,
             workspace::commands::workspace_delete_project,
@@ -141,6 +147,7 @@ fn typed_commands() -> tauri_specta::Builder<tauri::Wry> {
         ])
         .events(tauri_specta::collect_events![
             workspace::infra::tauri_project_events::ProjectChanged,
+            workspace::infra::tauri_agent_run_events::AgentRunChanged,
             git_hosting::infra::tauri_git_hosting_events::GitHostingChanged
         ])
 }
@@ -197,11 +204,18 @@ pub fn run() {
             let git = git::build(git_hosting::remote_credentials());
             // Workspace is built before work_tracking: the pending-tasks use
             // case reads a Project's remote project links through a composition
-            // adapter over WorkspaceService.
+            // adapter over WorkspaceService. The agent runner is a composition
+            // adapter over ai_session; SessionRegistry is already managed above.
+            let agent_runner = Arc::new(
+                composition::ai_session_agent_runner::AiSessionAgentRunner::new(
+                    app.handle().clone(),
+                ),
+            );
             let workspace = workspace::build(
                 app.handle().clone(),
                 Arc::clone(&database),
                 git.repositories(),
+                agent_runner,
             )?;
             let project_task_links =
                 composition::workspace_project_task_links::WorkspaceProjectTaskLinks::new(

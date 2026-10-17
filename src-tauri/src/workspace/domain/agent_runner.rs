@@ -95,6 +95,29 @@ impl fmt::Display for AgentRunError {
 
 impl std::error::Error for AgentRunError {}
 
+/// What the use case tells open views as a run streams, carrying the context
+/// and run it concerns so the UI can route it. One variant per thing the
+/// frontend renders: the run started, a line of output arrived, or it ended.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AgentRunUpdate {
+    /// A run has started on the context, in the persisted `Running` state.
+    Started,
+    /// One raw line of the run's output.
+    Line { text: String },
+    /// The run reached a terminal state with its exit code.
+    Ended {
+        final_state: RunFinalState,
+        exit_code: Option<i32>,
+    },
+}
+
+/// Tells open views how a context's agent run is progressing, so the UI can
+/// render it live. A port so the use case can emit updates without naming
+/// Tauri; a composition adapter emits the typed `agent-run` event.
+pub trait AgentRunEvents: Send + Sync {
+    fn run_changed(&self, context_id: &str, run_id: &str, update: AgentRunUpdate);
+}
+
 /// Starts, observes and stops an agent run. Implemented by a composition
 /// adapter over the process runner; the use case depends only on this trait.
 #[async_trait]

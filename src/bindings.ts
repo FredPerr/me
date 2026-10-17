@@ -33,6 +33,16 @@ export const commands = {
 	workspaceSetAgentPrompt: (projectTag: string, contextId: string, prompt: string | null) => __TAURI_INVOKE<ProjectView>("workspace_set_agent_prompt", { projectTag, contextId, prompt }),
 	/**  Remembers the Kiro conversation so follow-up runs resume it. */
 	workspaceRecordAgentConversation: (projectTag: string, contextId: string, conversationId: string) => __TAURI_INVOKE<ProjectView>("workspace_record_agent_conversation", { projectTag, contextId, conversationId }),
+	/**
+	 *  Starts an agent on the context: Rust picks the folder, seeds the permission
+	 *  floor, records the run and streams an `agent-run` event. A static context
+	 *  keeps its status; others move to in progress, then needs human on end.
+	 */
+	workspaceRunAgent: (projectTag: string, contextId: string, prompt: string) => __TAURI_INVOKE<null>("workspace_run_agent", { projectTag, contextId, prompt }),
+	/**  Stops the context's running agent; its run ends as stopped. */
+	workspaceStopAgentRun: (contextId: string) => __TAURI_INVOKE<null>("workspace_stop_agent_run", { contextId }),
+	/**  A context's past runs with their transcripts, oldest first. */
+	workspaceListAgentRuns: (contextId: string) => __TAURI_INVOKE<AgentRunView[]>("workspace_list_agent_runs", { contextId }),
 	workspaceUpdateProjectSettings: (projectTag: string, settings: ProjectSettingsInput) => __TAURI_INVOKE<ProjectView>("workspace_update_project_settings", { projectTag, settings }),
 	/**
 	 *  Refuses a tag already in use. The new project gets its default context on
@@ -90,11 +100,43 @@ export const commands = {
 
 /** Events */
 export const events = {
+	agentRunChanged: makeEvent<AgentRunChanged>("agent-run-changed"),
 	gitHostingChanged: makeEvent<GitHostingChanged>("git-hosting-changed"),
 	projectChanged: makeEvent<ProjectChanged>("project-changed"),
 };
 
 /* Types */
+/**
+ *  Emitted as `agent-run` as a context's run streams, carrying the context and
+ *  run it concerns so the frontend can route it to the right transcript.
+ */
+export type AgentRunChanged = {
+	contextId: string,
+	runId: string,
+	update: AgentRunUpdateView,
+};
+
+/**  How a run ended, or that it is still going, on the wire. */
+export type AgentRunStateView = "running" | "finished" | "failed" | "stopped" | "interrupted";
+
+/**  What happened to the run, on the wire. One variant per thing the UI renders. */
+export type AgentRunUpdateView = { kind: "started" } | { kind: "line"; text: string } | { kind: "ended"; finalState: RunFinalStateView; exitCode: number | null };
+
+/**
+ *  How one of a context's agent runs looks to the frontend: its transcript
+ *  (oldest first), how it ended and when it started.
+ */
+export type AgentRunView = {
+	id: string,
+	contextId: string,
+	prompt: string,
+	outputLines: string[],
+	state: AgentRunStateView,
+	exitCode: number | null,
+	trimmed: boolean,
+	startedAt: string,
+};
+
 export type AgentToolView = { tool: "kiro"; conversationId: string | null };
 
 export type AgentWorkView = {
@@ -467,6 +509,9 @@ export type RepositoryView = {
 	path: string,
 };
 
+/**  How a run ended, on the wire. Mirrors the domain `RunFinalState`. */
+export type RunFinalStateView = "finished" | "failed" | "stopped";
+
 export type SaveConnectionInput = {
 	kind: string,
 	baseUrl: string,
@@ -599,7 +644,14 @@ export type WorkspaceCommandError = {
  *  is a blank or malformed name, id, branch name or prefix; `internal` is a
  *  command's background task failing unexpectedly.
  */
-export type WorkspaceErrorKind = "projectNotFound" | "projectAlreadyExists" | "invalidInput" | "duplicateContextName" | "duplicateContextFolder" | "unknownContext" | "unknownRepository" | "defaultContextIsFixed" | "staticContextStatusLocked" | "linkedRepositoryIsReadOnly" | "branchAlreadyExists" | "branchCheckedOut" | "git" | "files" | "storage" | "internal";
+export type WorkspaceErrorKind = "projectNotFound" | "projectAlreadyExists" | "invalidInput" | "duplicateContextName" | "duplicateContextFolder" | "unknownContext" | "unknownRepository" | "defaultContextIsFixed" | "staticContextStatusLocked" | "linkedRepositoryIsReadOnly" | "branchAlreadyExists" | "branchCheckedOut" | "git" | "files" | "storage" | 
+/**
+ *  The agent tool is unknown, the prompt empty, or the run could not be
+ *  started or stopped.
+ */
+"agentRun" | 
+/**  No agent is running for the context, so there is none to stop. */
+"noRunningAgent" | "internal";
 
 export type WorktreeStatusView = {
 	filesAdded: number,

@@ -16,7 +16,8 @@ use crate::workspace::domain::context_origin::ContextOrigin;
 use crate::workspace::domain::context_status::ContextStatus;
 use crate::workspace::domain::identifiers::{ContextId, RepositoryId};
 use crate::workspace::domain::ports::{
-    CheckoutFiles, ProjectChange, ProjectEvents, ProjectListing, ProjectRepository,
+    AgentRunRepository, CheckoutFiles, ProjectChange, ProjectEvents, ProjectListing,
+    ProjectRepository,
 };
 use crate::workspace::domain::project::{Project, ProjectSettings};
 use crate::workspace::domain::project_tag::ProjectTag;
@@ -101,6 +102,7 @@ pub struct WorkspaceService {
     git: Arc<dyn GitRepositories>,
     files: Arc<dyn CheckoutFiles>,
     events: Arc<dyn ProjectEvents>,
+    agent_runs: Arc<dyn AgentRunRepository>,
 }
 
 impl WorkspaceService {
@@ -109,12 +111,14 @@ impl WorkspaceService {
         git: Arc<dyn GitRepositories>,
         files: Arc<dyn CheckoutFiles>,
         events: Arc<dyn ProjectEvents>,
+        agent_runs: Arc<dyn AgentRunRepository>,
     ) -> Self {
         Self {
             projects,
             git,
             files,
             events,
+            agent_runs,
         }
     }
 
@@ -221,6 +225,11 @@ impl WorkspaceService {
             tag,
             Box::new(move |current| current.delete_context(&deleted_id)),
         )?;
+        // A context's agent runs go with it. A storage failure here only leaves
+        // orphan run records, so it is logged, not surfaced: the context is gone.
+        if let Err(error) = self.agent_runs.delete_runs(id) {
+            eprintln!("[workspace] agent runs of deleted context '{id}' not removed: {error}");
+        }
         self.events.project_changed(saved.tag());
         Ok(saved)
     }
