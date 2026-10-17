@@ -1,8 +1,8 @@
 /**
  * Frontend types for AI CLI session orchestration.
  *
- * The command wire types (`SpawnOptions`, `SpawnedSession`) are generated into
- * `bindings.ts` and re-exported below. The remaining types mirror the plain
+ * The frontend no longer spawns a session: AI sessions are driven only by Rust
+ * use cases (agent runs and AI assists). These types mirror the plain
  * `ai-session://output` and `ai-session://status` Tauri events, which are not
  * tauri-specta events, so they stay hand-kept and in sync by hand.
  */
@@ -29,12 +29,6 @@ export type StatusEvent = {
 	exitCode: number | null;
 	error: string | null;
 };
-
-// `SpawnOptions` and `SpawnedSession` are the typed command's wire types now,
-// generated into `bindings.ts`. Re-exported here so callers keep one import
-// path. The output/status events stay plain Tauri events, so their types
-// (below) remain hand-kept.
-export type { SpawnedSession, SpawnOptions } from "@/bindings";
 
 /** Terminal statuses for which no further output or kill action applies. */
 const TERMINAL_STATUSES: ReadonlySet<SessionStatus> = new Set<SessionStatus>([

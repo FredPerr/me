@@ -16,20 +16,21 @@ import { ArrowSquareOutIcon, SparkleIcon, WarningIcon } from "@phosphor-icons/re
 import MDEditor from "@uiw/react-md-editor";
 import "@uiw/react-md-editor/markdown-editor.css";
 import "./CreatePullRequestModal.css";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type {
-	ContextView,
-	CreatedPullRequestView,
-	ProjectView,
-	PullRequestDraftView,
-	RepositoryView,
+import {
+	type AiAssistErrorKind,
+	type ContextView,
+	type CreatedPullRequestView,
+	commands,
+	type ProjectView,
+	type PullRequestDraftView,
+	type RepositoryView,
 } from "@/bindings";
 import { useContextPullRequests } from "@/hooks/gitHosting/useContextPullRequests";
 import { useCreatePullRequest } from "@/hooks/gitHosting/useGitHostingMutations";
-import { usePullRequestDescriptionDraft } from "@/hooks/usePullRequestDescriptionDraft";
 import { useSavePullRequestDraft } from "@/hooks/workspace/useContextMutations";
-import { describeError } from "@/infra/commandError";
+import { describeError, isCommandError } from "@/infra/commandError";
 import type { BranchHostProblem } from "@/models/git-hosting/branchPullRequests";
 import { GIT_HOSTS } from "@/models/git-hosting/gitHosts";
 import {
@@ -42,12 +43,16 @@ import {
 /** Everything needed to open a pull request for one subrepository. */
 type RepositoryTarget = {
 	repository: RepositoryView;
-	/** The context's checkout of this repository, read to generate a description. */
-	worktreePath: string;
 	/** Branch holding the context's changes (the PR head). */
 	headBranch: string;
 	/** Branch the PR merges into: the base context's branch, else the default branch. */
 	baseBranch: string | null;
+};
+
+/** Per-repository generation state, keyed by repository id. */
+type GenerationState = {
+	generatingRepositoryId: string | null;
+	errorByRepository: Record<string, string>;
 };
 
 type CreatePullRequestModalProps = {
@@ -71,6 +76,12 @@ function isSameDraft(left: PullRequestDraftView, right: PullRequestDraftView): b
 	return left.title === right.title && left.description === right.description;
 }
 
+/** A copy of `record` without `key`. */
+function withoutKey<T>(record: Record<string, T>, key: string): Record<string, T> {
+	const { [key]: _removed, ...rest } = record;
+	return rest;
+}
+
 export function CreatePullRequestModal({
 	opened,
 	onClose,
@@ -78,7 +89,6 @@ export function CreatePullRequestModal({
 	context,
 }: CreatePullRequestModalProps) {
 	const { t } = useTranslation();
-	const { stateFor, generate } = usePullRequestDescriptionDraft();
 	const { mutateAsync: savePullRequestDraft } = useSavePullRequestDraft(project.tag);
 	const { mutateAsync: createPullRequest } = useCreatePullRequest(project.tag);
 	const { hostProblem } = useContextPullRequests(project.tag);
@@ -86,6 +96,10 @@ export function CreatePullRequestModal({
 	const [drafts, setDrafts] = useState<Record<string, PullRequestDraftView>>(() =>
 		savedDrafts(context),
 	);
+	const [generation, setGeneration] = useState<GenerationState>({
+		generatingRepositoryId: null,
+		errorByRepository: {},
+	});
 	const [creatingRepositoryId, setCreatingRepositoryId] = useState<string | null>(null);
 	const [draftByRepository, setDraftByRepository] = useState<Record<string, boolean>>({});
 	const [createdByRepository, setCreatedByRepository] = useState<
@@ -107,34 +121,68 @@ export function CreatePullRequestModal({
 					(baseContext && findContextBranch(baseContext, branch.repositoryId)?.branch) ??
 					findDefaultBranch(project, branch.repositoryId) ??
 					null;
-				return [
-					{
-						repository,
-						worktreePath: branch.worktreePath,
-						headBranch: branch.branch,
-						baseBranch,
-					},
-				];
+				return [{ repository, headBranch: branch.branch, baseBranch }];
 			}),
 		[context.branches, project, baseContext],
 	);
 
-	// Fold a freshly generated description into the editable draft.
-	useEffect(() => {
-		for (const target of targets) {
-			const generated = stateFor(target.repository.id);
-			if (generated.status === "ready" && generated.description) {
-				setDrafts((current) => {
-					const existing = current[target.repository.id] ?? EMPTY_DRAFT;
-					if (existing.description === generated.description) return current;
-					return {
-						...current,
-						[target.repository.id]: { ...existing, description: generated.description },
-					};
-				});
-			}
+	/** The i18n key for a generation failure, mirrored from the backend kinds. */
+	function generationErrorKey(kind: AiAssistErrorKind): string {
+		switch (kind) {
+			case "emptyDiff":
+				return "contexts.createPr.errorEmptyDiff";
+			case "emptyAnswer":
+				return "contexts.createPr.errorEmptyAnswer";
+			case "timedOut":
+				return "contexts.createPr.errorTimedOut";
+			default:
+				return "contexts.createPr.errorGeneration";
 		}
-	}, [targets, stateFor]);
+	}
+
+	/**
+	 * Writes the description for one repository with a read-only Rust run. The
+	 * returned description always fills the field; the returned title fills the
+	 * title only when the user has not typed one, so their wording is kept.
+	 */
+	async function handleGenerate(repositoryId: string) {
+		setGeneration((current) => ({
+			generatingRepositoryId: repositoryId,
+			errorByRepository: withoutKey(current.errorByRepository, repositoryId),
+		}));
+		try {
+			const suggestion = await commands.aiAssistSuggestPullRequest(
+				project.tag,
+				context.id,
+				repositoryId,
+			);
+			setDrafts((current) => {
+				const existing = current[repositoryId] ?? EMPTY_DRAFT;
+				const title = existing.title.trim() ? existing.title : suggestion.title;
+				return { ...current, [repositoryId]: { title, description: suggestion.description } };
+			});
+		} catch (error) {
+			const kind: AiAssistErrorKind = isCommandError(error)
+				? (error.kind as AiAssistErrorKind)
+				: "failed";
+			// Cancel leaves the user where they were, silently.
+			if (kind === "cancelled") return;
+			const message = isCommandError(error) ? error.message : String(error);
+			setGeneration((current) => ({
+				...current,
+				errorByRepository: {
+					...current.errorByRepository,
+					[repositoryId]: t(generationErrorKey(kind), { message }),
+				},
+			}));
+		} finally {
+			setGeneration((current) => ({ ...current, generatingRepositoryId: null }));
+		}
+	}
+
+	function cancelGeneration() {
+		void commands.aiAssistCancelPullRequest();
+	}
 
 	function draftFor(repositoryId: string): PullRequestDraftView {
 		return drafts[repositoryId] ?? EMPTY_DRAFT;
@@ -219,7 +267,8 @@ export function CreatePullRequestModal({
 	function renderPanel(target: RepositoryTarget) {
 		const repositoryId = target.repository.id;
 		const draft = draftFor(repositoryId);
-		const generation = stateFor(repositoryId);
+		const isGenerating = generation.generatingRepositoryId === repositoryId;
+		const generationError = generation.errorByRepository[repositoryId];
 		const created = createdByRepository[repositoryId];
 		const problem = hostProblem(repositoryId, target.headBranch);
 		const sameBranch = target.baseBranch === target.headBranch;
@@ -264,35 +313,36 @@ export function CreatePullRequestModal({
 							<Text size="sm" fw={500}>
 								{t("contexts.prDescription")}
 							</Text>
-							<Button
-								size="xs"
-								variant="light"
-								leftSection={
-									generation.status === "generating" ? (
-										<Loader size={12} />
-									) : (
-										<SparkleIcon size={14} />
-									)
-								}
-								disabled={!canCreate || generation.status === "generating"}
-								onClick={() =>
-									target.baseBranch &&
-									generate({
-										contextName: context.name,
-										repository: target.repository,
-										worktreePath: target.worktreePath,
-										baseBranch: target.baseBranch,
-									})
-								}
-							>
-								{generation.status === "generating"
-									? t("contexts.createPr.generating")
-									: t("contexts.createPr.generate")}
-							</Button>
+							{isGenerating ? (
+								<Button
+									size="xs"
+									variant="light"
+									color="red"
+									leftSection={<Loader size={12} />}
+									onClick={cancelGeneration}
+								>
+									{t("contexts.createPr.cancelGeneration")}
+								</Button>
+							) : (
+								<Button
+									size="xs"
+									variant="light"
+									leftSection={<SparkleIcon size={14} />}
+									disabled={!canCreate}
+									onClick={() => handleGenerate(repositoryId)}
+								>
+									{t("contexts.createPr.generate")}
+								</Button>
+							)}
 						</Group>
-						{generation.status === "error" && generation.error && (
+						{isGenerating && (
+							<Text size="xs" c="dimmed">
+								{t("contexts.createPr.generating")}
+							</Text>
+						)}
+						{generationError && (
 							<Alert color="red" icon={<WarningIcon size={16} />}>
-								{generation.error}
+								{generationError}
 							</Alert>
 						)}
 						<div data-color-mode="dark">

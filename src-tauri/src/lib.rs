@@ -6,6 +6,7 @@ use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
 use workspace::application::agent_runs::AgentRunService;
 use workspace::application::quit_guard::{decide_close, CloseDecision};
 
+mod ai_assist;
 mod ai_session;
 mod binary_resolver;
 mod composition;
@@ -28,8 +29,6 @@ fn typed_commands() -> tauri_specta::Builder<tauri::Wry> {
         .commands(tauri_specta::collect_commands![
             ide_launcher::open_in_ide,
             workspace_detector::get_active_workspaces,
-            ai_session::spawn_ai_session,
-            ai_session::kill_ai_session,
             git::commands::check_is_git_repository,
             git::commands::get_git_remote_url,
             git::commands::list_worktrees,
@@ -70,6 +69,11 @@ fn typed_commands() -> tauri_specta::Builder<tauri::Wry> {
             git_hosting::commands::git_hosting_create_pull_request,
             settings::commands::settings_get,
             settings::commands::settings_set_assign_me_to_tasks,
+            settings::commands::settings_set_default_ai_tool,
+            ai_assist::commands::ai_assist_suggest_contexts,
+            ai_assist::commands::ai_assist_cancel_contexts,
+            ai_assist::commands::ai_assist_suggest_pull_request,
+            ai_assist::commands::ai_assist_cancel_pull_request,
             work_tracking::commands::work_tracking_list_connections,
             work_tracking::commands::work_tracking_save_connection,
             work_tracking::commands::work_tracking_remove_connection,
@@ -178,11 +182,19 @@ pub fn run() {
                     app.handle().clone(),
                 ),
             );
+            // A fresh context's first run uses the Default AI tool (#90), read
+            // from settings through a composition adapter so workspace never
+            // names settings; the context then keeps the tool it recorded.
+            let default_agent_tool =
+                composition::settings_default_agent_tool::SettingsDefaultAgentTool::new(
+                    Arc::clone(&settings.service),
+                );
             let workspace = workspace::build(
                 app.handle().clone(),
                 Arc::clone(&database),
                 git.repositories(),
                 agent_runner,
+                Arc::new(default_agent_tool),
             )?;
             let project_task_links =
                 composition::workspace_project_task_links::WorkspaceProjectTaskLinks::new(
@@ -220,11 +232,52 @@ pub fn run() {
             if let Err(error) = agent_run_service.reconcile_interrupted_runs() {
                 eprintln!("[workspace] interrupted runs not reconciled: {error}");
             }
+            // AI assists (#88): the suggestion use case over the read-only
+            // runner (a composition adapter over ai_session), with the default
+            // tool read from settings, branch naming read from the workspace
+            // Project policy, and a throwaway temp folder per run. All three
+            // ports are composition adapters so ai_assist names no other
+            // context.
+            let ai_assist_runner = Arc::new(
+                composition::ai_session_ai_assist_runner::AiSessionAiAssistRunner::new(
+                    app.handle().clone(),
+                ),
+            );
+            let default_ai_tool = composition::settings_default_ai_tool::SettingsDefaultAiTool::new(
+                Arc::clone(&settings.service),
+            );
+            let project_branch_naming =
+                composition::workspace_project_branch_naming::WorkspaceProjectBranchNaming::new(
+                    Arc::clone(&workspace.service),
+                );
+            // #89: the pull-request suggestion reads its target (names, worktree,
+            // base branch) from the workspace Project and its diff + template
+            // from git — both through composition ports so ai_assist names no
+            // other context.
+            let pull_request_context =
+                composition::workspace_pull_request_context::WorkspacePullRequestContext::new(
+                    Arc::clone(&workspace.service),
+                );
+            let repository_diff =
+                composition::git_repository_diff::GitRepositoryDiff::new(git.repositories());
+            let ai_assist = ai_assist::AiAssist {
+                service: Arc::new(
+                    ai_assist::application::suggest_contexts::AiAssistService::new(
+                        ai_assist_runner,
+                        Arc::new(default_ai_tool),
+                        Arc::new(project_branch_naming),
+                        Arc::new(composition::tempfile_temp_workspace::TempfileTempWorkspace),
+                        Arc::new(pull_request_context),
+                        Arc::new(repository_diff),
+                    ),
+                ),
+            };
             app.manage(git);
             app.manage(push_listener);
             app.manage(git_hosting);
             app.manage(workspace);
             app.manage(settings);
+            app.manage(ai_assist);
             shortcuts::register(app.handle())?;
             // Guard the quit (#82): closing with runs in progress asks first
             // and stops them cleanly. The decision and the stop live in tested

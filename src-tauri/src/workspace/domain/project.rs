@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::git::domain::branch_name::BranchName;
 
+use super::agent_work::{AgentTool, AgentWork};
 use super::branch_naming::BranchNamingPolicy;
 use super::context::Context;
 use super::context_branch::{ContextBranch, PullRequestDraft, PullRequestLink};
@@ -188,6 +189,25 @@ impl Project {
         self.contexts.iter().find(|context| &context.id == id)
     }
 
+    /// The branch a context's changes in `repository` are opened against: the
+    /// base context's branch there, else the default context's. `None` when
+    /// neither has a branch for the repository. This is the single source of
+    /// the base-branch fallback the create-pull-request flow uses.
+    pub fn base_branch_for(
+        &self,
+        context: &Context,
+        repository: &RepositoryId,
+    ) -> Option<&BranchName> {
+        let from_base_context = context
+            .base
+            .as_ref()
+            .and_then(|base| self.find_context(base))
+            .and_then(|base| base.branch_for(repository));
+        from_base_context
+            .or_else(|| self.default_context()?.branch_for(repository))
+            .map(|branch| &branch.branch)
+    }
+
     /// Adds a context after checking its name, folder, base context and
     /// branches. A default context is only accepted while there is none, and
     /// is made idle and static.
@@ -338,6 +358,22 @@ impl Project {
         self.update_context(id, |context| {
             let agent = context.agent.take().unwrap_or_default();
             context.agent = Some(agent.with_prompt(prompt));
+            Ok(())
+        })
+    }
+
+    /// Records the tool a context's first run starts on, so follow-up runs
+    /// resume the same tool. A no-op once the context has agent work: the tool
+    /// it started with is never changed by a later run.
+    pub fn start_agent_with_tool(
+        self,
+        id: &ContextId,
+        tool: AgentTool,
+    ) -> Result<Self, WorkspaceError> {
+        self.update_context(id, |context| {
+            if context.agent.is_none() {
+                context.agent = Some(AgentWork::on_tool(tool));
+            }
             Ok(())
         })
     }

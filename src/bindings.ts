@@ -11,22 +11,6 @@ export const commands = {
 	 */
 	openInIde: (command: string, path: string, shell: string | null) => __TAURI_INVOKE<null>("open_in_ide", { command, path, shell }),
 	getActiveWorkspaces: (ideCommand: string) => __TAURI_INVOKE<string[]>("get_active_workspaces", { ideCommand }),
-	/**
-	 *  Spawns a new AI CLI session and begins streaming its output.
-	 * 
-	 *  Resolves the chosen adapter, builds a headless spawn spec, launches the
-	 *  child with piped stdio in its own process group, registers it, and starts
-	 *  background tasks that forward stdout/stderr lines to the frontend and watch
-	 *  for exit. Returns immediately with the session id and pid.
-	 */
-	spawnAiSession: (options: SpawnOptions) => __TAURI_INVOKE<SpawnedSession>("spawn_ai_session", { options }),
-	/**
-	 *  Terminates a running session by killing its entire process group.
-	 * 
-	 *  A kill is flagged in the registry first so the exit is reported as `killed`
-	 *  rather than `completed`/`failed`, then the OS process group is signalled.
-	 */
-	killAiSession: (sessionId: string) => __TAURI_INVOKE<null>("kill_ai_session", { sessionId }),
 	checkIsGitRepository: (path: string) => __TAURI_INVOKE<boolean>("check_is_git_repository", { path }),
 	getGitRemoteUrl: (path: string) => __TAURI_INVOKE<string | null>("get_git_remote_url", { path }),
 	listWorktrees: (path: string) => __TAURI_INVOKE<WorktreeView[]>("list_worktrees", { path }),
@@ -102,6 +86,28 @@ export const commands = {
 	 *  the updated settings.
 	 */
 	settingsSetAssignMeToTasks: (value: boolean) => __TAURI_INVOKE<AppSettingsView>("settings_set_assign_me_to_tasks", { value }),
+	/**  Sets the AI tool the app runs by default and returns the updated settings. */
+	settingsSetDefaultAiTool: (value: AiToolView) => __TAURI_INVOKE<AppSettingsView>("settings_set_default_ai_tool", { value }),
+	/**
+	 *  Expands one instruction into named context drafts, read-only in a fresh
+	 *  temp folder. Returns the drafts or a typed error.
+	 */
+	aiAssistSuggestContexts: (projectTag: string, instruction: string) => __TAURI_INVOKE<ContextDraftView[]>("ai_assist_suggest_contexts", { projectTag, instruction }),
+	/**
+	 *  Cancels the context suggestion in flight, if any. A no-op when none is
+	 *  running, so the modal can call it freely on close.
+	 */
+	aiAssistCancelContexts: () => __TAURI_INVOKE<null>("ai_assist_cancel_contexts"),
+	/**
+	 *  Writes a pull request title and description for one repository tab,
+	 *  read-only in the context's worktree. Returns both halves or a typed error.
+	 */
+	aiAssistSuggestPullRequest: (projectTag: string, contextId: string, repositoryId: string) => __TAURI_INVOKE<SuggestedPullRequestView>("ai_assist_suggest_pull_request", { projectTag, contextId, repositoryId }),
+	/**
+	 *  Cancels the pull-request suggestion in flight, if any. A no-op when none is
+	 *  running, so the modal can call it freely on close.
+	 */
+	aiAssistCancelPullRequest: () => __TAURI_INVOKE<null>("ai_assist_cancel_pull_request"),
 	workTrackingListConnections: () => __TAURI_INVOKE<ConnectionView[]>("work_tracking_list_connections"),
 	workTrackingSaveConnection: (input: SaveConnectionInput) => __TAURI_INVOKE<ConnectionView>("work_tracking_save_connection", { input }),
 	workTrackingRemoveConnection: (connectionId: string) => __TAURI_INVOKE<null>("work_tracking_remove_connection", { connectionId }),
@@ -166,26 +172,33 @@ export type AgentWorkView = {
 	tool: AgentToolView,
 };
 
-/**  A failed AI-session command on the wire. `message` is a readable sentence. */
-export type AiSessionCommandError = {
-	kind: AiSessionErrorKind,
+/**
+ *  A failed AI-assist command on the wire. `message` is a readable English
+ *  sentence; it may carry the tool's failure reason for the `failed` kind.
+ */
+export type AiAssistCommandError = {
+	kind: AiAssistErrorKind,
 	message: string,
 };
 
-/**  The kind of an AI-session command failure, as the frontend sees it. */
-export type AiSessionErrorKind = 
-/**  No adapter is registered for the requested id. */
-"unknownAdapter" | 
-/**  The prompt was empty. */
-"emptyPrompt" | 
-/**  The session could not be spawned (binary not found, spawn failed). */
-"spawnFailed" | 
-/**  The session could not be killed. */
-"killFailed";
+/**
+ *  The kind of an AI-assist failure, as the frontend sees it. The four parse
+ *  kinds carry the same meaning (and, via i18n, the same message) as the
+ *  frontend bulk parser's `no-json-found`/`invalid-json`/`not-an-array`/
+ *  `no-valid-rows`; the run kinds are cancel, timeout and a catch-all failure;
+ *  `invalidInput` is a blank instruction. The pull-request suggestion adds
+ *  `emptyDiff` (no changes to describe) and `emptyAnswer` (the run produced no
+ *  text).
+ */
+export type AiAssistErrorKind = "invalidInput" | "noListFound" | "malformed" | "notAList" | "noValidEntries" | "emptyDiff" | "emptyAnswer" | "cancelled" | "timedOut" | "failed";
+
+/**  The AI tool the app runs by default, on the wire. Mirrors [`AiTool`]. */
+export type AiToolView = "kiro";
 
 /**  The app-wide settings on the wire. */
 export type AppSettingsView = {
 	assignMeToTasks: boolean,
+	defaultAiTool: AiToolView,
 };
 
 /**
@@ -257,6 +270,16 @@ export type ContextBranchView = {
  */
 export type ContextCheckoutView = "worktree" | "linked";
 
+/**
+ *  A ready-to-create context draft on the wire. `branchName` is valid under the
+ *  project's naming policy; `prompt` is the optional Kiro prompt.
+ */
+export type ContextDraftView = {
+	contextName: string,
+	branchName: string,
+	prompt: string | null,
+};
+
 export type ContextOriginView = { kind: "manual" } | { kind: "fromContext" } | { kind: "fromBranches" } | { kind: "fromPullRequests" } | { kind: "fromTask"; connectionId: string; taskId: string };
 
 export type ContextStatusView = "idle" | "ready" | "inProgress" | "needsHuman" | "review" | "done";
@@ -295,12 +318,6 @@ export type CreatedPullRequestView = {
 
 /**  Opaque pagination token; its meaning belongs to the provider adapter. */
 export type Cursor = string;
-
-/**  A single environment variable pair from the frontend. */
-export type EnvVar = {
-	key: string,
-	value: string,
-};
 
 /**
  *  A task the current user could not be assigned to, on the wire, so the
@@ -602,41 +619,13 @@ export type SignedInHostView = {
 	account: HostedAccountView | null,
 };
 
-/**  Parameters for spawning a session, sent from the frontend (camelCase). */
-export type SpawnOptions = {
-	/**  Adapter id selecting the CLI to run (e.g. `"kiro"`). */
-	adapterId: string,
-	/**  Natural-language prompt / instruction to run headlessly. */
-	prompt: string,
-	/**  Directory the CLI runs in (typically a context worktree path). */
-	workingDirectory: string,
-	/**  Optional explicit binary/path override; falls back to the adapter default. */
-	command: string | null,
-	/**  Optional named agent/profile when supported by the CLI. */
-	agent: string | null,
-	/**
-	 *  Optional prior conversation id to resume, so a follow-up prompt keeps the
-	 *  earlier context (Kiro's `--resume-id`).
-	 */
-	resumeId: string | null,
-	/**  Optional login shell used to resolve the binary via the user's PATH. */
-	shell: string | null,
-	/**  Extra environment variables (e.g. the headless API key). */
-	environment?: EnvVar[],
-	/**
-	 *  Run tools without per-action confirmation. Defaults to false when
-	 *  absent; the frontend sends true for headless runs, which rely on a
-	 *  workspace permission policy for their safety floor.
-	 */
-	trustAllTools?: boolean,
-};
-
-/**  The result returned to the caller when a session is accepted and started. */
-export type SpawnedSession = {
-	sessionId: string,
-	adapterId: string,
-	pid: number | null,
-	workingDirectory: string,
+/**
+ *  A written pull request on the wire: both halves the modal needs. The modal
+ *  keeps a title the user already typed and always fills the description.
+ */
+export type SuggestedPullRequestView = {
+	title: string,
+	description: string,
 };
 
 /**

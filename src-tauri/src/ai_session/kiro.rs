@@ -58,6 +58,12 @@ impl CliAdapter for KiroAdapter {
         vec!["-a".to_string()]
     }
 
+    fn read_only_arguments(&self) -> Vec<String> {
+        // `--trust-tools=fs_read`: trust only the file-reading tool, so the run
+        // can read files but change nothing (used by read-only AI assists).
+        vec!["--trust-tools=fs_read".to_string()]
+    }
+
     /// Kiro's `stream-json` events each carry `data.sessionId`; the first one
     /// seen is the conversation id to resume with `--resume-id`. A line that is
     /// not a JSON object, or an object without a non-empty string `sessionId`,
@@ -79,7 +85,7 @@ impl CliAdapter for KiroAdapter {
 
 #[cfg(test)]
 mod tests {
-    use super::super::adapter::{PromptDelivery, SpawnRequest};
+    use super::super::adapter::{PromptDelivery, SpawnRequest, ToolTrust};
     use super::*;
 
     fn request() -> SpawnRequest {
@@ -90,7 +96,7 @@ mod tests {
             resume_id: None,
             shell: None,
             environment: Vec::new(),
-            trust_all_tools: false,
+            tool_trust: ToolTrust::ReadOnly,
         }
     }
 
@@ -121,10 +127,17 @@ mod tests {
     }
 
     #[test]
-    fn build_spec_appends_trust_flag_when_requested() {
+    fn read_only_arguments_pass_the_read_only_trust_flag() {
+        let adapter = KiroAdapter;
+
+        assert_eq!(adapter.read_only_arguments(), vec!["--trust-tools=fs_read"]);
+    }
+
+    #[test]
+    fn build_spec_appends_trust_flag_when_trusting_all_tools() {
         let adapter = KiroAdapter;
         let mut spawn_request = request();
-        spawn_request.trust_all_tools = true;
+        spawn_request.tool_trust = ToolTrust::TrustAll;
 
         let spec = adapter
             .build_spec(&spawn_request, Some("/bin/echo"))
@@ -144,6 +157,50 @@ mod tests {
                 "do the thing"
             ]
         );
+    }
+
+    #[test]
+    fn build_spec_appends_the_read_only_flag_and_not_trust_all_when_read_only() {
+        let adapter = KiroAdapter;
+        let mut spawn_request = request();
+        spawn_request.tool_trust = ToolTrust::ReadOnly;
+
+        let spec = adapter
+            .build_spec(&spawn_request, Some("/bin/echo"))
+            .expect("spec should build for an existing binary");
+
+        // The read-only flag sits before the `--` terminator and the prompt
+        // stays last; `-a` is never present on a read-only run.
+        assert_eq!(
+            spec.arguments,
+            vec![
+                "chat",
+                "--no-interactive",
+                "--output-format",
+                "stream-json",
+                "--trust-tools=fs_read",
+                "--",
+                "do the thing"
+            ]
+        );
+        assert!(!spec.arguments.iter().any(|argument| argument == "-a"));
+    }
+
+    #[test]
+    fn a_trust_all_run_does_not_pass_the_read_only_flag() {
+        let adapter = KiroAdapter;
+        let mut spawn_request = request();
+        spawn_request.tool_trust = ToolTrust::TrustAll;
+
+        let spec = adapter
+            .build_spec(&spawn_request, Some("/bin/echo"))
+            .expect("spec should build for an existing binary");
+
+        assert!(spec.arguments.iter().any(|argument| argument == "-a"));
+        assert!(!spec
+            .arguments
+            .iter()
+            .any(|argument| argument == "--trust-tools=fs_read"));
     }
 
     #[test]
@@ -185,6 +242,7 @@ mod tests {
                 "stream-json",
                 "--resume-id",
                 "conv-9",
+                "--trust-tools=fs_read",
                 "--",
                 "do the thing"
             ]
@@ -218,7 +276,7 @@ mod tests {
             .expect("spec should build for an existing binary");
 
         // Then the prompt is the last argument, after the headless + agent
-        // flags and the `--` options terminator.
+        // flags, the trust flag and the `--` options terminator.
         assert_eq!(
             spec.arguments,
             vec![
@@ -228,6 +286,7 @@ mod tests {
                 "stream-json",
                 "--agent",
                 "reviewer",
+                "--trust-tools=fs_read",
                 "--",
                 "do the thing"
             ]
@@ -293,6 +352,7 @@ mod tests {
                 "--no-interactive",
                 "--output-format",
                 "stream-json",
+                "--trust-tools=fs_read",
                 "--",
                 "- do the first thing\n- then the second"
             ]

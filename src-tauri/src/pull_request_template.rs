@@ -33,7 +33,15 @@ const TEMPLATE_FOLDER_CANDIDATES: &[&str] = &[
 #[tauri::command]
 #[specta::specta]
 pub async fn read_pull_request_template(path: String) -> Result<Option<String>, GitCommandError> {
-    let root = Path::new(&path);
+    pull_request_template_at(&path)
+}
+
+/// The pull request template of the worktree at `path`, or `None` when it has
+/// none. The plain function behind [`read_pull_request_template`], so Rust use
+/// cases (the `ai_assist` pull-request suggestion) can read the template
+/// without going through the Tauri command.
+pub fn pull_request_template_at(path: &str) -> Result<Option<String>, GitCommandError> {
+    let root = Path::new(path);
 
     for candidate in TEMPLATE_FILE_CANDIDATES {
         let file = root.join(candidate);

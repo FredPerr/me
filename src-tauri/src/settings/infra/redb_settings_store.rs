@@ -79,6 +79,7 @@ mod tests {
     use tempfile::TempDir;
 
     use super::*;
+    use crate::settings::domain::ai_tool::AiTool;
     use crate::settings::infra::settings_store_contract::settings_store_contract_tests;
     use crate::storage;
 
@@ -116,12 +117,38 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let settings = AppSettings {
             assign_me_to_tasks: false,
+            default_ai_tool: AiTool::Kiro,
         };
         store_in(&directory).save(&settings).unwrap();
 
         let reopened = store_in(&directory);
 
         assert_eq!(reopened.load().unwrap(), settings);
+    }
+
+    #[test]
+    fn reopening_the_database_keeps_the_default_ai_tool() {
+        let directory = tempfile::tempdir().unwrap();
+        let settings = AppSettings {
+            assign_me_to_tasks: true,
+            default_ai_tool: AiTool::Kiro,
+        };
+        store_in(&directory).save(&settings).unwrap();
+
+        let reopened = store_in(&directory);
+
+        assert_eq!(reopened.load().unwrap().default_ai_tool, AiTool::Kiro);
+    }
+
+    #[test]
+    fn a_record_written_before_the_default_ai_tool_existed_loads_as_kiro() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = store_in(&directory);
+        let record = rmp_serde::to_vec_named(&json!({ "assignMeToTasks": false })).unwrap();
+
+        write_raw_record(&store, &record);
+
+        assert_eq!(store.load().unwrap().default_ai_tool, AiTool::Kiro);
     }
 
     #[test]
@@ -136,6 +163,7 @@ mod tests {
             store.load().unwrap(),
             AppSettings {
                 assign_me_to_tasks: false,
+                default_ai_tool: AiTool::Kiro,
             }
         );
     }

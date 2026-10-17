@@ -1,5 +1,5 @@
 import type {
-	AiSessionCommandError,
+	AiAssistCommandError,
 	GitCommandError,
 	GitHostingCommandError,
 	IdeLauncherCommandError,
@@ -11,7 +11,7 @@ import type {
 
 /** Any error a typed command throws. Grows as bounded contexts move to typed commands. */
 export type CommandError =
-	| AiSessionCommandError
+	| AiAssistCommandError
 	| GitCommandError
 	| GitHostingCommandError
 	| IdeLauncherCommandError

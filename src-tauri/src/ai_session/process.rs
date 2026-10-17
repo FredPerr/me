@@ -38,18 +38,10 @@ pub type AiSessionSink = mpsc::UnboundedSender<AiSessionEvent>;
 
 /// Spawns the process described by `spec`, registers it, and starts the
 /// streaming + exit-watching background tasks. Returns the session descriptor.
-pub async fn spawn(
-    app: AppHandle,
-    registry: &State<'_, SessionRegistry>,
-    adapter_id: String,
-    spec: SpawnSpec,
-) -> Result<SpawnedSession, String> {
-    spawn_with_sink(app, registry, adapter_id, spec, None).await
-}
-
-/// Like [`spawn`], but also forwards every output line and the terminal status
-/// to `sink` when one is given. The Tauri events fire exactly as before either
-/// way, so the frontend is unaffected.
+/// Forwards every output line and the terminal status to `sink` when one is
+/// given; the Tauri events fire either way. The Rust use cases (agent runs and
+/// AI assists) are the only callers, each passing a sink to consume the run
+/// in-process.
 pub async fn spawn_with_sink(
     app: AppHandle,
     registry: &State<'_, SessionRegistry>,
