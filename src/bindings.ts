@@ -391,6 +391,7 @@ export type HostedPullRequestView = {
 	author: string | null,
 	headBranch: string,
 	baseBranch: string,
+	isFork: boolean,
 	draft: boolean,
 	state: PullRequestStateView,
 	updatedAt: string,

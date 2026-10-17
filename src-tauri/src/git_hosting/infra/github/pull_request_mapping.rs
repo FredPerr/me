@@ -33,16 +33,28 @@ pub fn pull_request(response: PullRequestResponse) -> HostedPullRequest {
     } else {
         PullRequestState::Closed
     };
+    let is_fork = is_fork(&response);
     HostedPullRequest {
         number: response.number,
         title: response.title,
         url: response.html_url,
         author: response.user.map(|user| user.login),
+        is_fork,
         head_branch: response.head.name,
         base_branch: response.base.name,
         draft: response.draft && state == PullRequestState::Open,
         state,
         updated_at: response.updated_at,
+    }
+}
+
+/// A fork only when both repositories are known and differ. The list
+/// endpoint omits the head repository for a deleted fork, so a missing id
+/// means not a fork rather than a guess.
+fn is_fork(response: &PullRequestResponse) -> bool {
+    match (&response.head.repo, &response.base.repo) {
+        (Some(head), Some(base)) => head.id != base.id,
+        _ => false,
     }
 }
 
@@ -82,8 +94,21 @@ mod tests {
     const OLDER_UPDATED_AT: &str = "2010-12-01T08:00:00Z";
     const NEXT_URL: &str = "https://api.github.com/repositories/1300192/pulls?page=2";
     const LAST_URL: &str = "https://api.github.com/repositories/1300192/pulls?page=5";
+    const SAME_REPOSITORY_ID: u64 = 1_300_192;
+    const FORK_REPOSITORY_ID: u64 = 42;
 
     fn answer(state: &str, draft: bool, merged_at: Option<&str>) -> String {
+        let repository = format!(r#"{{ "id": {SAME_REPOSITORY_ID} }}"#);
+        answer_with_repositories(state, draft, merged_at, &repository, &repository)
+    }
+
+    fn answer_with_repositories(
+        state: &str,
+        draft: bool,
+        merged_at: Option<&str>,
+        head_repository: &str,
+        base_repository: &str,
+    ) -> String {
         let merged_at = merged_at.map_or("null".to_string(), |date| format!(r#""{date}""#));
         format!(
             r#"{{
@@ -93,8 +118,8 @@ mod tests {
                 "title": "{TITLE}",
                 "html_url": "{URL}",
                 "user": {{ "login": "{AUTHOR}", "id": 1 }},
-                "head": {{ "label": "octocat:{HEAD_BRANCH}", "ref": "{HEAD_BRANCH}", "sha": "6dcb09b" }},
-                "base": {{ "label": "octocat:{BASE_BRANCH}", "ref": "{BASE_BRANCH}", "sha": "6dcb09b" }},
+                "head": {{ "label": "octocat:{HEAD_BRANCH}", "ref": "{HEAD_BRANCH}", "sha": "6dcb09b", "repo": {head_repository} }},
+                "base": {{ "label": "octocat:{BASE_BRANCH}", "ref": "{BASE_BRANCH}", "sha": "6dcb09b", "repo": {base_repository} }},
                 "draft": {draft},
                 "merged_at": {merged_at},
                 "updated_at": "{UPDATED_AT}"
@@ -117,11 +142,43 @@ mod tests {
                 author: Some(AUTHOR.to_string()),
                 head_branch: HEAD_BRANCH.to_string(),
                 base_branch: BASE_BRANCH.to_string(),
+                is_fork: false,
                 draft: false,
                 state: PullRequestState::Open,
                 updated_at: UPDATED_AT.to_string(),
             }
         );
+    }
+
+    #[test]
+    fn a_pull_request_from_the_same_repository_is_not_a_fork() {
+        assert!(!mapped(&answer(OPEN, false, None)).is_fork);
+    }
+
+    #[test]
+    fn a_pull_request_from_a_different_repository_is_a_fork() {
+        let answer = answer_with_repositories(
+            OPEN,
+            false,
+            None,
+            &format!(r#"{{ "id": {FORK_REPOSITORY_ID} }}"#),
+            &format!(r#"{{ "id": {SAME_REPOSITORY_ID} }}"#),
+        );
+
+        assert!(mapped(&answer).is_fork);
+    }
+
+    #[test]
+    fn a_pull_request_without_a_head_repository_is_not_a_fork() {
+        let answer = answer_with_repositories(
+            OPEN,
+            false,
+            None,
+            "null",
+            &format!(r#"{{ "id": {SAME_REPOSITORY_ID} }}"#),
+        );
+
+        assert!(!mapped(&answer).is_fork);
     }
 
     #[test]

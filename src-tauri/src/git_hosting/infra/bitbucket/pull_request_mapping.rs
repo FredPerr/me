@@ -1,7 +1,7 @@
 //! Plain Bitbucket → domain mapping of pull request lists, and the query
 //! finding a branch's pull requests.
 
-use super::wire::{PullRequestAuthor, PullRequestResponse};
+use super::wire::{PullRequestAuthor, PullRequestEndpoint, PullRequestResponse};
 use crate::git_hosting::domain::hosted_pull_request::{
     most_recently_updated, HostedPullRequest, PullRequestState,
 };
@@ -41,6 +41,7 @@ pub fn pull_request(response: PullRequestResponse) -> HostedPullRequest {
     } else {
         PullRequestState::Closed
     };
+    let is_fork = is_fork(&response);
     HostedPullRequest {
         number: response.id,
         title: response.title,
@@ -50,11 +51,28 @@ pub fn pull_request(response: PullRequestResponse) -> HostedPullRequest {
             .and_then(|link| link.href)
             .unwrap_or_default(),
         author: response.author.and_then(author_name),
+        is_fork,
         head_branch: response.source.branch.name,
         base_branch: response.destination.branch.name,
         draft: response.draft && state == PullRequestState::Open,
         state,
         updated_at: response.updated_on,
+    }
+}
+
+/// A fork only when both repository uuids are known and differ. The list
+/// endpoint omits the source repository for a deleted fork, so a missing
+/// uuid means not a fork rather than a guess.
+fn is_fork(response: &PullRequestResponse) -> bool {
+    let uuid = |endpoint: &PullRequestEndpoint| {
+        endpoint
+            .repository
+            .as_ref()
+            .and_then(|repository| repository.uuid.clone())
+    };
+    match (uuid(&response.source), uuid(&response.destination)) {
+        (Some(source), Some(destination)) => source != destination,
+        _ => false,
     }
 }
 
@@ -80,8 +98,21 @@ mod tests {
     const OLDER_UPDATED_ON: &str = "2024-03-01T09:30:00.000000+00:00";
     const NEXT_URL: &str =
         "https://api.bitbucket.org/2.0/repositories/acme/api/pullrequests?state=OPEN&page=2";
+    const SAME_REPOSITORY_UUID: &str = "{11111111-1111-1111-1111-111111111111}";
+    const FORK_REPOSITORY_UUID: &str = "{22222222-2222-2222-2222-222222222222}";
 
     fn answer(state: &str, draft: bool, author: &str) -> String {
+        let repository = format!(r#"{{ "uuid": "{SAME_REPOSITORY_UUID}" }}"#);
+        answer_with_repositories(state, draft, author, &repository, &repository)
+    }
+
+    fn answer_with_repositories(
+        state: &str,
+        draft: bool,
+        author: &str,
+        source_repository: &str,
+        destination_repository: &str,
+    ) -> String {
         format!(
             r#"{{
                 "type": "pullrequest",
@@ -90,8 +121,8 @@ mod tests {
                 "state": "{state}",
                 "draft": {draft},
                 "author": {author},
-                "source": {{ "branch": {{ "name": "{HEAD_BRANCH}" }}, "commit": {{ "hash": "abc" }} }},
-                "destination": {{ "branch": {{ "name": "{BASE_BRANCH}" }} }},
+                "source": {{ "branch": {{ "name": "{HEAD_BRANCH}" }}, "commit": {{ "hash": "abc" }}, "repository": {source_repository} }},
+                "destination": {{ "branch": {{ "name": "{BASE_BRANCH}" }}, "repository": {destination_repository} }},
                 "updated_on": "{UPDATED_ON}",
                 "links": {{ "html": {{ "href": "{URL}" }} }}
             }}"#
@@ -121,11 +152,43 @@ mod tests {
                 author: Some(NICKNAME.to_string()),
                 head_branch: HEAD_BRANCH.to_string(),
                 base_branch: BASE_BRANCH.to_string(),
+                is_fork: false,
                 draft: false,
                 state: PullRequestState::Open,
                 updated_at: UPDATED_ON.to_string(),
             }
         );
+    }
+
+    #[test]
+    fn a_pull_request_from_the_same_repository_is_not_a_fork() {
+        assert!(!mapped(&open_answer()).is_fork);
+    }
+
+    #[test]
+    fn a_pull_request_from_a_different_repository_is_a_fork() {
+        let answer = answer_with_repositories(
+            OPEN,
+            false,
+            &author(NICKNAME, DISPLAY_NAME),
+            &format!(r#"{{ "uuid": "{FORK_REPOSITORY_UUID}" }}"#),
+            &format!(r#"{{ "uuid": "{SAME_REPOSITORY_UUID}" }}"#),
+        );
+
+        assert!(mapped(&answer).is_fork);
+    }
+
+    #[test]
+    fn a_pull_request_without_a_source_repository_is_not_a_fork() {
+        let answer = answer_with_repositories(
+            OPEN,
+            false,
+            &author(NICKNAME, DISPLAY_NAME),
+            "null",
+            &format!(r#"{{ "uuid": "{SAME_REPOSITORY_UUID}" }}"#),
+        );
+
+        assert!(!mapped(&answer).is_fork);
     }
 
     #[test]
