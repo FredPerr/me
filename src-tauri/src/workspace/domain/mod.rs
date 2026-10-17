@@ -2,6 +2,7 @@
 //! `uuid`, `unicode-normalization` and the git module's `BranchName`.
 
 pub mod agent_run;
+pub mod agent_runner;
 pub mod agent_work;
 pub mod branch_naming;
 pub mod context;

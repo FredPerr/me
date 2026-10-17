@@ -114,6 +114,14 @@ pub trait CliAdapter: Send + Sync {
         Vec::new()
     }
 
+    /// Reads this CLI's own conversation id from one line of its output, so a
+    /// follow-up run can resume the same conversation. A pure parser: it never
+    /// touches the process. `None` when the line carries no id (the default, so
+    /// a CLI that does not surface one simply never reports it).
+    fn conversation_id(&self, _line: &str) -> Option<String> {
+        None
+    }
+
     /// Resolves a concrete [`SpawnSpec`] for the request, locating the binary.
     ///
     /// `command_override` lets the caller point at a specific binary/path

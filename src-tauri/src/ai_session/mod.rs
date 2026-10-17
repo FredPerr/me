@@ -10,9 +10,8 @@
 
 pub mod adapter;
 pub mod kiro;
+pub mod process;
 pub mod registry;
-
-mod process;
 
 use adapter::{AdapterInfo, SpawnRequest};
 use registry::{SessionRegistry, SessionStatus};
@@ -25,7 +24,7 @@ pub const EVENT_OUTPUT: &str = "ai-session://output";
 pub const EVENT_STATUS: &str = "ai-session://status";
 
 /// Which stream a line of output came from.
-#[derive(Debug, Clone, Copy, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum OutputStream {
     Stdout,
@@ -150,12 +149,7 @@ pub async fn kill_ai_session(
     registry: State<'_, SessionRegistry>,
     session_id: String,
 ) -> Result<(), String> {
-    let pid = registry
-        .mark_kill_requested(&session_id)
-        .or_else(|| registry.pid_of(&session_id))
-        .ok_or_else(|| format!("No running session with id '{}'", session_id))?;
-
-    process::kill_process_group(pid)
+    process::kill_session(&registry, &session_id)
 }
 
 /// Lists the ids of sessions currently tracked as running.
