@@ -25,6 +25,7 @@ export function buildContextBranch(overrides?: Partial<ContextBranchView>): Cont
 		checkout: "worktree",
 		worktreePath: `${PROJECT_PATH}/api`,
 		pullRequestDraft: null,
+		pullRequestMatched: null,
 		...overrides,
 	};
 }

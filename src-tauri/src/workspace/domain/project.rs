@@ -345,7 +345,11 @@ impl Project {
                     repository: repository.clone(),
                 });
             }
-            branch.pull_request = Some(PullRequestLink { draft });
+            let link = branch.pull_request.take().unwrap_or(PullRequestLink {
+                draft: None,
+                matched: None,
+            });
+            branch.pull_request = Some(link.with_draft(draft));
             Ok(())
         })
     }
@@ -910,10 +914,36 @@ mod tests {
                 .unwrap()
                 .branch_for(&repository_id(API_ID))
                 .unwrap();
-            assert_eq!(
-                branch.pull_request,
-                Some(PullRequestLink { draft: draft() })
-            );
+            assert_eq!(branch.pull_request.as_ref().unwrap().draft, Some(draft()));
+        }
+
+        #[test]
+        fn keeps_a_recorded_match_when_a_draft_is_saved_later() {
+            use crate::workspace::domain::context_branch::MatchedPullRequest;
+
+            let matched = MatchedPullRequest {
+                host: "github".to_string(),
+                number: 12,
+                url: "https://github.com/acme/api/pull/12".to_string(),
+            };
+            let mut context = feature_context();
+            context.branches[0].pull_request = Some(PullRequestLink::matched(matched.clone()));
+            let id = context.id.clone();
+            let project = project_with(vec![api()])
+                .add_context(Context::new_default(vec![branch_on(API_ID, "main")]))
+                .unwrap()
+                .add_context(context)
+                .unwrap()
+                .save_pull_request_draft(&id, &repository_id(API_ID), draft())
+                .unwrap();
+
+            let branch = project
+                .find_context(&id)
+                .unwrap()
+                .branch_for(&repository_id(API_ID))
+                .unwrap();
+            assert_eq!(branch.pull_request.as_ref().unwrap().draft, Some(draft()));
+            assert_eq!(branch.pull_request.as_ref().unwrap().matched, Some(matched));
         }
 
         #[test]

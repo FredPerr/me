@@ -222,7 +222,12 @@ export type AssignMeResultView = {
 };
 
 /**  How the new context gets its branch in one repository. */
-export type BranchChoiceInput = { kind: "newBranch"; name: string; baseBranch: string } | { kind: "existingBranch"; name: string };
+export type BranchChoiceInput = { kind: "newBranch"; name: string; baseBranch: string } | { kind: "existingBranch"; name: string } | 
+/**
+ *  The head branch of a matched pull request, with its base and identity.
+ *  `host` is the Git host kind as a plain string ("github", "bitbucket").
+ */
+{ kind: "pullRequest"; headBranch: string; baseBranch: string; host: string; number: number; url: string };
 
 export type BranchNamingInput = {
 	prefixes: string[],
@@ -274,6 +279,8 @@ export type ContextBranchView = {
 	/**  `null` when the repository is no longer part of the project. */
 	worktreePath: string | null,
 	pullRequestDraft: PullRequestDraftView | null,
+	/**  The pull request the branch was created from, when it was matched. */
+	pullRequestMatched: MatchedPullRequestView | null,
 };
 
 /**
@@ -424,6 +431,16 @@ export type LocalBranchView = {
 	hasUpstream: boolean,
 	upstreamGone: boolean,
 	isMerged: boolean,
+};
+
+/**
+ *  The pull request a context branch was matched with, on the wire. `host` is
+ *  the Git host kind as a plain string ("github", "bitbucket").
+ */
+export type MatchedPullRequestView = {
+	host: string,
+	number: number,
+	url: string,
 };
 
 /**  A pull request to open from the context branch `head` into `base`. */
